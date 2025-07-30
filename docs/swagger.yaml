@@ -1,0 +1,17 @@
+openapi: 3.1.0
+info:
+  title: Whatsapp Gateway API
+  version: 1.0.0
+  description: >
+    API documentation for Whatsapp Gateway.
+
+    This service allows integration with WhatsApp through REST endpoints.
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+  x-docs-url: https://github.com/glennprays/whatsapp-gateway/wiki
+  x-repository:
+    type: git
+    url: https://github.com/glennprays/whatsapp-gateway
+servers:
+  - url: /api/v1
