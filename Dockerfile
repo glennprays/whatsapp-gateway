@@ -27,6 +27,8 @@ FROM scratch
 
 # Copy the compiled Go binary from the build stage
 COPY --from=builder /app/main /main
+COPY --from=builder /app/docs/swagger.yaml /docs/swagger.yaml
+COPY --from=builder /app/docs/swagger-ui /docs/swagger-ui
 
 # Copy CA certificates from the certs stage
 COPY --from=certs-and-tzdata /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

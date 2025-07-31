@@ -15,3 +15,79 @@ info:
     url: https://github.com/glennprays/whatsapp-gateway
 servers:
   - url: /api/v1
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: A description of the error that occurred.
+          example: "Invalid request syntax or parameters."
+        code:
+          type: integer
+          description: An error code representing the type of error.
+          example: 400
+    
+  securitySchemes:
+    accountBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses: 
+    BadRequest:
+      description: Invalid request syntax or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication credentials missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated user does not have permission to perform the action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+       description: Conflict with the current state of the resource (e.g., email already exists).
+       content:
+         application/json:
+           schema:
+             $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: An unexpected error occurred on the server.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+paths:
+  /health:
+    get:
+      summary: Check service health
+      description: Returns the health status of the service.
+      responses:
+        '200':
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time

@@ -10,15 +10,19 @@ import (
 	"time"
 
 	"github.com/glennprays/whatsapp-gateway/config"
+	"github.com/glennprays/whatsapp-gateway/docs"
 	"github.com/glennprays/whatsapp-gateway/internal/router"
 	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	log.Info("Starting WhatsApp Gateway...")
+	log.Println("Starting WhatsApp Gateway...")
 
 	log.Println("loading configuration...")
 	cfg := config.LoadConfig()
+
+	log.Println("initializing Swagger...")
+	docs.NewSwagger(cfg)
 
 	log.Println("setting up router...")
 	routerEngine := router.SetupRouter(

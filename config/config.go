@@ -8,10 +8,12 @@ import (
 )
 
 type Config struct {
-	Port          string `config:"PORT"`
-	BasePath      string `config:"BASE_PATH"`
-	HttpOrigin    string `config:"HTTP_ORIGIN"`
-	EnableSwagger bool   `config:"ENABLE_SWAGGER"`
+	Port            string `config:"PORT"`
+	BasePath        string `config:"BASE_PATH"`
+	HttpOrigin      string `config:"HTTP_ORIGIN"`
+	EnableSwagger   bool   `config:"ENABLE_SWAGGER"`
+	SwaggerUser     string `config:"SWAGGER_USER"`
+	SwaggerPassword string `config:"SWAGGER_PASSWORD"`
 }
 
 func LoadConfig() *Config {
@@ -23,10 +25,12 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		Port:          GetEnv("PORT", "3000"),
-		BasePath:      GetEnv("BASE_PATH", "/"),
-		HttpOrigin:    GetEnv("HTTP_ORIGIN", "*"),
-		EnableSwagger: GetEnv("ENABLE_SWAGGER", "true") == "true",
+		Port:            GetEnv("PORT", "3000"),
+		BasePath:        GetEnv("BASE_PATH", "/"),
+		HttpOrigin:      GetEnv("HTTP_ORIGIN", "*"),
+		EnableSwagger:   GetEnv("ENABLE_SWAGGER", "true") == "true",
+		SwaggerUser:     GetEnv("SWAGGER_USER", "user"),
+		SwaggerPassword: GetEnv("SWAGGER_PASSWORD", "password"),
 	}
 }
 

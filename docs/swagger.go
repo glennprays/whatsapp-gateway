@@ -5,27 +5,49 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glennprays/whatsapp-gateway/config"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
-func ServeDynamicSwagger(c *gin.Context) {
+var (
+	swaggerByte []byte
+	cfg         *config.Config
+)
+
+func NewSwagger(conf *config.Config) {
+	cfg = conf
+	swaggerByte = serveDynamicSwagger()
+
+	if len(swaggerByte) == 0 {
+		log.Warn("No Swagger documentation found, serving empty response.")
+	}
+	log.Info("Swagger documentation loaded successfully.")
+}
+
+func ServeDynamicSwaggerGin(c *gin.Context) {
+	if len(swaggerByte) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Swagger documentation not found"})
+		return
+	}
+
+	c.Header("Content-Type", "application/x-yaml")
+	c.String(http.StatusOK, string(swaggerByte))
+}
+
+func serveDynamicSwagger() []byte {
 	yamlFile, err := os.ReadFile("docs/swagger.yaml")
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not read swagger.yaml: %v", err)
-		log.Warnf("Error reading swagger.yaml: %v", err)
-		return
+		log.Fatalf("Error reading swagger.yaml: %v", err)
 	}
 
 	var data yaml.Node
 	err = yaml.Unmarshal(yamlFile, &data)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not parse swagger.yaml: %v", err)
-		log.Warnf("Error unmarshaling swagger.yaml: %v", err)
-		return
+		log.Fatalf("Error unmarshaling swagger.yaml: %v", err)
 	}
 
-	baseURL := os.Getenv("BASE_PATH")
+	baseURL := cfg.BasePath
 	if baseURL == "" {
 		baseURL = "/"
 		log.Println("BASE_PATH not set, using default:", baseURL)
@@ -33,19 +55,15 @@ func ServeDynamicSwagger(c *gin.Context) {
 
 	err = updateServerURL(&data, baseURL)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not update swagger.yaml content: %v", err)
-		log.Warnf("Error updating server URL: %v", err)
-		return
+		log.Fatalf("Error updating server URL in swagger.yaml: %v", err)
 	}
 
 	modifiedYAML, err := yaml.Marshal(&data)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Could not generate modified swagger.yaml: %v", err)
-		log.Warnf("Error marshaling modified YAML: %v", err)
-		return
+		log.Fatalf("Error marshaling modified swagger.yaml: %v", err)
 	}
 
-	c.Data(http.StatusOK, "application/x-yaml", modifiedYAML)
+	return modifiedYAML
 }
 
 func updateServerURL(node *yaml.Node, newURL string) error {
@@ -77,8 +95,8 @@ func updateServerURL(node *yaml.Node, newURL string) error {
 }
 
 func BasicAuthMiddleware() gin.HandlerFunc {
-	expectedUser := os.Getenv("SWAGGER_USER")
-	expectedPassword := os.Getenv("SWAGGER_PASSWORD")
+	expectedUser := cfg.SwaggerUser
+	expectedPassword := cfg.SwaggerPassword
 
 	return func(c *gin.Context) {
 		user, password, hasAuth := c.Request.BasicAuth()
