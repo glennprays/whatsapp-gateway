@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/glennprays/whatsapp-gateway/config"
+	"github.com/glennprays/whatsapp-gateway/internal/handler"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 
 func SetupRouter(
 	conf *config.Config,
+	handler *handler.Handler,
 ) *gin.Engine {
 	cfg = conf
 	basePath = cfg.BasePath
@@ -31,6 +33,8 @@ func SetupRouter(
 		log.Println("Swagger is enabled, initializing Swagger routes...")
 		initSwaggerRoutes(api)
 	}
+
+	api.POST("/register", handler.AuthHandler.Register)
 
 	router.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{

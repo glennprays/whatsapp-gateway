@@ -93,21 +93,3 @@ func updateServerURL(node *yaml.Node, newURL string) error {
 	}
 	return nil
 }
-
-func BasicAuthMiddleware() gin.HandlerFunc {
-	expectedUser := cfg.SwaggerUser
-	expectedPassword := cfg.SwaggerPassword
-
-	return func(c *gin.Context) {
-		user, password, hasAuth := c.Request.BasicAuth()
-
-		if hasAuth && user == expectedUser && password == expectedPassword {
-			// Credentials are valid, continue to the next handler
-			c.Next()
-		} else {
-			// Credentials are not valid or not provided
-			c.Header("WWW-Authenticate", `Basic realm="Restricted"`)
-			c.AbortWithStatus(http.StatusUnauthorized)
-		}
-	}
-}

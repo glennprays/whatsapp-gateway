@@ -15,6 +15,12 @@ info:
     url: https://github.com/glennprays/whatsapp-gateway
 servers:
   - url: /api/v1
+tags:
+  - name: Health
+    description: Endpoints for checking the health of the service.
+  - name: Authentication
+    description: Endpoints for user authentication and registration.
+
 components:
   schemas:
     ErrorResponse:
@@ -28,6 +34,24 @@ components:
           type: integer
           description: An error code representing the type of error.
           example: 400
+    RegisterRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          description: The phone number of the user to authenticate.
+          example: "6281234567890" 
+        secret_key:
+          type: string
+          description: The secret key for authentication.
+          example: "my_secret_key"
+    RegisterResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token for the authenticated user.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     
   securitySchemes:
     accountBearerAuth:
@@ -75,6 +99,8 @@ components:
 paths:
   /health:
     get:
+      tags:
+        - Health
       summary: Check service health
       description: Returns the health status of the service.
       responses:
@@ -91,3 +117,23 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+  /register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new account
+      description: >
+        Registers a new user with the provided phone number and secret key to get JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'

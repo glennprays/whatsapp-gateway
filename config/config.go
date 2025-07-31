@@ -1,19 +1,25 @@
 package config
 
 import (
-	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 )
 
 type Config struct {
-	Port            string `config:"PORT"`
-	BasePath        string `config:"BASE_PATH"`
-	HttpOrigin      string `config:"HTTP_ORIGIN"`
-	EnableSwagger   bool   `config:"ENABLE_SWAGGER"`
-	SwaggerUser     string `config:"SWAGGER_USER"`
-	SwaggerPassword string `config:"SWAGGER_PASSWORD"`
+	Port            string         `config:"PORT"`
+	BasePath        string         `config:"BASE_PATH"`
+	HttpOrigin      string         `config:"HTTP_ORIGIN"`
+	EnableSwagger   bool           `config:"ENABLE_SWAGGER"`
+	SwaggerUser     string         `config:"SWAGGER_USER"`
+	SwaggerPassword string         `config:"SWAGGER_PASSWORD"`
+	JwtSecret       string         `config:"JWT_SECRET"`
+	JwtDuration     *time.Duration `config:"JWT_DURATION_MINUTES"`
+	JwtIssuer       string         `config:"JWT_ISSUER"`
+	SecretKey       string         `config:"SECRET_KEY"`
 }
 
 func LoadConfig() *Config {
@@ -24,6 +30,17 @@ func LoadConfig() *Config {
 		}
 	}
 
+	jwtTokenDurationStr := GetEnv("JWT_TOKEN_DURATION_MINUTES", "1440")
+	var jwtTokenDurationTime *time.Duration
+	if jwtTokenDurationStr != "0" {
+		jwtTokenDuration, err := strconv.Atoi(jwtTokenDurationStr)
+		if err != nil {
+			log.Fatal("invalid JWT_ACCESS_TOKEN_DURATION_MINUTES:", err)
+		}
+		duration := time.Duration(jwtTokenDuration) * time.Minute
+		jwtTokenDurationTime = &duration
+	}
+
 	return &Config{
 		Port:            GetEnv("PORT", "3000"),
 		BasePath:        GetEnv("BASE_PATH", "/"),
@@ -31,6 +48,10 @@ func LoadConfig() *Config {
 		EnableSwagger:   GetEnv("ENABLE_SWAGGER", "true") == "true",
 		SwaggerUser:     GetEnv("SWAGGER_USER", "user"),
 		SwaggerPassword: GetEnv("SWAGGER_PASSWORD", "password"),
+		JwtSecret:       GetEnv("JWT_SECRET", "secret"),
+		JwtDuration:     jwtTokenDurationTime,
+		JwtIssuer:       GetEnv("JWT_ISSUER", "whatsapp-gateway"),
+		SecretKey:       GetEnv("SECRET_KEY", "secret"),
 	}
 }
 

@@ -11,7 +11,10 @@ import (
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/docs"
+	"github.com/glennprays/whatsapp-gateway/internal/handler"
+	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
 	"github.com/glennprays/whatsapp-gateway/internal/router"
+	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,9 +27,19 @@ func main() {
 	log.Println("initializing Swagger...")
 	docs.NewSwagger(cfg)
 
+	log.Println("initializing JWT manager...")
+	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)
+
+	log.Println("initializing handlers...")
+	authHandler := auth_handler.NewAuthHandler(cfg, jwtManager)
+
+	log.Println("initializing main handler...")
+	mainHandler := handler.NewHandler(authHandler)
+
 	log.Println("setting up router...")
 	routerEngine := router.SetupRouter(
 		cfg,
+		mainHandler,
 	)
 
 	log.Println("setting up HTTP server...")
