@@ -33,6 +33,9 @@ func FromError(err error) APIError {
 		case domain.ErrConflict:
 			apiError.Status = http.StatusConflict
 		}
+	} else {
+		apiError.Message = err.Error()
+		apiError.Status = http.StatusInternalServerError
 	}
 
 	return apiError
