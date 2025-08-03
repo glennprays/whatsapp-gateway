@@ -1,4 +1,3 @@
-/* Base box model reset */
 html {
     box-sizing: border-box;
     overflow: -moz-scrollbars-vertical;
@@ -11,167 +10,35 @@ html {
     box-sizing: inherit;
 }
 
-/* Page body */
 body {
     margin: 0;
     background: #fafafa;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: #212121;
 }
 
-/* Hide the Swagger topbar */
-.topbar {
-    display: none;
-}
-
-/* Main container styling */
-.swagger-ui {
-    padding: 20px;
-    background: #fafafa;
-}
-
-/* Documentation Info Section */
-.swagger-ui .info {
-    margin-bottom: 30px;
-}
-
-.swagger-ui .info h1 {
-    font-size: 28px;
-    font-weight: bold;
-    color: #0d47a1;
-}
-
-.swagger-ui .info .title small {
-    font-size: 14px;
-    color: #757575;
+.swagger-ui .download-url-wrapper {
+    display: none !important;
 }
 
 .swagger-ui .info .base-url {
-    display: none;
+    display: none !important;
 }
 
-/* Operation blocks styling */
-.swagger-ui .opblock {
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    background-color: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+.swagger-ui .topbar {
+    display: none !important;
 }
 
-/* GET */
-.swagger-ui .opblock.opblock-get {
-    border-left: 5px solid #42a5f5;
-    background: #e3f2fd;
-}
-
-/* POST */
-.swagger-ui .opblock.opblock-post {
-    border-left: 5px solid #66bb6a;
-    background: #e8f5e9;
-}
-
-/* PUT */
-.swagger-ui .opblock.opblock-put {
-    border-left: 5px solid #ffa726;
-    background: #fff3e0;
-}
-
-/* DELETE */
-.swagger-ui .opblock.opblock-delete {
-    border-left: 5px solid #ef5350;
-    background: #ffebee;
-}
-
-/* Summary Header */
-.swagger-ui .opblock-summary {
-    padding: 16px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-/* Buttons */
-.swagger-ui .btn {
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-weight: 600;
-    background-color: #1976d2;
-    color: #ffffff;
-    border: none;
-    transition: background 0.3s ease;
-}
-
-.swagger-ui .btn:hover {
-    background-color: #0d47a1;
-}
-
-/* Schema Model Titles */
-.swagger-ui .model-title {
-    font-weight: bold;
-    color: #00796b;
-}
-
-/* Parameters Description Column */
-.swagger-ui .parameters-col_description {
-    color: #424242;
-    font-size: 14px;
-}
-
-/* Hide scheme selector (http/https dropdown) */
-.swagger-ui .scheme-container {
-    display: none;
-}
-
-/* Response headers */
-.swagger-ui .responses-inner {
-    background-color: #f5f5f5;
+.swagger-ui {
+    font-family: 'Open Sans', sans-serif;
     padding: 10px;
-    border-radius: 6px;
-    border: 1px solid #ddd;
 }
 
-/* Markdown links and headers */
-.swagger-ui .markdown a {
-    color: #1976d2;
-    text-decoration: none;
-}
-
-.swagger-ui .markdown h2,
-.swagger-ui .markdown h3 {
-    margin-top: 24px;
-    font-weight: 600;
-}
-
-/* Collapsible sections (e.g., schemas) */
-.swagger-ui .model-box {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 8px;
-    background-color: #ffffff;
-}
-
-/* Form input styling */
-.swagger-ui input[type="text"],
-.swagger-ui input[type="email"],
-.swagger-ui input[type="password"],
-.swagger-ui textarea {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 14px;
-    width: 100%;
-}
-
-/* Request/Response JSON views */
-.swagger-ui .microlight {
-    background-color: #f0f0f0;
-    padding: 12px;
-    border-radius: 6px;
-    font-family: monospace;
-    font-size: 13px;
-}
-
-/* Tag section spacing */
-.swagger-ui .opblock-tag-section {
-    margin-top: 30px;
+#servers {
+  appearance: none;       /* Most modern browsers */
+  -webkit-appearance: none; /* Safari/Chrome */
+  -moz-appearance: none;  /* Firefox */
+  background: none;       /* Optional: Remove background */
+  border: none;           /* Optional: Remove border */
+  pointer-events: none;   /* Prevent interaction */
+  background: transparent; 
+  box-shadow: none; /* Remove box shadow */
 }

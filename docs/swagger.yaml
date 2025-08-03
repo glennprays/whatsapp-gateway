@@ -20,6 +20,12 @@ tags:
     description: Endpoints for checking the health of the service.
   - name: Authentication
     description: Endpoints for user authentication and registration.
+  - name: Whatsapp Authentication
+    description: Endpoints for WhatsApp authentication.
+  - name: Whatsapp Webhook
+    description: Endpoints for handling WhatsApp webhooks and events.
+  - name: Whatsapp Message
+    description: Endpoints for managing WhatsApp chats and messages.
 
 components:
   schemas:
@@ -52,6 +58,124 @@ components:
           type: string
           description: JWT token for the authenticated user.
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    LoginQrResponse:
+      type: object
+      properties:
+        qr_code:
+          type: string
+          description: Base64 encoded QR code for WhatsApp login.
+          example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+        expires_in:
+          type: integer
+          description: Time in seconds until the QR code expires.
+          example: 300
+    LoginPairResponse:
+      type: object
+      properties:
+        pair_code:
+          type: string
+          description: Pair code for WhatsApp login.
+          example: "123456"
+        expires_in:
+          type: integer
+          description: Time in seconds until the pair code expires.
+          example: 300
+    WebhookRegisterRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The URL to register for receiving WhatsApp webhooks.
+          example: "https://example.com/webhook"
+        hmac_secret:
+          type: string
+          description: Optional secret for validating webhook requests.
+          example: "my_webhook_secret"
+    SendMessageTextRequest:
+      type: object
+      properties:
+        msisdn::
+          type: string 
+        description: The recipient's Personal ID or Group ID.
+        example: "6281234567890@us.c"
+        message:
+          type: string
+          description: The text message to send.
+          example: "Hello, this is a test message."
+    SendMessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Indicates if the message was sent successfully.
+          example: true
+        message_id:
+          type: string
+          description: The ID of the sent message.
+          example: "msg_1234567890"
+    SendMessageImageRequest:
+      type: multipart/form-data
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@us.c"
+        image:
+          type: string
+          format: binary
+          description: The image file to send.
+        caption:
+          type: string
+          description: Optional caption for the image.
+          example: "Check out this image!"
+        is_view_once:
+          type: boolean
+          description: Whether the image should be sent as view once.
+          example: false
+      required:
+        - msisdn
+        - image
+    MessageDeleteRequest:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: The ID of the message to delete.
+          example: "msg_1234567890"
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@us.c"
+    MessageEditRequest:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: The ID of the message to edit.
+          example: "msg_1234567890"
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@us.c"
+        new_message:
+          type: string
+          description: The new text for the message.
+          example: "This is the edited message."
+    MessageReactRequest:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: The ID of the message to react to.
+          example: "msg_1234567890"
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@us.c"
+        emoji:
+          type: string
+          description: The reaction to add (e.g., "👍", "❤️").
+          example: "👍"
     
   securitySchemes:
     accountBearerAuth:
@@ -137,3 +261,219 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisterResponse'
+  /login/qr_code:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Get WhatsApp login QR code
+      description: >
+        Generates a QR code for WhatsApp login. The QR code is valid for a limited time.
+      responses:
+        '200':
+          description: QR code generated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginQrResponse'
+            text/html:
+              schema:
+                type: string
+                example: "<img src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...'/>"
+      security:
+        - accountBearerAuth: []
+  /login/pair_code:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Get WhatsApp login pair code
+      description: >
+        Generates a pair code for WhatsApp login. The pair code is valid for a limited time.
+      responses:
+        '200':
+          description: Pair code generated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginPairResponse'
+      security:
+        - accountBearerAuth: []
+  /login/status:
+    get:
+      tags:
+        - Whatsapp Authentication
+      summary: Get WhatsApp session status
+      description: >
+        Retrieves the current WhatsApp session status, including whether the user is logged in.
+      responses:
+        '200':
+          description: Session status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                authenticated:
+                  type: boolean
+                  description: Indicates if the user is authenticated with WhatsApp.
+                  example: true
+      security:
+        - accountBearerAuth: []
+  /webhook:
+    post:
+      tags:
+        - Whatsapp Webhook
+      summary: Register a webhook URL
+      description: >
+        Registers a URL to receive WhatsApp webhook events. Optionally, a secret can be provided for validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRegisterRequest'
+      responses:
+        '200':
+          description: Webhook URL registered successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
+    delete:
+      tags:
+        - Whatsapp Webhook
+      summary: Unregister the webhook URL
+      description: >
+        Unregisters the currently registered webhook URL.
+      responses:
+        '200':
+          description: Webhook URL unregistered successfully.
+      security:
+        - accountBearerAuth: []
+  /message/text:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a text message
+      description: >
+        Sends a text message to a specified recipient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageTextRequest'
+      responses:
+        '200':
+          description: Message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+      security:
+        - accountBearerAuth: []
+  /message/image:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send an image message
+      description: >
+        Sends an image message to a specified recipient. The image can be sent as view once.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageImageRequest'
+      responses:
+        '200':
+          description: Image message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+      security:
+        - accountBearerAuth: []
+  /message/react:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: React to a message
+      description: >
+        Adds a reaction to a previously sent message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageReactRequest'
+      responses:
+        '200':
+          description: Reaction added successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
+  /message:
+    delete:
+      tags:
+        - Whatsapp Message
+      summary: Delete a message
+      description: >
+        Deletes a previously sent message by its ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageDeleteRequest'
+      responses:
+        '200':
+          description: Message deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
+    put:
+      tags:
+        - Whatsapp Message
+      summary: Edit a message
+      description: >
+        Edits a previously sent text message or image caption.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageEditRequest'
+      responses:
+        '200':
+          description: Message edited successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
+
