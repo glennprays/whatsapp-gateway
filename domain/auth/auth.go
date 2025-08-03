@@ -1,4 +1,4 @@
-package domain
+package auth
 
 type RegistrationRequest struct {
 	PhoneNumber string `json:"phone_number" binding:"required,numeric,min=10,max=18"`

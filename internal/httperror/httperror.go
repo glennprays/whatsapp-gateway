@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	domain "github.com/glennprays/whatsapp-gateway/domain"
+	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 )
 
 type APIError struct {
@@ -14,23 +14,23 @@ type APIError struct {
 
 func FromError(err error) APIError {
 	var apiError APIError
-	var svcError domain.Error
+	var svcError errDomain.Error
 
 	if errors.As(err, &svcError) {
 		apiError.Message = svcError.AppError().Error()
 		svcErr := svcError.ServiceError()
 		switch svcErr {
-		case domain.ErrBadRequest:
+		case errDomain.ErrBadRequest:
 			apiError.Status = http.StatusBadRequest
-		case domain.ErrInternalFailure:
+		case errDomain.ErrInternalFailure:
 			apiError.Status = http.StatusInternalServerError
-		case domain.ErrNotFound:
+		case errDomain.ErrNotFound:
 			apiError.Status = http.StatusNotFound
-		case domain.ErrUnauthorized:
+		case errDomain.ErrUnauthorized:
 			apiError.Status = http.StatusUnauthorized
-		case domain.ErrForbidden:
+		case errDomain.ErrForbidden:
 			apiError.Status = http.StatusForbidden
-		case domain.ErrConflict:
+		case errDomain.ErrConflict:
 			apiError.Status = http.StatusConflict
 		}
 	} else {
