@@ -11,9 +11,11 @@ import (
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/docs"
+	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
 	"github.com/glennprays/whatsapp-gateway/internal/router"
+	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	log "github.com/sirupsen/logrus"
 )
@@ -26,6 +28,16 @@ func main() {
 
 	log.Println("initializing Swagger...")
 	docs.NewSwagger(cfg)
+
+	log.Println("initializing database connection...")
+	db, err := database.NewConnection(cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+
+	log.Println("initializing WhatsApp manager...")
+	whatsappManager := whatsapp.NewManager(cfg.WhatsappDatastoreType, db)
+	_ = whatsappManager
 
 	log.Println("initializing JWT manager...")
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)

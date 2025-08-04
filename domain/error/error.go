@@ -3,12 +3,13 @@ package error
 import "errors"
 
 var (
-	ErrBadRequest      = errors.New("bad request")
-	ErrNotFound        = errors.New("not found")
-	ErrInternalFailure = errors.New("internal failure")
-	ErrUnauthorized    = errors.New("unauthorized")
-	ErrForbidden       = errors.New("forbidden")
-	ErrConflict        = errors.New("conflict")
+	ErrBadRequest       = errors.New("bad request")
+	ErrNotFound         = errors.New("not found")
+	ErrInternalFailure  = errors.New("internal failure")
+	ErrUnauthorized     = errors.New("unauthorized")
+	ErrForbidden        = errors.New("forbidden")
+	ErrConflict         = errors.New("conflict")
+	ErrMethodNotAllowed = errors.New("method not allowed")
 )
 
 type Error struct {

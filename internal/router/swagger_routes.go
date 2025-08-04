@@ -9,16 +9,15 @@ import (
 )
 
 func initSwaggerRoutes(r *gin.RouterGroup) {
-	swaggerGroup := r.Group("/swagger")
 	{
-		swaggerGroup.Use(middleware.BasicAuthMiddleware(cfg.SwaggerUser, cfg.SwaggerPassword))
+		r.Use(middleware.BasicAuthMiddleware(cfg.SwaggerUser, cfg.SwaggerPassword))
 
-		swaggerGroup.GET("/", func(c *gin.Context) {
+		r.GET("/", func(c *gin.Context) {
 			c.Redirect(http.StatusMovedPermanently, "./ui/index.html")
 		})
 
-		swaggerGroup.GET("/yaml", docs.ServeDynamicSwaggerGin)
+		r.GET("/yaml", docs.ServeDynamicSwaggerGin)
 
-		swaggerGroup.Static("/ui", "./docs/swagger-ui")
+		r.Static("/ui", "./docs/swagger-ui")
 	}
 }

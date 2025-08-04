@@ -1,13 +1,17 @@
 package router
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glennprays/whatsapp-gateway/config"
+	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
+	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 )
 
 var (
@@ -31,23 +35,20 @@ func SetupRouter(
 
 	if cfg.EnableSwagger {
 		log.Println("Swagger is enabled, initializing Swagger routes...")
-		initSwaggerRoutes(api)
+		swaggerGroup := router.Group(fmt.Sprintf(`/%s`, cfg.SwaggerBasePath))
+		initSwaggerRoutes(swaggerGroup)
 	}
 
 	api.POST("/register", handler.AuthHandler.Register)
 
 	router.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "Not Found",
-			"message": "The requested resource could not be found.",
-		})
+		err := errDomain.NewError(errDomain.ErrNotFound, errors.New("the requested resource could not found"))
+		c.JSON(http.StatusNotFound, httperror.FromError(err))
 	})
 
 	router.NoMethod(func(c *gin.Context) {
-		c.JSON(http.StatusMethodNotAllowed, gin.H{
-			"error":   "Method Not Allowed",
-			"message": "The requested method is not allowed for this resource.",
-		})
+		err := errDomain.NewError(errDomain.ErrMethodNotAllowed, errors.New("the requested method is not allowed"))
+		c.JSON(http.StatusMethodNotAllowed, httperror.FromError(err))
 	})
 
 	return router

@@ -33,7 +33,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if req.SecretKey != h.config.SecretKey {
+	if req.SecretKey != h.config.BasicAuthSecretKey {
 		log.Warnf("Invalid secret key provided for phone number %s", req.PhoneNumber)
 		err := errors.New("invalid secret key")
 		c.JSON(http.StatusForbidden, httperror.FromError(errDomain.NewError(errDomain.ErrForbidden, err)))

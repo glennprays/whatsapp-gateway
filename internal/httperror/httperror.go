@@ -32,6 +32,8 @@ func FromError(err error) APIError {
 			apiError.Status = http.StatusForbidden
 		case errDomain.ErrConflict:
 			apiError.Status = http.StatusConflict
+		case errDomain.ErrMethodNotAllowed:
+			apiError.Status = http.StatusMethodNotAllowed
 		}
 	} else {
 		apiError.Message = err.Error()
