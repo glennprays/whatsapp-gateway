@@ -261,13 +261,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisterResponse'
-  /login/qr_code:
+  /login/qr_code/{format}:
     post:
       tags:
         - Whatsapp Authentication
       summary: Get WhatsApp login QR code
       description: >
         Generates a QR code for WhatsApp login. The QR code is valid for a limited time.
+      parameters:
+        - name: format
+          in: path
+          required: true
+          description: The format of the QR code, either 'json' or 'html'.
+          schema:
+            type: string
+            enum: [json, html]
       responses:
         '200':
           description: QR code generated successfully.

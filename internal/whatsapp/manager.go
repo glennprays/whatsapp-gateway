@@ -11,7 +11,10 @@ import (
 
 type (
 	manager struct{}
-	Manager interface{}
+	Manager interface {
+		RegisterClient(ctx context.Context, jid string)
+		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
+	}
 )
 
 var (
@@ -19,6 +22,10 @@ var (
 	DB        *sql.DB
 	container *sqlstore.Container
 )
+
+func init() {
+	Clients = make(map[string]*whatsmeow.Client)
+}
 
 func NewManager(dbType string, db *sql.DB) Manager {
 	ctx := context.Background()
@@ -50,4 +57,24 @@ func NewManager(dbType string, db *sql.DB) Manager {
 	}
 
 	return &manager{}
+}
+
+func (m *manager) LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
+	qr, timeout, err := LoginQRCode(ctx, phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to generate QR code for %s: %v", MaskedJID(phoneNumber), err)
+		return "", 0, err
+	}
+
+	log.Infof("Generated QR code for %s with timeout %d seconds", MaskedJID(phoneNumber), timeout)
+	return qr, timeout, nil
+}
+
+func (m *manager) RegisterClient(ctx context.Context, jid string) {
+	if Clients[jid] == nil {
+		log.Infof("Registering WhatsApp client for %s", MaskedJID(jid))
+		InitClient(jid, nil)
+	} else {
+		log.Warnf("WhatsApp client for %s already exists, skipping registration", MaskedJID(jid))
+	}
 }

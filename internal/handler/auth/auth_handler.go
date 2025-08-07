@@ -9,19 +9,26 @@ import (
 	authDomain "github.com/glennprays/whatsapp-gateway/domain/auth"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
+	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	log "github.com/sirupsen/logrus"
 )
 
 type AuthHandler struct {
-	config     *config.Config
-	jwtManager *auth.JWTManager
+	config          *config.Config
+	jwtManager      *auth.JWTManager
+	whatsappManager whatsapp.Manager
 }
 
-func NewAuthHandler(cfg *config.Config, jwtManager *auth.JWTManager) *AuthHandler {
+func NewAuthHandler(
+	cfg *config.Config,
+	jwtManager *auth.JWTManager,
+	whatsappManager whatsapp.Manager,
+) *AuthHandler {
 	return &AuthHandler{
-		config:     cfg,
-		jwtManager: jwtManager,
+		config:          cfg,
+		jwtManager:      jwtManager,
+		whatsappManager: whatsappManager,
 	}
 }
 
@@ -47,6 +54,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err)))
 		return
 	}
+
+	ctx := c.Request.Context()
+	h.whatsappManager.RegisterClient(ctx, req.PhoneNumber)
 
 	c.JSON(http.StatusCreated, authDomain.RegistrationResponse{
 		Token: token,

@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func BasicAuthMiddleware(expectedUser, expectedPassword string) gin.HandlerFunc {
+func (m *AuthMiddleware) BasicAuthMiddleware(expectedUser, expectedPassword string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, password, hasAuth := c.Request.BasicAuth()
 

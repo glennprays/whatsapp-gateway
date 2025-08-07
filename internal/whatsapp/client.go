@@ -1,7 +1,9 @@
 package whatsapp
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
@@ -44,4 +46,35 @@ func Reconnect(jid string) error {
 	}
 
 	return errors.New("client not found, place re-login")
+}
+
+func LoginQRCode(ctx context.Context, jid string) (string, int, error) {
+	if Clients[jid] != nil {
+		client := Clients[jid]
+
+		client.Disconnect()
+		if client.Store.ID == nil {
+			qrChanGenerate, _ := client.GetQRChannel(ctx)
+			err := client.Connect()
+			if err != nil {
+				return "", 0, err
+			}
+
+			qrImage, qrTimeout, err := WhatsappGenerateQRCode(ctx, qrChanGenerate)
+			if err != nil {
+				return "", 0, err
+			}
+
+			return fmt.Sprintf(`data:image/png;base64,%s`, qrImage), qrTimeout, nil
+		}
+
+		err := Reconnect(jid)
+		if err != nil {
+			return "", 0, err
+		}
+
+		return "", 0, errors.New("client already logged in")
+	}
+
+	return "", 0, errors.New("client not found, please register first")
 }

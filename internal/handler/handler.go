@@ -1,13 +1,21 @@
 package handler
 
-import auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+import (
+	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+	whatsapp_handler "github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
+)
 
 type Handler struct {
-	AuthHandler *auth_handler.AuthHandler
+	AuthHandler         *auth_handler.AuthHandler
+	WhatsappAuthHandler *whatsapp_handler.WhatsappAuthHandler
 }
 
-func NewHandler(authHandler *auth_handler.AuthHandler) *Handler {
+func NewHandler(
+	authHandler *auth_handler.AuthHandler,
+	whatsappAuthHandler *whatsapp_handler.WhatsappAuthHandler,
+) *Handler {
 	return &Handler{
-		AuthHandler: authHandler,
+		AuthHandler:         authHandler,
+		WhatsappAuthHandler: whatsappAuthHandler,
 	}
 }

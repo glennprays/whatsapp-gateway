@@ -2,7 +2,6 @@ package router
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,19 +11,23 @@ import (
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
+	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 )
 
 var (
-	cfg      *config.Config
-	basePath string
+	cfg            *config.Config
+	basePath       string
+	authMiddleware *middleware.AuthMiddleware
 )
 
 func SetupRouter(
 	conf *config.Config,
-	handler *handler.Handler,
+	authMw *middleware.AuthMiddleware,
+	h *handler.Handler,
 ) *gin.Engine {
 	cfg = conf
 	basePath = cfg.BasePath
+	authMiddleware = authMw
 
 	router := gin.Default()
 	api := router.Group(basePath)
@@ -35,11 +38,12 @@ func SetupRouter(
 
 	if cfg.EnableSwagger {
 		log.Println("Swagger is enabled, initializing Swagger routes...")
-		swaggerGroup := router.Group(fmt.Sprintf(`/%s`, cfg.SwaggerBasePath))
-		initSwaggerRoutes(swaggerGroup)
+		initSwaggerRoutes(router)
 	}
 
-	api.POST("/register", handler.AuthHandler.Register)
+	api.POST("/register", h.AuthHandler.Register)
+
+	initWhatsappRoutes(api, h)
 
 	router.NoRoute(func(c *gin.Context) {
 		err := errDomain.NewError(errDomain.ErrNotFound, errors.New("the requested resource could not found"))

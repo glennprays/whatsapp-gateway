@@ -14,6 +14,8 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+	whatsapp_handler "github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/router"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
@@ -37,20 +39,31 @@ func main() {
 
 	log.Println("initializing WhatsApp manager...")
 	whatsappManager := whatsapp.NewManager(cfg.WhatsappDatastoreType, db)
-	_ = whatsappManager
 
 	log.Println("initializing JWT manager...")
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)
 
 	log.Println("initializing handlers...")
-	authHandler := auth_handler.NewAuthHandler(cfg, jwtManager)
+	authHandler := auth_handler.NewAuthHandler(
+		cfg,
+		jwtManager,
+		whatsappManager,
+	)
+	whatsappAuthHandler := whatsapp_handler.NewWhatsappAuthHandler(whatsappManager)
 
 	log.Println("initializing main handler...")
-	mainHandler := handler.NewHandler(authHandler)
+	mainHandler := handler.NewHandler(
+		authHandler,
+		whatsappAuthHandler,
+	)
+
+	log.Println("initializing Auth middleware...")
+	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
 
 	log.Println("setting up router...")
 	routerEngine := router.SetupRouter(
 		cfg,
+		authMiddleware,
 		mainHandler,
 	)
 
