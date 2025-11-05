@@ -55,9 +55,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	h.whatsappManager.RegisterClient(ctx, req.PhoneNumber)
-
 	c.JSON(http.StatusCreated, authDomain.RegistrationResponse{
 		Token: token,
 	})

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	qrCode "github.com/skip2/go-qrcode"
+	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 )
 
@@ -43,49 +43,29 @@ func WhatsAppGetUserOS() string {
 }
 
 func WhatsappGenerateQRCode(ctx context.Context, qrChan <-chan whatsmeow.QRChannelItem) (string, int, error) {
-	qrChanCode := make(chan string)
-	qrChanTimeout := make(chan int)
+	for {
+		select {
 
-	go func() {
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				select {
-				case qrChanCode <- evt.Code:
-				case <-ctx.Done():
-					return
-				}
-
-				select {
-				case qrChanTimeout <- int(evt.Timeout.Seconds()):
-				case <-ctx.Done():
-					return
-				}
-				return
+		case evt, ok := <-qrChan:
+			if !ok {
+				return "", 0, errors.New("qr channel closed")
 			}
+
+			if evt.Error != nil {
+				return "", 0, evt.Error
+			}
+
+			if evt.Event == "code" {
+
+				qrPng, err := qrcode.Encode(evt.Code, qrcode.Medium, 256)
+				if err != nil {
+					return "", 0, err
+				}
+
+				return base64.StdEncoding.EncodeToString(qrPng), int(evt.Timeout.Seconds()), nil
+			}
+		case <-ctx.Done():
+			return "", 0, errors.New("context cancelled while waiting for QR code")
 		}
-	}()
-
-	var (
-		code    string
-		timeout int
-	)
-
-	select {
-	case code = <-qrChanCode:
-	case <-ctx.Done():
-		return "", 0, errors.New("context cancelled while waiting for QR code")
 	}
-
-	select {
-	case timeout = <-qrChanTimeout:
-	case <-ctx.Done():
-		return "", 0, errors.New("context cancelled while waiting for QR timeout")
-	}
-
-	qrPng, err := qrCode.Encode(code, qrCode.Medium, 256)
-	if err != nil {
-		return "", 0, err
-	}
-
-	return base64.StdEncoding.EncodeToString(qrPng), timeout, nil
 }

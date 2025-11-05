@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 
+	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
 	"google.golang.org/protobuf/proto"
 )
 
-// Init Whatsmeow client, wrap login
 func InitClient(jid string, device *store.Device) {
+	binary.IndentXML = true
 	if Clients[jid] == nil {
 		if device == nil {
+			log.Info("Device for JID %s is nil, creating a new device", jid)
 			device = container.NewDevice()
 		}
 		store.DeviceProps.Os = proto.String(WhatsAppGetUserOS())

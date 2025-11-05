@@ -36,7 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-
+	if db.Ping() != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
 	log.Println("initializing WhatsApp manager...")
 	whatsappManager := whatsapp.NewManager(cfg.WhatsappDatastoreType, db)
 

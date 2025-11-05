@@ -53,6 +53,8 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	h.whatsappManager.RegisterClient(ctx, phoneNumber)
+
 	qrCode, timeout, err := h.whatsappManager.LoginQRCode(ctx, phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to generate QR code for phone number %s: %v", phoneNumber, err)
