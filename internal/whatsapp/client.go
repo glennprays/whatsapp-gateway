@@ -90,3 +90,20 @@ func LoginStatus(phoneNumber string) (bool, error) {
 	}
 	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
 }
+
+func Logout(ctx context.Context, phoneNumber string) error {
+	if Clients[phoneNumber] != nil {
+		client := Clients[phoneNumber]
+		err := client.Logout(ctx)
+		if err != nil {
+			log.Errorf("Failed to logout client %s: %v", MaskedPhoneNumber(phoneNumber), err)
+			client.Disconnect()
+			if err := client.Store.Delete(ctx); err != nil {
+				log.Errorf("Failed to delete client store %s: %v", MaskedPhoneNumber(phoneNumber), err)
+			}
+			return nil
+		}
+		return nil
+	}
+	return errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
+}

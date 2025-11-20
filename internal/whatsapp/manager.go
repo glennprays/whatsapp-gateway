@@ -17,6 +17,7 @@ type (
 		RegisterClient(ctx context.Context, phoneNumber string)
 		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
 		LoginStatus(ctx context.Context, phoneNumber string) (bool, error)
+		Logout(ctx context.Context, phoneNumber string) error
 	}
 )
 
@@ -85,4 +86,8 @@ func (m *manager) RegisterClient(ctx context.Context, phoneNumber string) {
 
 func (m *manager) LoginStatus(ctx context.Context, phoneNumber string) (bool, error) {
 	return LoginStatus(phoneNumber)
+}
+
+func (m *manager) Logout(ctx context.Context, phoneNumber string) error {
+	return Logout(ctx, phoneNumber)
 }

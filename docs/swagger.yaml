@@ -326,6 +326,26 @@ paths:
                     example: true
       security:
         - accountBearerAuth: []
+  /logout:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Logout from WhatsApp session
+      description: >
+        Logs out the user from the current WhatsApp session.
+      responses:
+        '200':
+          description: Logged out successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
   /webhook:
     post:
       tags:

@@ -146,3 +146,24 @@ func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
 		"authenticated": status,
 	})
 }
+
+func (h *WhatsappAuthHandler) Logout(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error("Phone number not found in context")
+		c.Abort()
+		return
+	}
+
+	err := h.whatsappManager.Logout(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to logout for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
+}
