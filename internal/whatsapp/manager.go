@@ -16,6 +16,7 @@ type (
 	Manager interface {
 		RegisterClient(ctx context.Context, phoneNumber string)
 		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
+		LoginStatus(ctx context.Context, phoneNumber string) (bool, error)
 	}
 )
 
@@ -80,4 +81,8 @@ func (m *manager) RegisterClient(ctx context.Context, phoneNumber string) {
 	} else {
 		log.Warnf("WhatsApp client for %s already exists, skipping registration", MaskedPhoneNumber(phoneNumber))
 	}
+}
+
+func (m *manager) LoginStatus(ctx context.Context, phoneNumber string) (bool, error) {
+	return LoginStatus(phoneNumber)
 }

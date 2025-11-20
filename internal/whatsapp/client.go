@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary"
@@ -80,4 +81,12 @@ func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
 	}
 
 	return "", 0, errors.New("client not found, please register first")
+}
+
+func LoginStatus(phoneNumber string) (bool, error) {
+	if Clients[phoneNumber] != nil {
+		client := Clients[phoneNumber]
+		return client.IsLoggedIn(), nil
+	}
+	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
 }

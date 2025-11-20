@@ -320,10 +320,10 @@ paths:
               schema:
                 type: object
                 properties:
-                authenticated:
-                  type: boolean
-                  description: Indicates if the user is authenticated with WhatsApp.
-                  example: true
+                  authenticated:
+                    type: boolean
+                    description: Indicates if the user is authenticated with WhatsApp.
+                    example: true
       security:
         - accountBearerAuth: []
   /webhook:

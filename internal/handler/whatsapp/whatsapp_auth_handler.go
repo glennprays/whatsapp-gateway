@@ -49,6 +49,8 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
+		log.Error("Phone number not found in context")
+		c.Abort()
 		return
 	}
 
@@ -122,4 +124,25 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 		return
 	}
+}
+
+func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error("Phone number not found in context")
+		c.Abort()
+		return
+	}
+
+	status, err := h.whatsappManager.LoginStatus(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to get login status for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"authenticated": status,
+	})
 }

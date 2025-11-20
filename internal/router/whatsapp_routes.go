@@ -10,5 +10,6 @@ func initWhatsappRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	loginGroup.Use(authMiddleware.JWTAuthentication())
 	{
 		loginGroup.POST("/qr_code/:format", h.WhatsappAuthHandler.LoginQRCode)
+		loginGroup.GET("/status", h.WhatsappAuthHandler.GetLoginStatus)
 	}
 }
