@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary"
@@ -47,10 +48,10 @@ func Reconnect(phoneNumber string) error {
 			}
 			return nil
 		}
-		return errors.New("client Store is empty, please re-login")
+		return errors.New(constant.ErrClientNotFound)
 	}
 
-	return errors.New("client not found, place re-login")
+	return errors.New(constant.ErrClientNotFound)
 }
 
 func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
@@ -80,7 +81,7 @@ func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
 		return "", 0, errors.New("client already logged in")
 	}
 
-	return "", 0, errors.New("client not found, please register first")
+	return "", 0, errors.New(constant.ErrClientNotFound)
 }
 
 func LoginStatus(phoneNumber string) (bool, error) {
@@ -105,5 +106,5 @@ func Logout(ctx context.Context, phoneNumber string) error {
 		}
 		return nil
 	}
-	return errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
+	return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }

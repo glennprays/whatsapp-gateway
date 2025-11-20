@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
@@ -49,7 +50,7 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error("Phone number not found in context")
+		log.Error(constant.ErrPhoneNumberNotFound)
 		c.Abort()
 		return
 	}
@@ -129,7 +130,7 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error("Phone number not found in context")
+		log.Error(constant.ErrPhoneNumberNotFound)
 		c.Abort()
 		return
 	}
@@ -150,7 +151,7 @@ func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
 func (h *WhatsappAuthHandler) Logout(c *gin.Context) {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error("Phone number not found in context")
+		log.Error(constant.ErrPhoneNumberNotFound)
 		c.Abort()
 		return
 	}
