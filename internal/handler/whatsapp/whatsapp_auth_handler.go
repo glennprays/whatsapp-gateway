@@ -127,6 +127,31 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 	}
 }
 
+func (h *WhatsappAuthHandler) LoginPairCode(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	h.whatsappManager.RegisterClient(ctx, phoneNumber)
+	pairCode, timeout, err := h.whatsappManager.LoginPairCode(ctx, phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to generate pair code for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"pair_code":  pairCode,
+		"expires_in": timeout,
+	})
+}
+
 func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
@@ -179,7 +204,7 @@ func (h *WhatsappAuthHandler) Reconnect(c *gin.Context) {
 
 	err := h.whatsappManager.Reconnect(c.Request.Context(), phoneNumber)
 	if err != nil {
-		log.Errorf("Failed to reconnect for phone number %s: %v", phoneNumber, err)
+		log.Errorf("Failed to reconnect for phone number %s: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
 		c.JSON(httpErr.Status, httpErr)
 		return

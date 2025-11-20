@@ -73,10 +73,38 @@ func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
 			return "", 0, err
 		}
 
-		return "", 0, errors.New("client already logged in")
+		return "", 0, errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientAlreadyLoggedIn))
 	}
 
-	return "", 0, errors.New(constant.ErrClientNotFound)
+	return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+}
+
+func LoginPairCode(ctx context.Context, phoneNumber string) (string, int, error) {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	store.DeviceProps.Os = proto.String(WhatsAppGetUserOS())
+	client.Disconnect()
+	if client.Store.ID == nil {
+		err := client.Connect()
+		if err != nil {
+			return "", 0, err
+		}
+
+		pairCode, err := client.PairPhone(ctx, phoneNumber, true, whatsmeow.PairClientChrome, fmt.Sprintf("Chrome (%s)", WhatsAppGetUserOS()))
+		if err != nil {
+			return "", 0, err
+		}
+		return pairCode, 160, nil
+	}
+
+	err := Reconnect(phoneNumber)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return "", 0, errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientAlreadyLoggedIn))
 }
 
 func LoginStatus(phoneNumber string) (bool, error) {

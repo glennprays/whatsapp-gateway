@@ -16,6 +16,7 @@ type (
 	Manager interface {
 		RegisterClient(ctx context.Context, phoneNumber string)
 		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
+		LoginPairCode(ctx context.Context, phoneNumber string) (string, int, error)
 		LoginStatus(ctx context.Context, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, phoneNumber string) error
 		Reconnect(ctx context.Context, phoneNumber string) error
@@ -95,4 +96,8 @@ func (m *manager) Logout(ctx context.Context, phoneNumber string) error {
 
 func (m *manager) Reconnect(ctx context.Context, phoneNumber string) error {
 	return Reconnect(phoneNumber)
+}
+
+func (m *manager) LoginPairCode(ctx context.Context, phoneNumber string) (string, int, error) {
+	return LoginPairCode(ctx, phoneNumber)
 }
