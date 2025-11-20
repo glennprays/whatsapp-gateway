@@ -168,3 +168,24 @@ func (h *WhatsappAuthHandler) Logout(c *gin.Context) {
 		"success": true,
 	})
 }
+
+func (h *WhatsappAuthHandler) Reconnect(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	err := h.whatsappManager.Reconnect(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to reconnect for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
+}

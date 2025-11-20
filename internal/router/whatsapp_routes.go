@@ -13,4 +13,5 @@ func initWhatsappRoutes(r *gin.RouterGroup, h *handler.Handler) {
 		loginGroup.GET("/status", h.WhatsappAuthHandler.GetLoginStatus)
 	}
 	r.POST("/logout", authMiddleware.JWTAuthentication(), h.WhatsappAuthHandler.Logout)
+	r.POST("/session/reconnect", authMiddleware.JWTAuthentication(), h.WhatsappAuthHandler.Reconnect)
 }

@@ -37,21 +37,16 @@ func InitClient(phoneNumber string, device *store.Device) {
 }
 
 func Reconnect(phoneNumber string) error {
-	if Clients[phoneNumber] != nil {
-		client := Clients[phoneNumber]
-		client.Disconnect()
-
-		if client != nil {
-			err := client.Connect()
-			if err != nil {
-				return err
-			}
-			return nil
-		}
+	client := Clients[phoneNumber]
+	if client == nil {
 		return errors.New(constant.ErrClientNotFound)
 	}
-
-	return errors.New(constant.ErrClientNotFound)
+	client.Disconnect()
+	err := client.Connect()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {

@@ -18,6 +18,7 @@ type (
 		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
 		LoginStatus(ctx context.Context, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, phoneNumber string) error
+		Reconnect(ctx context.Context, phoneNumber string) error
 	}
 )
 
@@ -90,4 +91,8 @@ func (m *manager) LoginStatus(ctx context.Context, phoneNumber string) (bool, er
 
 func (m *manager) Logout(ctx context.Context, phoneNumber string) error {
 	return Logout(ctx, phoneNumber)
+}
+
+func (m *manager) Reconnect(ctx context.Context, phoneNumber string) error {
+	return Reconnect(phoneNumber)
 }

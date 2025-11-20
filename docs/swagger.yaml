@@ -326,6 +326,26 @@ paths:
                     example: true
       security:
         - accountBearerAuth: []
+  /session/reconnect:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Reconnect to WhatsApp session
+      description: >
+        Attempts to reconnect to the existing WhatsApp session.
+      responses:
+        '200':
+          description: Reconnection attempt initiated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
   /logout:
     post:
       tags:
