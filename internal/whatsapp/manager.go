@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/glennprays/whatsapp-gateway/config"
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 type (
@@ -21,17 +23,20 @@ var (
 	Clients   map[string]*whatsmeow.Client
 	DB        *sql.DB
 	container *sqlstore.Container
+	cfg       *config.Config
 )
 
 func init() {
 	Clients = make(map[string]*whatsmeow.Client)
 }
 
-func NewManager(dbType string, db *sql.DB) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB) Manager {
 	ctx := context.Background()
 	DB = db
+	cfg = config
 
-	container = sqlstore.NewWithDB(db, dbType, nil)
+	dbLog := waLog.Stdout("Database", config.WhatsmeowLogLevel, true)
+	container = sqlstore.NewWithDB(db, dbType, dbLog)
 	if err := container.Upgrade(ctx); err != nil {
 		log.Fatalf("Failed to upgrade database schema: %v", err)
 	}
@@ -44,10 +49,8 @@ func NewManager(dbType string, db *sql.DB) Manager {
 	for _, device := range devices {
 		jid := WhatsappDecomposeJID(device.ID.User)
 
-		// Mask JID for Logging Information
 		maskedJID := MaskedJID(jid)
 
-		// Print Restore Log
 		log.Infof("Restoring WhatsApp Client for %s", maskedJID)
 		InitClient(jid, device)
 

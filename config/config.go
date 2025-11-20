@@ -23,6 +23,8 @@ type Config struct {
 	BasicAuthSecretKey    string         `config:"BASIC_AUTH_SECRET_KEY"`
 	WhatsappDatastoreType string         `config:"WHATSAPP_DATASTORE_TYPE"`
 	WhatsappDatastoreUri  string         `config:"WHATSAPP_DATASTORE_URI"`
+	WhatsmeowLogLevel     string         `config:"WHATSMEOW_LOG_LEVEL"`
+	WhatsappDeviceLabel   string         `config:"WHATSAPP_DEVICE_LABEL"`
 }
 
 func LoadConfig() *Config {
@@ -56,8 +58,10 @@ func LoadConfig() *Config {
 		JwtDuration:           jwtTokenDurationTime,
 		JwtIssuer:             GetEnv("JWT_ISSUER", "whatsapp-gateway"),
 		BasicAuthSecretKey:    GetEnv("SECRET_KEY", "secret"),
-		WhatsappDatastoreType: GetEnv("WHATSAPP_DATASTORE_TYPE", "sqlite"),
-		WhatsappDatastoreUri:  GetEnv("WHATSAPP_DATASTORE_URI", "file:dbs/whatsapp.db?_pragma=foreign_keys(1)"),
+		WhatsappDatastoreType: GetEnv("WHATSAPP_DATASTORE_TYPE", "sqlite3"),
+		WhatsappDatastoreUri:  GetEnv("WHATSAPP_DATASTORE_URI", "file:dbs/whatsapp.db?_foreign_keys=on"),
+		WhatsmeowLogLevel:     GetEnv("WHATSMEOW_LOG_LEVEL", "warn"),
+		WhatsappDeviceLabel:   GetEnv("WHATSAPP_DEVICE_LABEL", "WhatsApp Gateway"),
 	}
 }
 

@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("failed to ping database: %v", err)
 	}
 	log.Println("initializing WhatsApp manager...")
-	whatsappManager := whatsapp.NewManager(cfg.WhatsappDatastoreType, db)
+	whatsappManager := whatsapp.NewManager(cfg, cfg.WhatsappDatastoreType, db)
 
 	log.Println("initializing JWT manager...")
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)

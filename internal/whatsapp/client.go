@@ -9,6 +9,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
+	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -16,13 +17,13 @@ func InitClient(jid string, device *store.Device) {
 	binary.IndentXML = true
 	if Clients[jid] == nil {
 		if device == nil {
-			log.Info("Device for JID %s is nil, creating a new device", jid)
+			log.Infof("Creating new device for JID: %s", MaskedJID(jid))
 			device = container.NewDevice()
 		}
-		store.DeviceProps.Os = proto.String(WhatsAppGetUserOS())
+		store.DeviceProps.Os = proto.String(cfg.WhatsappDeviceLabel)
 		store.DeviceProps.RequireFullSync = proto.Bool(false)
 
-		client := whatsmeow.NewClient(device, nil)
+		client := whatsmeow.NewClient(device, waLog.Stdout("Client-login", cfg.WhatsmeowLogLevel, true))
 		client.AddEventHandler(func(evt any) {
 			HandleEvent(jid, evt)
 		})
@@ -57,7 +58,7 @@ func LoginQRCode(ctx context.Context, jid string) (string, int, error) {
 
 		client.Disconnect()
 		if client.Store.ID == nil {
-			qrChanGenerate, _ := client.GetQRChannel(ctx)
+			qrChanGenerate, _ := client.GetQRChannel(context.Background())
 			err := client.Connect()
 			if err != nil {
 				return "", 0, err
@@ -67,7 +68,6 @@ func LoginQRCode(ctx context.Context, jid string) (string, int, error) {
 			if err != nil {
 				return "", 0, err
 			}
-
 			return fmt.Sprintf(`data:image/png;base64,%s`, qrImage), qrTimeout, nil
 		}
 
