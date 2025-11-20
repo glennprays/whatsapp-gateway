@@ -1,0 +1,44 @@
+html {
+    box-sizing: border-box;
+    overflow: -moz-scrollbars-vertical;
+    overflow-y: scroll;
+}
+
+*,
+*:before,
+*:after {
+    box-sizing: inherit;
+}
+
+body {
+    margin: 0;
+    background: #fafafa;
+}
+
+.swagger-ui .download-url-wrapper {
+    display: none !important;
+}
+
+.swagger-ui .info .base-url {
+    display: none !important;
+}
+
+.swagger-ui .topbar {
+    display: none !important;
+}
+
+.swagger-ui {
+    font-family: 'Open Sans', sans-serif;
+    padding: 10px;
+}
+
+#servers {
+  appearance: none;       /* Most modern browsers */
+  -webkit-appearance: none; /* Safari/Chrome */
+  -moz-appearance: none;  /* Firefox */
+  background: none;       /* Optional: Remove background */
+  border: none;           /* Optional: Remove border */
+  pointer-events: none;   /* Prevent interaction */
+  background: transparent; 
+  box-shadow: none; /* Remove box shadow */
+}
