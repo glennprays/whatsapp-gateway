@@ -13,11 +13,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func InitClient(jid string, device *store.Device) {
+func InitClient(phoneNumber string, device *store.Device) {
 	binary.IndentXML = true
-	if Clients[jid] == nil {
+	if Clients[phoneNumber] == nil {
 		if device == nil {
-			log.Infof("Creating new device for JID: %s", MaskedJID(jid))
+			log.Infof("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber))
 			device = container.NewDevice()
 		}
 		store.DeviceProps.Os = proto.String(cfg.WhatsappDeviceLabel)
@@ -25,18 +25,18 @@ func InitClient(jid string, device *store.Device) {
 
 		client := whatsmeow.NewClient(device, waLog.Stdout("Client-login", cfg.WhatsmeowLogLevel, true))
 		client.AddEventHandler(func(evt any) {
-			HandleEvent(jid, evt)
+			HandleEvent(phoneNumber, evt)
 		})
 		client.EnableAutoReconnect = true
 		client.AutoTrustIdentity = true
 
-		Clients[jid] = client
+		Clients[phoneNumber] = client
 	}
 }
 
-func Reconnect(jid string) error {
-	if Clients[jid] != nil {
-		client := Clients[jid]
+func Reconnect(phoneNumber string) error {
+	if Clients[phoneNumber] != nil {
+		client := Clients[phoneNumber]
 		client.Disconnect()
 
 		if client != nil {
@@ -52,9 +52,9 @@ func Reconnect(jid string) error {
 	return errors.New("client not found, place re-login")
 }
 
-func LoginQRCode(ctx context.Context, jid string) (string, int, error) {
-	if Clients[jid] != nil {
-		client := Clients[jid]
+func LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
+	if Clients[phoneNumber] != nil {
+		client := Clients[phoneNumber]
 
 		client.Disconnect()
 		if client.Store.ID == nil {
@@ -71,7 +71,7 @@ func LoginQRCode(ctx context.Context, jid string) (string, int, error) {
 			return fmt.Sprintf(`data:image/png;base64,%s`, qrImage), qrTimeout, nil
 		}
 
-		err := Reconnect(jid)
+		err := Reconnect(phoneNumber)
 		if err != nil {
 			return "", 0, err
 		}

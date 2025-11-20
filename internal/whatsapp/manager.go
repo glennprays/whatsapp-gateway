@@ -14,7 +14,7 @@ import (
 type (
 	manager struct{}
 	Manager interface {
-		RegisterClient(ctx context.Context, jid string)
+		RegisterClient(ctx context.Context, phoneNumber string)
 		LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error)
 	}
 )
@@ -47,15 +47,15 @@ func NewManager(config *config.Config, dbType string, db *sql.DB) Manager {
 	}
 
 	for _, device := range devices {
-		jid := WhatsappDecomposeJID(device.ID.User)
+		phoneNumber := WhatsappDecomposeJID(device.ID.User)
 
-		maskedJID := MaskedJID(jid)
+		maskedPhoneNumber := MaskedPhoneNumber(phoneNumber)
 
-		log.Infof("Restoring WhatsApp Client for %s", maskedJID)
-		InitClient(jid, device)
+		log.Infof("Restoring WhatsApp Client for %s", maskedPhoneNumber)
+		InitClient(phoneNumber, device)
 
-		if err := Reconnect(jid); err != nil {
-			log.Errorf("Failed to reconnect WhatsApp client for %s: %v", maskedJID, err)
+		if err := Reconnect(phoneNumber); err != nil {
+			log.Errorf("Failed to reconnect WhatsApp client for %s: %v", maskedPhoneNumber, err)
 		}
 	}
 
@@ -65,19 +65,19 @@ func NewManager(config *config.Config, dbType string, db *sql.DB) Manager {
 func (m *manager) LoginQRCode(ctx context.Context, phoneNumber string) (string, int, error) {
 	qr, timeout, err := LoginQRCode(ctx, phoneNumber)
 	if err != nil {
-		log.Errorf("Failed to generate QR code for %s: %v", MaskedJID(phoneNumber), err)
+		log.Errorf("Failed to generate QR code for %s: %v", MaskedPhoneNumber(phoneNumber), err)
 		return "", 0, err
 	}
 
-	log.Infof("Generated QR code for %s with timeout %d seconds", MaskedJID(phoneNumber), timeout)
+	log.Infof("Generated QR code for %s with timeout %d seconds", MaskedPhoneNumber(phoneNumber), timeout)
 	return qr, timeout, nil
 }
 
-func (m *manager) RegisterClient(ctx context.Context, jid string) {
-	if Clients[jid] == nil {
-		log.Infof("Registering WhatsApp client for %s", MaskedJID(jid))
-		InitClient(jid, nil)
+func (m *manager) RegisterClient(ctx context.Context, phoneNumber string) {
+	if Clients[phoneNumber] == nil {
+		log.Infof("Registering WhatsApp client for %s", MaskedPhoneNumber(phoneNumber))
+		InitClient(phoneNumber, nil)
 	} else {
-		log.Warnf("WhatsApp client for %s already exists, skipping registration", MaskedJID(jid))
+		log.Warnf("WhatsApp client for %s already exists, skipping registration", MaskedPhoneNumber(phoneNumber))
 	}
 }

@@ -11,24 +11,25 @@ import (
 	"go.mau.fi/whatsmeow"
 )
 
-func WhatsappDecomposeJID(id string) string {
-	if strings.ContainsRune(id, '@') {
-		buffers := strings.Split(id, "@")
-		id = buffers[0]
+func WhatsappDecomposeJID(jid string) string {
+	phoneNumber := jid
+	if strings.ContainsRune(jid, '@') {
+		buffers := strings.Split(jid, "@")
+		phoneNumber = buffers[0]
 	}
 
-	if id[0] == '+' {
-		id = id[1:]
+	if phoneNumber[0] == '+' {
+		phoneNumber = phoneNumber[1:]
 	}
 
-	return id
+	return phoneNumber
 }
 
-func MaskedJID(jid string) string {
-	if len(jid) < 4 {
-		return jid
+func MaskedPhoneNumber(phoneNumber string) string {
+	if len(phoneNumber) < 4 {
+		return phoneNumber
 	}
-	return jid[:len(jid)-4] + "xxxx"
+	return phoneNumber[:len(phoneNumber)-4] + "xxxx"
 }
 
 func WhatsAppGetUserOS() string {
