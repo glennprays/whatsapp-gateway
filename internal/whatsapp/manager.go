@@ -20,14 +20,16 @@ type (
 		LoginStatus(ctx context.Context, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, phoneNumber string) error
 		Reconnect(ctx context.Context, phoneNumber string) error
+		GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error)
 	}
 )
 
 var (
-	Clients   map[string]*whatsmeow.Client
-	DB        *sql.DB
-	container *sqlstore.Container
-	cfg       *config.Config
+	Clients    map[string]*whatsmeow.Client
+	DB         *sql.DB
+	container  *sqlstore.Container
+	cfg        *config.Config
+	repository WhatsAppRepository
 )
 
 func init() {
@@ -44,6 +46,13 @@ func NewManager(config *config.Config, dbType string, db *sql.DB) Manager {
 	if err := container.Upgrade(ctx); err != nil {
 		log.Fatalf("Failed to upgrade database schema: %v", err)
 	}
+
+	err := runMigrations(db)
+	if err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
+
+	repository = NewWhatsappRepository(db)
 
 	devices, err := container.GetAllDevices(ctx)
 	if err != nil {
@@ -100,4 +109,8 @@ func (m *manager) Reconnect(ctx context.Context, phoneNumber string) error {
 
 func (m *manager) LoginPairCode(ctx context.Context, phoneNumber string) (string, int, error) {
 	return LoginPairCode(ctx, phoneNumber)
+}
+
+func (m *manager) GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error) {
+	return GetWebhookURL(ctx, phoneNumber)
 }

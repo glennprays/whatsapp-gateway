@@ -367,6 +367,26 @@ paths:
       security:
         - accountBearerAuth: []
   /webhook:
+    get:
+      tags:
+        - Whatsapp Webhook
+      summary: Get registered webhook URL
+      description: >
+        Retrieves the currently registered webhook URL for receiving WhatsApp events.
+      responses:
+        '200':
+          description: Webhook URL retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: The registered webhook URL.
+                    example: "https://example.com/webhook"
+      security:
+        - accountBearerAuth: []
     post:
       tags:
         - Whatsapp Webhook

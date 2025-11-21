@@ -130,3 +130,18 @@ func Logout(ctx context.Context, phoneNumber string) error {
 	}
 	return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }
+
+func GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error) {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	webhookURL, err := repository.GetWebhook(ctx, client.Store.ID.String())
+	if err != nil {
+		log.Errorf("Failed to get webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	return webhookURL, nil
+}

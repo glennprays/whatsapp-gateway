@@ -52,11 +52,13 @@ func main() {
 		whatsappManager,
 	)
 	whatsappAuthHandler := whatsapp_handler.NewWhatsappAuthHandler(whatsappManager)
+	whatsappWebhookHandler := whatsapp_handler.NewWhatsappWebhookHandler(whatsappManager)
 
 	log.Println("initializing main handler...")
 	mainHandler := handler.NewHandler(
 		authHandler,
 		whatsappAuthHandler,
+		whatsappWebhookHandler,
 	)
 
 	log.Println("initializing Auth middleware...")
