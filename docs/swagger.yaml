@@ -421,6 +421,14 @@ paths:
       responses:
         '200':
           description: Webhook URL unregistered successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
       security:
         - accountBearerAuth: []
   /message/text:

@@ -11,5 +11,6 @@ func initWebhookRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	{
 		webhookGroup.GET("/", h.WhatsappWebhookHandler.GetWebhookURL)
 		webhookGroup.POST("/", h.WhatsappWebhookHandler.SetWebhookURL)
+		webhookGroup.DELETE("/", h.WhatsappWebhookHandler.DeleteWebhookURL)
 	}
 }

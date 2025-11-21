@@ -165,3 +165,18 @@ func SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.We
 
 	return nil
 }
+
+func DeleteWebhookURL(ctx context.Context, phoneNumber string) error {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	err := repository.DeleteWebhook(ctx, client.Store.ID.String())
+	if err != nil {
+		log.Errorf("Failed to delete webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	return nil
+}

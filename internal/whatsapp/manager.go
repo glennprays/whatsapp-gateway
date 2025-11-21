@@ -3,10 +3,12 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	log "github.com/sirupsen/logrus"
@@ -26,6 +28,7 @@ type (
 		Reconnect(ctx context.Context, phoneNumber string) error
 		GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error)
 		SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error
+		DeleteWebhookURL(ctx context.Context, phoneNumber string) error
 	}
 )
 
@@ -123,7 +126,18 @@ func (m *manager) GetWebhookURL(ctx context.Context, phoneNumber string) (*strin
 }
 
 func (m *manager) SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error {
-	err := utils.ValidateURL(webhook.Url)
+	loginStatus, err := LoginStatus(phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to get login status for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	if !loginStatus {
+		log.Errorf("Cannot set webhook URL for %s: client not logged in", MaskedPhoneNumber(phoneNumber))
+		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
+	}
+
+	err = utils.ValidateURL(webhook.Url)
 	if err != nil {
 		log.Errorf("Invalid webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
@@ -136,4 +150,19 @@ func (m *manager) SetWebhookURL(ctx context.Context, phoneNumber string, webhook
 	}
 	webhook.HmacSecret = encryptedHmacSecret
 	return SetWebhookURL(ctx, phoneNumber, webhook)
+}
+
+func (m *manager) DeleteWebhookURL(ctx context.Context, phoneNumber string) error {
+	loginStatus, err := LoginStatus(phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to get login status for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	if !loginStatus {
+		log.Errorf("Cannot delete webhook URL for %s: client not logged in", MaskedPhoneNumber(phoneNumber))
+		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
+	}
+
+	return DeleteWebhookURL(ctx, phoneNumber)
 }

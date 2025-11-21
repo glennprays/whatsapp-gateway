@@ -69,3 +69,22 @@ func (h *WhatsappWebhookHandler) SetWebhookURL(c *gin.Context) {
 
 	c.JSON(200, gin.H{"success": true})
 }
+
+func (h *WhatsappWebhookHandler) DeleteWebhookURL(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	err := h.whatsappManager.DeleteWebhookURL(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to delete webhook URL for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(200, gin.H{"success": true})
+}
