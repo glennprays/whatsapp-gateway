@@ -10,5 +10,6 @@ func initWebhookRoutes(r *gin.RouterGroup, h *handler.Handler) {
 	webhookGroup.Use(authMiddleware.JWTAuthentication())
 	{
 		webhookGroup.GET("/", h.WhatsappWebhookHandler.GetWebhookURL)
+		webhookGroup.POST("/", h.WhatsappWebhookHandler.SetWebhookURL)
 	}
 }

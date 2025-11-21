@@ -19,6 +19,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/router"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
+	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -39,8 +40,15 @@ func main() {
 	if db.Ping() != nil {
 		log.Fatalf("failed to ping database: %v", err)
 	}
+
+	log.Println("initializing cipher...")
+	cipher := cipherx.NewCipher(cfg.WhatsappWebhookHmacEncryptionMasterKey)
+	if err != nil {
+		log.Fatalf("failed to initialize cipher: %v", err)
+	}
+
 	log.Println("initializing WhatsApp manager...")
-	whatsappManager := whatsapp.NewManager(cfg, cfg.WhatsappDatastoreType, db)
+	whatsappManager := whatsapp.NewManager(cfg, cfg.WhatsappDatastoreType, db, cipher)
 
 	log.Println("initializing JWT manager...")
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)

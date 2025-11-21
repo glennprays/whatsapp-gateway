@@ -2,6 +2,7 @@ package whatsapp_handler
 
 import (
 	"github.com/gin-gonic/gin"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
@@ -40,4 +41,31 @@ func (h *WhatsappWebhookHandler) GetWebhookURL(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"url": webhookURL})
+}
+
+func (h *WhatsappWebhookHandler) SetWebhookURL(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	var req waDomain.Webhook
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Errorf("Failed to bind JSON for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	err := h.whatsappManager.SetWebhookURL(c.Request.Context(), phoneNumber, &req)
+	if err != nil {
+		log.Errorf("Failed to set webhook URL for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(200, gin.H{"success": true})
 }

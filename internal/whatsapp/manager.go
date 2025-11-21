@@ -5,6 +5,10 @@ import (
 	"database/sql"
 
 	"github.com/glennprays/whatsapp-gateway/config"
+	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/internal/utils"
+	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -21,6 +25,7 @@ type (
 		Logout(ctx context.Context, phoneNumber string) error
 		Reconnect(ctx context.Context, phoneNumber string) error
 		GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error)
+		SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error
 	}
 )
 
@@ -30,16 +35,18 @@ var (
 	container  *sqlstore.Container
 	cfg        *config.Config
 	repository WhatsAppRepository
+	cipher     *cipherx.Cipher
 )
 
 func init() {
 	Clients = make(map[string]*whatsmeow.Client)
 }
 
-func NewManager(config *config.Config, dbType string, db *sql.DB) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher) Manager {
 	ctx := context.Background()
 	DB = db
 	cfg = config
+	cipher = cp
 
 	dbLog := waLog.Stdout("Database", config.WhatsmeowLogLevel, true)
 	container = sqlstore.NewWithDB(db, dbType, dbLog)
@@ -113,4 +120,20 @@ func (m *manager) LoginPairCode(ctx context.Context, phoneNumber string) (string
 
 func (m *manager) GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error) {
 	return GetWebhookURL(ctx, phoneNumber)
+}
+
+func (m *manager) SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error {
+	err := utils.ValidateURL(webhook.Url)
+	if err != nil {
+		log.Errorf("Invalid webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return errDomain.NewError(errDomain.ErrBadRequest, err)
+	}
+
+	encryptedHmacSecret, err := cipher.Encrypt(webhook.HmacSecret)
+	if err != nil {
+		log.Errorf("Failed to encrypt HMAC secret for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return err
+	}
+	webhook.HmacSecret = encryptedHmacSecret
+	return SetWebhookURL(ctx, phoneNumber, webhook)
 }

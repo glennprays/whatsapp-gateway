@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
@@ -143,5 +144,24 @@ func GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error) {
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
-	return webhookURL, nil
+	if webhookURL == nil {
+		return nil, nil
+	}
+
+	return &webhookURL.Url, nil
+}
+
+func SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	err := repository.SetWebhook(ctx, client.Store.ID.String(), webhook.Url, webhook.HmacSecret)
+	if err != nil {
+		log.Errorf("Failed to set webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	return nil
 }
