@@ -84,7 +84,6 @@ func LoginPairCode(ctx context.Context, phoneNumber string) (string, int, error)
 	if client == nil {
 		return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
-	store.DeviceProps.Os = proto.String(WhatsAppGetUserOS())
 	client.Disconnect()
 	if client.Store.ID == nil {
 		err := client.Connect()
