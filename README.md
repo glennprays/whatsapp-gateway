@@ -1,46 +1,29 @@
-# WhatsApp Gateway 🚀
-
+# WhatsApp Gateway 
 A modern, scalable WhatsApp Gateway built with Go and [whatsmeow](https://github.com/tulir/whatsmeow) that handles all the WhatsApp complexity for you. No more state management headaches in your backend—let the gateway do the heavy lifting!
 
 ## What's This All About?
-
 Ever tried integrating WhatsApp into your backend and got tangled up managing connection states, session data, and all that WhatsApp jazz? Yeah, we've been there too. That's why we built this gateway.
 
 **The core idea is simple:** Keep your backend stateless and focused on business logic. This gateway takes care of all WhatsApp-related state management, authentication, and message handling. Your backend just needs to make HTTP calls and handle webhooks. Easy peasy.
 
 ## Why Use This?
-
-- **🎯 Stateless Backend** - Your application doesn't need to worry about WhatsApp sessions, connection states, or device management. The gateway handles it all.
-- **📈 Easy Scalability** - Since your backend stays stateless, you can scale it horizontally without worrying about WhatsApp session distribution.
-- **🔌 Simple Integration** - Just REST API calls and webhooks. No need to learn WhatsApp's complex protocols.
-- **📱 Multi-Device Support** - Handle multiple WhatsApp accounts/devices from a single gateway instance.
-- **🛠️ Built on whatsmeow** - Uses the reliable [whatsmeow](https://github.com/tulir/whatsmeow) library for WhatsApp Web's multidevice API.
-- **🔒 Secure** - JWT authentication, webhook HMAC encryption, and proper credential management.
+- **Stateless Backend** - Your application doesn't need to worry about WhatsApp sessions, connection states, or device management. The gateway handles it all.
+- **Easy Scalability** - Since your backend stays stateless, you can scale it horizontally without worrying about WhatsApp session distribution.
+- **Simple Integration** - Just REST API calls and webhooks. No need to learn WhatsApp's complex protocols.
+- **Multi-Device Support** - Handle multiple WhatsApp accounts/devices from a single gateway instance.
+- **Built on whatsmeow** - Uses the reliable [whatsmeow](https://github.com/tulir/whatsmeow) library for WhatsApp Web's multidevice API.
+- **Secure** - JWT authentication, webhook HMAC encryption, and proper credential management.
 
 ## How It Works
-
-```
-┌─────────────┐         ┌──────────────────┐         ┌──────────────┐
-│   Your      │ ◄─────► │  WhatsApp        │ ◄─────► │  WhatsApp    │
-│   Backend   │  REST   │  Gateway         │ WebSocket│  Servers     │
-│             │  APIs   │  (Stateful)      │         │              │
-└─────────────┘         └──────────────────┘         └──────────────┘
-       │                         │
-       │                         │
-       └─────── Webhooks ────────┘
-```
-
 The gateway sits between your backend and WhatsApp, maintaining all the persistent connections and state. Your backend just sends REST requests and receives webhook notifications.
 
 ## Quick Start
 
 ### Prerequisites
-
 - Go 1.24 or higher
 - SQLite or PostgreSQL (for storing WhatsApp session data)
 
 ### Installation
-
 1. Clone the repository:
 ```bash
 git clone https://github.com/glennprays/whatsapp-gateway.git
@@ -65,12 +48,10 @@ docker run -p 3000:3000 --env-file .env whatsapp-gateway
 ```
 
 ### Basic Usage
-
 1. **Register a WhatsApp account** and get a QR code for scanning
 2. **Scan the QR code** with your WhatsApp mobile app
 3. **Start sending messages** through the REST API
 4. **Receive messages** via configured webhooks
-
 That's it! Check the API documentation at `/docs` (if Swagger is enabled) for detailed endpoint information.
 
 ## Features
@@ -94,20 +75,19 @@ That's it! Check the API documentation at `/docs` (if Swagger is enabled) for de
 - Graceful shutdown
 
 ## Configuration
-
 Key configuration options in `.env`:
 
 - `PORT` - Server port (default: 3000)
 - `WHATSAPP_DATASTORE_TYPE` - Database type (sqlite/postgres)
 - `WHATSAPP_DATASTORE_URI` - Database connection string
 - `JWT_SECRET` - Secret for JWT token generation
-- `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` - Master key for webhook HMAC
+- `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` - Master key for webhook HMAC encryption on DB
 
 See `.env.example` for all available options.
 
 ## Documentation
 
-For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki) 📚
+For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki) 
 
 ## Architecture Benefits
 
