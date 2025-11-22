@@ -218,7 +218,7 @@ Implement comprehensive logging:
 
 The `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` is critical:
 - **Protects webhook HMAC secrets** at rest in the database
-- **Must be 32 hexadecimal characters** (16 bytes for AES-256)
+- **Must be 32 hexadecimal characters** (16 bytes for AES-128)
 - **Generate using**: `openssl rand -hex 16`
 - **Never change** without migrating existing data (will make encrypted secrets unreadable)
 - **Backup securely** before rotating
