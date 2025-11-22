@@ -154,7 +154,7 @@ cp .env.example .env
 
 #### `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY`
 - **Description**: **Master encryption key used to encrypt the HMAC secrets for device webhooks before storing them in the database**
-- **Type**: String (Hexadecimal, must be 32 characters for AES-256)
+- **Type**: String (Hexadecimal, must be 32 characters representing 16 bytes)
 - **Default**: `0123456789abcdef0123456789abcdef`
 - **Example**: `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6`
 - **Security**: **CRITICAL** - This key is used to encrypt HMAC secrets before they are stored in the database
@@ -163,7 +163,7 @@ cp .env.example .env
   - The encrypted HMAC secret is then used to sign webhook payloads sent to your backend
   - This ensures that even if the database is compromised, the actual HMAC secrets remain protected
 - **Note**: 
-  - Must be exactly 32 hexadecimal characters (16 bytes)
+  - Must be exactly 32 hexadecimal characters (16 bytes for AES-128 encryption)
   - Use a cryptographically secure random string
   - Changing this key will make existing encrypted webhook secrets unreadable
   - Generate using: `openssl rand -hex 16`
