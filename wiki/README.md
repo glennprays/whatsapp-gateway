@@ -2,7 +2,7 @@
 
 This directory contains the complete wiki documentation for the WhatsApp Gateway project.
 
-## 📄 Wiki Pages
+## Wiki Pages
 
 1. **Home.md** - Main landing page with navigation
 2. **Development-Guide.md** - Instructions for running in development mode and Docker
@@ -10,7 +10,7 @@ This directory contains the complete wiki documentation for the WhatsApp Gateway
 4. **Gateway-Usage-Flow.md** - Step-by-step guide for using the gateway API
 5. **Security-Considerations.md** - Critical security warnings and best practices
 
-## 🚀 Publishing to GitHub Wiki
+## Publishing to GitHub Wiki
 
 GitHub wikis are managed as a separate Git repository. To publish these pages to the GitHub wiki:
 
@@ -64,7 +64,7 @@ When creating pages on GitHub wiki, use these exact titles:
 - "Environment Variables" becomes accessible at `.../wiki/Environment-Variables`
 - etc.
 
-## 📝 Content Overview
+## Content Overview
 
 ### Home Page (Home.md)
 - Welcome message and overview
@@ -110,7 +110,7 @@ Step-by-step usage guide:
 - Security best practices
 - What to do if compromised
 
-## 🔗 Internal Links
+## Internal Links
 
 The wiki pages use relative markdown links that work within the wiki directory. When published to GitHub wiki, these links will automatically work:
 
@@ -118,7 +118,7 @@ The wiki pages use relative markdown links that work within the wiki directory. 
 - `[Environment Variables](Environment-Variables.md)` → Links to the Environment Variables page
 - etc.
 
-## 📚 References
+## References
 
 The wiki documentation references:
 - `.env.example` file for configuration examples
@@ -134,7 +134,7 @@ To update wiki documentation:
 2. Commit changes to the main repository
 3. Re-publish to GitHub wiki using one of the methods above
 
-## 💡 Tips
+## Tips
 
 - Keep wiki pages synchronized with code changes
 - Update environment variable documentation when adding new config options
@@ -142,7 +142,7 @@ To update wiki documentation:
 - Include troubleshooting tips based on user feedback
 - Maintain consistent formatting across all pages
 
-## 🆘 Need Help?
+## Need Help?
 
 If you have questions about the wiki documentation or need to make changes:
 

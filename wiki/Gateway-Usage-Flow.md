@@ -2,7 +2,7 @@
 
 This guide explains the complete flow for using the WhatsApp Gateway API, from registration to sending messages and receiving webhooks.
 
-## 📋 Overview
+## Overview
 
 The WhatsApp Gateway follows a simple workflow:
 
@@ -11,7 +11,7 @@ The WhatsApp Gateway follows a simple workflow:
 3. **Configure Webhook** - Set up webhook to receive WhatsApp events
 4. **Send/Receive Messages** - Use the API to interact with WhatsApp
 
-## 🔐 Step 1: Register and Get JWT Token
+## Step 1: Register and Get JWT Token
 
 Before using any gateway endpoint, you must first register to obtain a JWT token.
 
@@ -56,7 +56,7 @@ Include the JWT token in the `Authorization` header for all subsequent API calls
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-## 📱 Step 2: Login to WhatsApp Account
+## Step 2: Login to WhatsApp Account
 
 After registering, you need to authenticate with WhatsApp. There are two methods:
 
@@ -147,7 +147,7 @@ curl -X GET http://localhost:3000/api/v1/login/status \
 }
 ```
 
-## 🔔 Step 3: Configure Webhook (Optional but Recommended)
+## Step 3: Configure Webhook (Optional but Recommended)
 
 Webhooks allow the gateway to notify your backend when WhatsApp events occur.
 
@@ -244,6 +244,25 @@ function verifyWebhook(payload, signature, secret) {
 }
 ```
 
+**Go Example:**
+```go
+package main
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+)
+
+func verifyWebhook(payload, signature, secret string) bool {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payload))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(signature)) == 1
+}
+```
+
 ### Managing Webhooks
 
 **Get current webhook:**
@@ -258,172 +277,19 @@ curl -X DELETE http://localhost:3000/api/v1/webhook \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-## 💬 Step 4: Send Messages
-
-Once logged in, you can start sending messages.
-
-### Send Text Message
-
-#### Endpoint: `POST /api/v1/message/text`
-
-**Request Body:**
-```json
-{
-  "msisdn": "6281234567890@s.whatsapp.net",
-  "message": "Hello from the gateway!"
-}
-```
-
-**Example:**
-```bash
-curl -X POST http://localhost:3000/api/v1/message/text \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "msisdn": "6281234567890@s.whatsapp.net",
-    "message": "Hello from the gateway!"
-  }'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message_id": "msg_1234567890"
-}
-```
-
-**Note:** The `msisdn` format:
-- For personal chat: `[phone_number]@s.whatsapp.net` (e.g., "6281234567890@s.whatsapp.net")
-- For group chat: `[group_id]@g.us` (e.g., "123456789@g.us")
-
-### Send Image Message
-
-#### Endpoint: `POST /api/v1/message/image`
-
-**Example:**
-```bash
-curl -X POST http://localhost:3000/api/v1/message/image \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -F "msisdn=6281234567890@s.whatsapp.net" \
-  -F "image=@/path/to/image.jpg" \
-  -F "caption=Check out this image!" \
-  -F "is_view_once=false"
-```
-
-### Other Message Operations
-
-**React to a message:**
-```bash
-curl -X POST http://localhost:3000/api/v1/message/react \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message_id": "msg_1234567890",
-    "msisdn": "6281234567890@s.whatsapp.net",
-    "emoji": "👍"
-  }'
-```
-
-**Edit a message:**
-```bash
-curl -X PUT http://localhost:3000/api/v1/message \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message_id": "msg_1234567890",
-    "msisdn": "6281234567890@s.whatsapp.net",
-    "new_message": "Edited message text"
-  }'
-```
-
-**Delete a message:**
-```bash
-curl -X DELETE http://localhost:3000/api/v1/message \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message_id": "msg_1234567890",
-    "msisdn": "6281234567890@s.whatsapp.net"
-  }'
-```
-
-## 🔄 Session Management
-
-### Reconnect to Session
-
-If the connection is lost, you can attempt to reconnect:
-
-#### Endpoint: `POST /api/v1/session/reconnect`
-
-```bash
-curl -X POST http://localhost:3000/api/v1/session/reconnect \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-
-### Logout
-
-To disconnect from WhatsApp:
-
-#### Endpoint: `POST /api/v1/logout`
-
-```bash
-curl -X POST http://localhost:3000/api/v1/logout \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-
-**Warning:** This will unlink the device from WhatsApp. You'll need to scan a QR code again to reconnect.
-
-## 📊 Complete Workflow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Register                                                  │
-│    POST /register                                            │
-│    → Get JWT Token                                           │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. Login to WhatsApp                                         │
-│    POST /login/qr_code/json  OR  POST /login/pair_code      │
-│    → Scan QR / Enter Pair Code on Phone                     │
-│    → Wait for Authentication                                 │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Configure Webhook (Optional)                              │
-│    POST /webhook                                             │
-│    → Receive incoming message notifications                  │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. Use WhatsApp Features                                     │
-│    • Send messages (POST /message/text)                      │
-│    • Send images (POST /message/image)                       │
-│    • React to messages (POST /message/react)                 │
-│    • Edit messages (PUT /message)                            │
-│    • Delete messages (DELETE /message)                       │
-│    • Check status (GET /login/status)                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📖 Additional Resources
+## Additional Resources
 
 For detailed API specifications and all available endpoints, refer to:
 - [Swagger Documentation](../docs/swagger.yaml) - Complete API reference with request/response examples
 
-## ⚠️ Important Notes
+## Important Notes
 
 1. **Token Management**: JWT tokens expire after the configured duration. Implement token refresh in your backend.
 2. **Webhook Reliability**: Ensure your webhook endpoint is always accessible and responds quickly (< 5 seconds).
 3. **Rate Limiting**: WhatsApp may rate limit your requests. Implement appropriate backoff strategies.
 4. **Phone Number Format**: Always use international format without '+' (e.g., "6281234567890")
-5. **Message IDs**: Save message IDs returned from send operations for later reference (editing, deleting, etc.)
 
-## 📚 Next Steps
+## Next Steps
 
 - [Security Considerations](Security-Considerations.md) - **Important security warnings** (must read!)
 - [Environment Variables](Environment-Variables.md) - Configure your gateway

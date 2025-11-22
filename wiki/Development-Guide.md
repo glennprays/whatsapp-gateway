@@ -2,7 +2,7 @@
 
 This guide will help you set up and run the WhatsApp Gateway in development mode, as well as build it using Docker.
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -11,7 +11,7 @@ Before you begin, ensure you have the following installed:
 - **SQLite or PostgreSQL** - For storing WhatsApp session data
 - **Docker** (optional) - For containerized deployment
 
-## 🚀 Running in Development Mode
+## Running in Development Mode
 
 ### 1. Clone the Repository
 
@@ -66,7 +66,7 @@ curl http://localhost:3000/api/v1/health
 
 You should receive a response indicating the service is healthy.
 
-## 🐳 Docker Build and Deployment
+## Docker Build and Deployment
 
 ### Building the Docker Image
 
@@ -131,29 +131,7 @@ Then run:
 docker-compose up -d
 ```
 
-## 🔧 Development Tips
-
-### Hot Reloading
-
-For development with hot reloading, you can use tools like:
-
-**Air** (recommended):
-```bash
-# Install Air
-go install github.com/air-verse/air@latest
-
-# Run with Air
-air
-```
-
-**Fresh**:
-```bash
-# Install Fresh
-go install github.com/pilu/fresh@latest
-
-# Run with Fresh
-fresh
-```
+## Development Tips
 
 ### Database Management
 
@@ -182,15 +160,7 @@ For Docker:
 docker logs -f <container_id>
 ```
 
-## 🧪 Testing
-
-To run tests (if available):
-
-```bash
-go test ./...
-```
-
-## 🛠️ Building for Production
+## Building for Production
 
 To build a production binary:
 
@@ -200,28 +170,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main ./cmd/api/main.go
 
 This creates a statically linked binary that can run on any Linux system.
 
-## 📦 Project Structure
-
-```
-whatsapp-gateway/
-├── cmd/
-│   └── api/
-│       └── main.go          # Application entry point
-├── config/                   # Configuration files
-├── dbs/                      # Database files (SQLite)
-├── docs/                     # API documentation
-│   ├── swagger.yaml
-│   └── swagger-ui/
-├── domain/                   # Domain models and business logic
-├── internal/                 # Internal packages
-├── pkg/                      # Public packages
-├── .env.example             # Example environment configuration
-├── Dockerfile               # Docker build configuration
-├── Makefile                 # Build automation
-└── go.mod                   # Go module definition
-```
-
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Port Already in Use
 If port 3000 is already in use, change the `PORT` variable in your `.env` file:
@@ -240,7 +189,7 @@ go clean -modcache
 go mod download
 ```
 
-## 📚 Next Steps
+## Next Steps
 
 - Configure your environment variables: [Environment Variables](Environment-Variables.md)
 - Learn how to use the gateway: [Gateway Usage Flow](Gateway-Usage-Flow.md)

@@ -2,7 +2,7 @@
 
 Welcome to the WhatsApp Gateway documentation! This wiki provides comprehensive guides for setting up, configuring, and using the WhatsApp Gateway.
 
-## 📚 Documentation Pages
+## Documentation Pages
 
 ### Getting Started
 - **[Development Guide](Development-Guide.md)** - Learn how to run the gateway in development mode and build with Docker
@@ -12,13 +12,13 @@ Welcome to the WhatsApp Gateway documentation! This wiki provides comprehensive 
 - **[Gateway Usage Flow](Gateway-Usage-Flow.md)** - Step-by-step guide on how to use the gateway API
 - **[Security Considerations](Security-Considerations.md)** - Important security warnings and best practices
 
-## 🚀 Quick Links
+## Quick Links
 
 - [GitHub Repository](https://github.com/glennprays/whatsapp-gateway)
 - [API Documentation (Swagger)](../docs/swagger.yaml)
 - [Report Issues](https://github.com/glennprays/whatsapp-gateway/issues)
 
-## 💡 Overview
+## Overview
 
 The WhatsApp Gateway is a modern, scalable solution built with Go that handles all WhatsApp complexity for you. It keeps your backend stateless and focused on business logic while the gateway manages all WhatsApp-related state, authentication, and message handling.
 
@@ -30,7 +30,7 @@ The WhatsApp Gateway is a modern, scalable solution built with Go that handles a
 - **Secure** - JWT authentication with webhook HMAC encryption
 - **Built on whatsmeow** - Reliable WhatsApp Web multidevice API implementation
 
-## 🆘 Need Help?
+## Need Help?
 
 If you need assistance or have questions:
 1. Check the relevant documentation pages above

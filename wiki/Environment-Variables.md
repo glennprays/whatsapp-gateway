@@ -2,7 +2,7 @@
 
 This page provides a comprehensive reference for all environment variables used to configure the WhatsApp Gateway.
 
-## 📋 Configuration Overview
+## Configuration Overview
 
 The WhatsApp Gateway uses environment variables for configuration. Copy `.env.example` to `.env` and customize the values according to your needs.
 
@@ -10,7 +10,7 @@ The WhatsApp Gateway uses environment variables for configuration. Copy `.env.ex
 cp .env.example .env
 ```
 
-## 🔧 Configuration Sections
+## Configuration Sections
 
 ### Server Configuration
 
@@ -179,7 +179,7 @@ cp .env.example .env
 
 ---
 
-## 🔐 Security Best Practices
+## Security Best Practices
 
 1. **Never commit `.env` files**: Always use `.env.example` as a template
 2. **Use strong secrets**: Generate cryptographically secure random strings for all secret keys
@@ -189,7 +189,7 @@ cp .env.example .env
 6. **Secure your database**: Ensure proper authentication and network security for your database
 7. **Rotate secrets regularly**: Periodically update JWT secrets and encryption keys (note: this will invalidate existing tokens/data)
 
-## 🔑 Generating Secure Secrets
+## Generating Secure Secrets
 
 Use these commands to generate secure random strings:
 
@@ -203,7 +203,7 @@ openssl rand -base64 32
 openssl rand -hex 16
 ```
 
-## 📝 Example Configuration Files
+## Example Configuration Files
 
 ### Development (.env.development)
 ```env
@@ -241,7 +241,7 @@ WHATSAPP_DEVICE_LABEL="Production WhatsApp Gateway"
 WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY=<secure-random-hex-32-chars>
 ```
 
-## 📚 Next Steps
+## Next Steps
 
 - [Development Guide](Development-Guide.md) - Learn how to run the gateway
 - [Gateway Usage Flow](Gateway-Usage-Flow.md) - Understand how to use the API

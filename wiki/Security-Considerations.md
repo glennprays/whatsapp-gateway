@@ -2,13 +2,13 @@
 
 This page outlines critical security considerations and warnings for using the WhatsApp Gateway safely and responsibly.
 
-## ⚠️ CRITICAL WARNING
+## CRITICAL WARNING
 
 **THE WHATSAPP GATEWAY MUST ALWAYS BE WRAPPED BY A PROPER BACKEND SERVICE**
 
 **DO NOT directly integrate this gateway with end-user applications or expose it to the public internet without a protective backend layer.**
 
-## 🚨 Major Security Concern: JWT Token Vulnerability
+## Major Security Concern: JWT Token Vulnerability
 
 ### The Problem
 
@@ -43,7 +43,7 @@ This design means:
 - Unauthorized access is possible if JWT tokens are not properly managed
 - No session isolation between different token holders for the same phone number
 
-## 🛡️ Required Protection: Backend Wrapper
+## Required Protection: Backend Wrapper
 
 To mitigate these security risks, you **MUST** implement a proper backend service that:
 
@@ -134,7 +134,7 @@ def handle_webhook(request):
         notify_user(user, event)
 ```
 
-## 🔒 Additional Security Best Practices
+## Additional Security Best Practices
 
 ### 1. Environment Security
 
@@ -151,16 +151,6 @@ def handle_webhook(request):
 - **Implement IP whitelisting** if possible
 - **Use VPC or private networks** in cloud environments
 - **Enable firewall rules** to restrict access
-
-**Example Architecture:**
-```
-[End Users] → [Your Backend API] → [Gateway] → [WhatsApp]
-              ↑
-              |
-          Firewall
-          Authentication
-          Authorization
-```
 
 ### 3. Database Security
 
@@ -212,7 +202,7 @@ Implement comprehensive logging:
   - Consider IP whitelisting for documentation access
   - Monitor access to documentation endpoints
 
-## 🔐 Encryption and Data Protection
+## Encryption and Data Protection
 
 ### HMAC Master Key
 
@@ -270,7 +260,7 @@ The `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` is critical:
 ❌ Default credentials
 ```
 
-## 🔍 Security Checklist
+## Security Checklist
 
 Before deploying to production, ensure:
 
@@ -288,7 +278,7 @@ Before deploying to production, ensure:
 - [ ] Security audit completed
 - [ ] Team trained on security best practices
 
-## 🆘 What to Do If Compromised
+## What to Do If Compromised
 
 If you suspect a security breach:
 
@@ -316,13 +306,13 @@ If you suspect a security breach:
    - Apply security patches
    - Update security measures
 
-## 📚 Additional Resources
+## Additional Resources
 
 - [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
 - [JWT Best Practices](https://tools.ietf.org/html/rfc8725)
 - [Webhook Security Best Practices](https://webhooks.fyi/security/overview)
 
-## 📞 Reporting Security Issues
+## Reporting Security Issues
 
 If you discover a security vulnerability in the WhatsApp Gateway:
 
@@ -333,7 +323,7 @@ If you discover a security vulnerability in the WhatsApp Gateway:
 
 ---
 
-## ⚠️ Final Warning
+## Final Warning
 
 **This gateway is a powerful tool but must be used responsibly. Always prioritize security and never expose it directly to end users. Implement a proper backend wrapper with authentication, authorization, and access control.**
 
