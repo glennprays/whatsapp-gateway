@@ -87,7 +87,14 @@ See `.env.example` for all available options.
 
 ## Documentation
 
-For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki) 
+For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki)
+
+### 📚 Wiki Pages
+
+- **[Development Guide](wiki/Development-Guide.md)** - How to run in development mode and build with Docker
+- **[Environment Variables](wiki/Environment-Variables.md)** - Complete configuration reference
+- **[Gateway Usage Flow](wiki/Gateway-Usage-Flow.md)** - Step-by-step usage guide
+- **[Security Considerations](wiki/Security-Considerations.md)** - Important security warnings and best practices 
 
 ## Architecture Benefits
 
