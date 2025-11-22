@@ -320,13 +320,73 @@ paths:
               schema:
                 type: object
                 properties:
-                authenticated:
-                  type: boolean
-                  description: Indicates if the user is authenticated with WhatsApp.
-                  example: true
+                  authenticated:
+                    type: boolean
+                    description: Indicates if the user is authenticated with WhatsApp.
+                    example: true
+      security:
+        - accountBearerAuth: []
+  /session/reconnect:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Reconnect to WhatsApp session
+      description: >
+        Attempts to reconnect to the existing WhatsApp session.
+      responses:
+        '200':
+          description: Reconnection attempt initiated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+      security:
+        - accountBearerAuth: []
+  /logout:
+    post:
+      tags:
+        - Whatsapp Authentication
+      summary: Logout from WhatsApp session
+      description: >
+        Logs out the user from the current WhatsApp session.
+      responses:
+        '200':
+          description: Logged out successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
       security:
         - accountBearerAuth: []
   /webhook:
+    get:
+      tags:
+        - Whatsapp Webhook
+      summary: Get registered webhook URL
+      description: >
+        Retrieves the currently registered webhook URL for receiving WhatsApp events.
+      responses:
+        '200':
+          description: Webhook URL retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: The registered webhook URL.
+                    example: "https://example.com/webhook"
+      security:
+        - accountBearerAuth: []
     post:
       tags:
         - Whatsapp Webhook
@@ -361,6 +421,14 @@ paths:
       responses:
         '200':
           description: Webhook URL unregistered successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
       security:
         - accountBearerAuth: []
   /message/text:

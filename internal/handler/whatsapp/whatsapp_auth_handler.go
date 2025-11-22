@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
@@ -49,6 +50,8 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
 		return
 	}
 
@@ -122,4 +125,92 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 		return
 	}
+}
+
+func (h *WhatsappAuthHandler) LoginPairCode(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	h.whatsappManager.RegisterClient(ctx, phoneNumber)
+	pairCode, timeout, err := h.whatsappManager.LoginPairCode(ctx, phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to generate pair code for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"pair_code":  pairCode,
+		"expires_in": timeout,
+	})
+}
+
+func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	status, err := h.whatsappManager.LoginStatus(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to get login status for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"authenticated": status,
+	})
+}
+
+func (h *WhatsappAuthHandler) Logout(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	err := h.whatsappManager.Logout(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to logout for phone number %s: %v", phoneNumber, err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
+}
+
+func (h *WhatsappAuthHandler) Reconnect(c *gin.Context) {
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		log.Error(constant.ErrPhoneNumberNotFound)
+		c.Abort()
+		return
+	}
+
+	err := h.whatsappManager.Reconnect(c.Request.Context(), phoneNumber)
+	if err != nil {
+		log.Errorf("Failed to reconnect for phone number %s: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
+		httpErr := httperror.FromError(err)
+		c.JSON(httpErr.Status, httpErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
 }

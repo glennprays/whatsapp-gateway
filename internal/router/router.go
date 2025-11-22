@@ -44,6 +44,7 @@ func SetupRouter(
 	api.POST("/register", h.AuthHandler.Register)
 
 	initWhatsappRoutes(api, h)
+	initWebhookRoutes(api, h)
 
 	router.NoRoute(func(c *gin.Context) {
 		err := errDomain.NewError(errDomain.ErrNotFound, errors.New("the requested resource could not found"))
