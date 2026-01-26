@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	customLog "github.com/glennprays/log"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
@@ -25,11 +26,13 @@ func init() {
 
 type WhatsappAuthHandler struct {
 	whatsappManager whatsapp.Manager
+	logger          *customLog.Logger
 }
 
-func NewWhatsappAuthHandler(manager whatsapp.Manager) *WhatsappAuthHandler {
+func NewWhatsappAuthHandler(manager whatsapp.Manager, logger *customLog.Logger) *WhatsappAuthHandler {
 	return &WhatsappAuthHandler{
 		whatsappManager: manager,
+		logger:          logger,
 	}
 }
 

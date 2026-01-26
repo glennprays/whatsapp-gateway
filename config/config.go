@@ -26,6 +26,11 @@ type Config struct {
 	WhatsmeowLogLevel                      string         `config:"WHATSMEOW_LOG_LEVEL"`
 	WhatsappDeviceLabel                    string         `config:"WHATSAPP_DEVICE_LABEL"`
 	WhatsappWebhookHmacEncryptionMasterKey string         `config:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY"`
+	Env                                    string         `config:"ENV"`
+	LogLevel                               string         `config:"LOG_LEVEL"`
+	LogOutput                              string         `config:"LOG_OUTPUT"`
+	LogFilePath                            string         `config:"LOG_FILE_PATH"`
+	EnableCaller                           bool           `config:"LOG_ENABLE_CALLER"`
 }
 
 func LoadConfig() *Config {
@@ -64,6 +69,11 @@ func LoadConfig() *Config {
 		WhatsmeowLogLevel:                      GetEnv("WHATSMEOW_LOG_LEVEL", "warn"),
 		WhatsappDeviceLabel:                    GetEnv("WHATSAPP_DEVICE_LABEL", "WhatsApp Gateway"),
 		WhatsappWebhookHmacEncryptionMasterKey: GetEnv("WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY", "0123456789abcdef0123456789abcdef"),
+		Env:                                    GetEnv("ENV", "development"),
+		LogLevel:                               GetEnv("LOG_LEVEL", "debug"),
+		LogOutput:                              GetEnv("LOG_OUTPUT", "stdout"),
+		LogFilePath:                            GetEnv("LOG_FILE_PATH", "/var/log/whatsapp-gateway.log"),
+		EnableCaller:                           GetEnv("LOG_ENABLE_CALLER", "true") == "true",
 	}
 }
 

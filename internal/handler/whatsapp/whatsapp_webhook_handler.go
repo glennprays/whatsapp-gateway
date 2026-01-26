@@ -2,6 +2,7 @@ package whatsapp_handler
 
 import (
 	"github.com/gin-gonic/gin"
+	customLog "github.com/glennprays/log"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
@@ -12,11 +13,13 @@ import (
 
 type WhatsappWebhookHandler struct {
 	whatsappManager whatsapp.Manager
+	logger          *customLog.Logger
 }
 
-func NewWhatsappWebhookHandler(manager whatsapp.Manager) *WhatsappWebhookHandler {
+func NewWhatsappWebhookHandler(manager whatsapp.Manager, logger *customLog.Logger) *WhatsappWebhookHandler {
 	return &WhatsappWebhookHandler{
 		whatsappManager: manager,
+		logger:          logger,
 	}
 }
 

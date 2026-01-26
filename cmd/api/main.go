@@ -9,105 +9,63 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/docs"
-	"github.com/glennprays/whatsapp-gateway/internal/database"
-	"github.com/glennprays/whatsapp-gateway/internal/handler"
-	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
-	whatsapp_handler "github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
-	"github.com/glennprays/whatsapp-gateway/internal/middleware"
-	"github.com/glennprays/whatsapp-gateway/internal/router"
-	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
-	"github.com/glennprays/whatsapp-gateway/pkg/auth"
-	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
-	log "github.com/sirupsen/logrus"
+	"github.com/glennprays/whatsapp-gateway/internal/infrastructure"
+	"github.com/google/uuid"
 )
 
 func main() {
-	log.Println("Starting WhatsApp Gateway...")
+	// Generate trace ID for startup logs
+	traceID := uuid.New().String()
 
-	log.Println("loading configuration...")
+	// Create temporary logger for startup (before app initialization)
+	tempCfg := log.Config{
+		Service:      "whatsapp-gateway",
+		Env:          "development",
+		Level:        log.InfoLevel,
+		Output:       log.OutputStdout,
+		EnableCaller: false,
+	}
+	tempLogger, err := log.New(tempCfg)
+	if err != nil {
+		panic("Failed to create temporary logger: " + err.Error())
+	}
+
+	tempLogger.Info(traceID, "Starting WhatsApp Gateway", nil)
+	tempLogger.Info(traceID, "Loading configuration and initializing dependencies", nil)
+
 	cfg := config.LoadConfig()
-
-	log.Println("initializing Swagger...")
 	docs.NewSwagger(cfg)
 
-	log.Println("initializing database connection...")
-	db, err := database.NewConnection(cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
+	tempLogger.Info(traceID, "Initializing application with Wire", nil)
+	app, cleanup, err := infrastructure.InitializeApp()
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		tempLogger.Fatal(traceID, "Failed to initialize application", []log.Field{log.Error(err)})
 	}
-	if db.Ping() != nil {
-		log.Fatalf("failed to ping database: %v", err)
-	}
+	defer cleanup()
 
-	log.Println("initializing cipher...")
-	cipher := cipherx.NewCipher(cfg.WhatsappWebhookHmacEncryptionMasterKey)
-	if err != nil {
-		log.Fatalf("failed to initialize cipher: %v", err)
-	}
-
-	log.Println("initializing WhatsApp manager...")
-	whatsappManager := whatsapp.NewManager(cfg, cfg.WhatsappDatastoreType, db, cipher)
-
-	log.Println("initializing JWT manager...")
-	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)
-
-	log.Println("initializing handlers...")
-	authHandler := auth_handler.NewAuthHandler(
-		cfg,
-		jwtManager,
-		whatsappManager,
-	)
-	whatsappAuthHandler := whatsapp_handler.NewWhatsappAuthHandler(whatsappManager)
-	whatsappWebhookHandler := whatsapp_handler.NewWhatsappWebhookHandler(whatsappManager)
-
-	log.Println("initializing main handler...")
-	mainHandler := handler.NewHandler(
-		authHandler,
-		whatsappAuthHandler,
-		whatsappWebhookHandler,
-	)
-
-	log.Println("initializing Auth middleware...")
-	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
-
-	log.Println("setting up router...")
-	routerEngine := router.SetupRouter(
-		cfg,
-		authMiddleware,
-		mainHandler,
-	)
-
-	log.Println("setting up HTTP server...")
-	server := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      routerEngine,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	log.Printf("starting server on port %s...", cfg.Port)
+	app.Logger.Info(traceID, "Starting server", []log.Field{log.String("port", cfg.Port)})
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("HTTP server ListenAndServe: %v", err)
+		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			app.Logger.Fatal(traceID, "HTTP server ListenAndServe failed", []log.Field{log.Error(err)})
 		}
-		log.Println("HTTP server stopped.")
+		app.Logger.Info(traceID, "HTTP server stopped", nil)
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutdown signal received, initiating graceful shutdown...")
+	app.Logger.Info(traceID, "Shutdown signal received, initiating graceful shutdown", nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+	if err := app.Server.Shutdown(ctx); err != nil {
+		app.Logger.Fatal(traceID, "Server forced to shutdown", []log.Field{log.Error(err)})
 	}
 
-	log.Println("server exiting gracefully...")
+	app.Logger.Info(traceID, "Server exiting gracefully", nil)
 }
