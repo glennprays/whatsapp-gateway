@@ -36,15 +36,33 @@ cp .env.example .env
 # Edit .env with your preferred settings
 ```
 
-3. Run the application:
+3. Generate Wire dependency injection code:
 ```bash
-go run cmd/api/main.go
+make generate
+```
+
+4. Run the application:
+```bash
+make run
+# Or: go run cmd/api/main.go
 ```
 
 Or using Docker:
 ```bash
 docker build -t whatsapp-gateway .
 docker run -p 3000:3000 --env-file .env whatsapp-gateway
+```
+
+### Development Commands
+```bash
+# Generate Wire DI code (required after modifying wire.go)
+make generate
+
+# Run the application
+make run
+
+# Build the binary
+go build -o api ./cmd/api
 ```
 
 ### Basic Usage
@@ -74,12 +92,48 @@ That's it! Check the API documentation at `/docs` (if Swagger is enabled) for de
 - Auto-reconnection handling
 - Graceful shutdown
 
+### Observability
+- **Request Tracing** - UUID-based trace IDs track requests end-to-end
+- **Structured Logging** - JSON logs with contextual information
+- **Log Aggregation Ready** - Compatible with Fluent Bit, Promtail, Vector, etc.
+
+## Request Tracing
+
+The gateway supports request tracing via the `X-Trace-ID` header:
+
+- **Client-provided Trace ID**: Include `X-Trace-ID` header in your request with a valid UUID
+- **Auto-generated Trace ID**: If no header is provided or if the UUID is invalid, a new UUID is generated automatically
+- **Response Header**: The trace ID is always returned in the `X-Trace-ID` response header
+- **Log Correlation**: All logs for a request include the same trace ID for easy correlation
+
+Example:
+```bash
+# With custom trace ID
+curl -H "X-Trace-ID: 123e4567-e89b-12d3-a456-426614174000" \
+     http://localhost:3000/api/health
+
+# Without trace ID (auto-generated)
+curl http://localhost:3000/api/health
+```
+
 ## Configuration
 Key configuration options in `.env`:
 
+### Server Configuration
 - `PORT` - Server port (default: 3000)
+- `ENV` - Environment: development/staging/production (default: development)
+
+### Logging Configuration
+- `LOG_LEVEL` - Log level: debug/info/warn/error/fatal (default: debug)
+- `LOG_OUTPUT` - Output destination: stdout/file (default: stdout)
+- `LOG_FILE_PATH` - Log file path when output is file (default: /var/log/whatsapp-gateway.log)
+- `LOG_ENABLE_CALLER` - Enable caller info in logs for debugging (default: true)
+
+### WhatsApp Configuration
 - `WHATSAPP_DATASTORE_TYPE` - Database type (sqlite/postgres)
 - `WHATSAPP_DATASTORE_URI` - Database connection string
+
+### Security Configuration
 - `JWT_SECRET` - Secret for JWT token generation
 - `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` - Master key for webhook HMAC encryption on DB
 
@@ -112,12 +166,19 @@ For detailed guides, API documentation, architecture explanations, and more, che
 
 ## Tech Stack
 
-- **Language:** Go 1.24
+- **Language:** Go 1.25
+- **Dependency Injection:** [Wire](https://github.com/google/wire) - Compile-time DI
+- **Logging:** Custom structured logger with trace ID support
 - **WhatsApp Library:** [whatsmeow](https://github.com/tulir/whatsmeow)
 - **Web Framework:** Gin
 - **Database:** SQLite / PostgreSQL
 - **Authentication:** JWT
 - **API Documentation:** Swagger/OpenAPI
+
+### Architecture Patterns
+- **Wire DI**: Automated dependency injection with compile-time code generation
+- **Clean Architecture**: Separation of domain, infrastructure, and presentation layers
+- **Structured Logging**: JSON logs with trace IDs for request correlation
 
 ## Contributing
 
