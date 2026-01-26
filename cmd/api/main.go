@@ -36,7 +36,10 @@ func main() {
 	tempLogger.Info(traceID, "Starting WhatsApp Gateway", nil)
 	tempLogger.Info(traceID, "Loading configuration and initializing dependencies", nil)
 
-	cfg := config.LoadConfig()
+	cfg, err := config.Load()
+	if err != nil {
+		tempLogger.Fatal(traceID, "Failed to load configuration", []log.Field{log.Error(err)})
+	}
 	docs.NewSwagger(cfg)
 
 	tempLogger.Info(traceID, "Initializing application with Wire", nil)

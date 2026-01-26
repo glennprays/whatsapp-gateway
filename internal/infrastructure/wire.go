@@ -24,8 +24,8 @@ import (
 )
 
 // ProvideConfig loads application configuration
-func ProvideConfig() *config.Config {
-	return config.LoadConfig()
+func ProvideConfig() (*config.Config, error) {
+	return config.Load()
 }
 
 // ProvideLogger initializes logger based on configuration
@@ -57,7 +57,7 @@ func ProvideLogger(cfg *config.Config) (*log.Logger, error) {
 
 	logConfig := log.Config{
 		Service:      "whatsapp-gateway",
-		Env:          cfg.Env,
+		Env:          cfg.Env.String(),
 		Level:        level,
 		Output:       output,
 		FilePath:     cfg.LogFilePath,
@@ -84,7 +84,7 @@ func ProvideWhatsappManager(cfg *config.Config, db *sql.DB, cipher *cipherx.Ciph
 
 // ProvideJWTManager initializes JWT manager
 func ProvideJWTManager(cfg *config.Config) *auth.JWTManager {
-	return auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.JwtDuration)
+	return auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.GetJwtDuration())
 }
 
 // ProvideAuthHandler initializes authentication handler

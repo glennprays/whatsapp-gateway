@@ -2,84 +2,97 @@ package config
 
 import (
 	"os"
-	"strconv"
+	"reflect"
+	"strings"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/joho/godotenv"
-	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Port                                   string         `config:"PORT"`
-	BasePath                               string         `config:"BASE_PATH"`
-	HttpOrigin                             string         `config:"HTTP_ORIGIN"`
-	EnableSwagger                          bool           `config:"ENABLE_SWAGGER"`
-	SwaggerUser                            string         `config:"SWAGGER_USER"`
-	SwaggerPassword                        string         `config:"SWAGGER_PASSWORD"`
-	SwaggerBasePath                        string         `config:"SWAGGER_BASE_PATH"`
-	JwtSecret                              string         `config:"JWT_SECRET"`
-	JwtDuration                            *time.Duration `config:"JWT_DURATION_MINUTES"`
-	JwtIssuer                              string         `config:"JWT_ISSUER"`
-	BasicAuthSecretKey                     string         `config:"BASIC_AUTH_SECRET_KEY"`
-	WhatsappDatastoreType                  string         `config:"WHATSAPP_DATASTORE_TYPE"`
-	WhatsappDatastoreUri                   string         `config:"WHATSAPP_DATASTORE_URI"`
-	WhatsmeowLogLevel                      string         `config:"WHATSMEOW_LOG_LEVEL"`
-	WhatsappDeviceLabel                    string         `config:"WHATSAPP_DEVICE_LABEL"`
-	WhatsappWebhookHmacEncryptionMasterKey string         `config:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY"`
-	Env                                    string         `config:"ENV"`
-	LogLevel                               string         `config:"LOG_LEVEL"`
-	LogOutput                              string         `config:"LOG_OUTPUT"`
-	LogFilePath                            string         `config:"LOG_FILE_PATH"`
-	EnableCaller                           bool           `config:"LOG_ENABLE_CALLER"`
+	Env                                    Environment `mapstructure:"ENV" default:"development"`
+	Port                                   string      `mapstructure:"PORT" default:"3000"`
+	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
+	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
+	EnableSwagger                          bool        `mapstructure:"ENABLE_SWAGGER" default:"true"`
+	SwaggerUser                            string      `mapstructure:"SWAGGER_USER" default:"user"`
+	SwaggerPassword                        string      `mapstructure:"SWAGGER_PASSWORD" default:"password"`
+	SwaggerBasePath                        string      `mapstructure:"SWAGGER_BASE_PATH" default:"/docs"`
+	JwtSecret                              string      `mapstructure:"JWT_SECRET" default:"secret"`
+	JwtDurationMinutes                     int         `mapstructure:"JWT_TOKEN_DURATION_MINUTES" default:"1440"`
+	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
+	BasicAuthSecretKey                     string      `mapstructure:"SECRET_KEY" default:"secret"`
+	WhatsappDatastoreType                  string      `mapstructure:"WHATSAPP_DATASTORE_TYPE" default:"sqlite3"`
+	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_foreign_keys=on"`
+	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
+	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
+	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
+	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"debug"`
+	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
+	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
+	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"true"`
 }
 
-func LoadConfig() *Config {
-	if os.Getenv("ENV") != "production" {
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("No .env file found (using system envs)")
+type Environment string
+
+const (
+	DEV  Environment = "development"
+	PROD Environment = "production"
+)
+
+func (e Environment) String() string {
+	return string(e)
+}
+
+func Load() (*Config, error) {
+	// Create config instance
+	cfg := &Config{}
+
+	// Apply defaults from struct tags
+	if err := defaults.Set(cfg); err != nil {
+		return nil, err
+	}
+
+	envStr := strings.ToLower(os.Getenv("ENV"))
+	env := Environment(envStr)
+	if env == "" {
+		env = DEV
+	}
+
+	// Load .env file
+	if env == DEV {
+		_ = godotenv.Load(".env")
+	}
+
+	// Configure Viper to read from environment variables
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Auto-bind each struct field by key
+	t := reflect.TypeOf(cfg).Elem()
+	for i := range t.NumField() {
+		field := t.Field(i)
+		key := field.Tag.Get("mapstructure")
+		if key != "" {
+			err := viper.BindEnv(key)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	jwtTokenDurationStr := GetEnv("JWT_TOKEN_DURATION_MINUTES", "1440")
-	var jwtTokenDurationTime *time.Duration
-	if jwtTokenDurationStr != "0" {
-		jwtTokenDuration, err := strconv.Atoi(jwtTokenDurationStr)
-		if err != nil {
-			log.Fatal("invalid JWT_ACCESS_TOKEN_DURATION_MINUTES:", err)
-		}
-		duration := time.Duration(jwtTokenDuration) * time.Minute
-		jwtTokenDurationTime = &duration
+	// Unmarshal environment variables into config
+	// This will override defaults with actual env values
+	if err := viper.Unmarshal(cfg); err != nil {
+		return nil, err
 	}
 
-	return &Config{
-		Port:                                   GetEnv("PORT", "3000"),
-		BasePath:                               GetEnv("BASE_PATH", "/"),
-		HttpOrigin:                             GetEnv("HTTP_ORIGIN", "*"),
-		EnableSwagger:                          GetEnv("ENABLE_SWAGGER", "true") == "true",
-		SwaggerUser:                            GetEnv("SWAGGER_USER", "user"),
-		SwaggerPassword:                        GetEnv("SWAGGER_PASSWORD", "password"),
-		SwaggerBasePath:                        GetEnv("SWAGGER_BASE_PATH", "/docs"),
-		JwtSecret:                              GetEnv("JWT_SECRET", "secret"),
-		JwtDuration:                            jwtTokenDurationTime,
-		JwtIssuer:                              GetEnv("JWT_ISSUER", "whatsapp-gateway"),
-		BasicAuthSecretKey:                     GetEnv("SECRET_KEY", "secret"),
-		WhatsappDatastoreType:                  GetEnv("WHATSAPP_DATASTORE_TYPE", "sqlite3"),
-		WhatsappDatastoreUri:                   GetEnv("WHATSAPP_DATASTORE_URI", "file:dbs/whatsapp.db?_foreign_keys=on"),
-		WhatsmeowLogLevel:                      GetEnv("WHATSMEOW_LOG_LEVEL", "warn"),
-		WhatsappDeviceLabel:                    GetEnv("WHATSAPP_DEVICE_LABEL", "WhatsApp Gateway"),
-		WhatsappWebhookHmacEncryptionMasterKey: GetEnv("WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY", "0123456789abcdef0123456789abcdef"),
-		Env:                                    GetEnv("ENV", "development"),
-		LogLevel:                               GetEnv("LOG_LEVEL", "debug"),
-		LogOutput:                              GetEnv("LOG_OUTPUT", "stdout"),
-		LogFilePath:                            GetEnv("LOG_FILE_PATH", "/var/log/whatsapp-gateway.log"),
-		EnableCaller:                           GetEnv("LOG_ENABLE_CALLER", "true") == "true",
-	}
+	return cfg, nil
 }
 
-func GetEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
+func (c *Config) GetJwtDuration() *time.Duration {
+	d := time.Duration(c.JwtDurationMinutes) * time.Minute
+	return &d
 }
