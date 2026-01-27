@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	customLog "github.com/glennprays/log"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
@@ -36,46 +36,42 @@ func NewWhatsappAuthHandler(manager whatsapp.Manager, logger *customLog.Logger) 
 	}
 }
 
-func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
-	format := c.Param("format")
+func (h *WhatsappAuthHandler) LoginQRCode(c *fiber.Ctx) error {
+	format := c.Params("format")
 	if format == "" {
 		err := errDomain.NewError(errDomain.ErrBadRequest, errors.New("format params is required"))
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
 	if _, ok := formatMap[format]; !ok {
 		err := errDomain.NewError(errDomain.ErrBadRequest, errors.New("invalid format params"))
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	ctx := c.Request.Context()
+	ctx := c.Context()
 	h.whatsappManager.RegisterClient(ctx, phoneNumber)
 
 	qrCode, timeout, err := h.whatsappManager.LoginQRCode(ctx, phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to generate QR code for phone number %s: %v", phoneNumber, err)
 		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
 	switch format {
 	case "json":
-		c.JSON(http.StatusOK, gin.H{
+		return c.Status(http.StatusOK).JSON(fiber.Map{
 			"qr_code": qrCode,
 			"timeout": timeout,
 		})
-		return
 	case "html":
 		html := fmt.Sprintf(`
 <!DOCTYPE html>
@@ -125,95 +121,87 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *gin.Context) {
 </body>
 </html>
 `, qrCode, timeout)
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
-		return
+		return c.Status(http.StatusOK).Type("text/html", "utf-8").Send([]byte(html))
 	}
+	return nil
 }
 
-func (h *WhatsappAuthHandler) LoginPairCode(c *gin.Context) {
+func (h *WhatsappAuthHandler) LoginPairCode(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	ctx := c.Request.Context()
+	ctx := c.Context()
 
 	h.whatsappManager.RegisterClient(ctx, phoneNumber)
 	pairCode, timeout, err := h.whatsappManager.LoginPairCode(ctx, phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to generate pair code for phone number %s: %v", phoneNumber, err)
 		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"pair_code":  pairCode,
 		"expires_in": timeout,
 	})
 }
 
-func (h *WhatsappAuthHandler) GetLoginStatus(c *gin.Context) {
+func (h *WhatsappAuthHandler) GetLoginStatus(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	status, err := h.whatsappManager.LoginStatus(c.Request.Context(), phoneNumber)
+	status, err := h.whatsappManager.LoginStatus(c.Context(), phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to get login status for phone number %s: %v", phoneNumber, err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"authenticated": status,
 	})
 }
 
-func (h *WhatsappAuthHandler) Logout(c *gin.Context) {
+func (h *WhatsappAuthHandler) Logout(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	err := h.whatsappManager.Logout(c.Request.Context(), phoneNumber)
+	err := h.whatsappManager.Logout(c.Context(), phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to logout for phone number %s: %v", phoneNumber, err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"success": true,
 	})
 }
 
-func (h *WhatsappAuthHandler) Reconnect(c *gin.Context) {
+func (h *WhatsappAuthHandler) Reconnect(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	err := h.whatsappManager.Reconnect(c.Request.Context(), phoneNumber)
+	err := h.whatsappManager.Reconnect(c.Context(), phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to reconnect for phone number %s: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"success": true,
 	})
 }

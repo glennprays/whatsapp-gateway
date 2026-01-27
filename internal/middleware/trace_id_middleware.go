@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/log"
 	"github.com/google/uuid"
 )
@@ -12,10 +12,10 @@ const (
 )
 
 // NewTraceIDMiddleware creates middleware that handles trace ID extraction/generation
-func NewTraceIDMiddleware(logger *log.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func NewTraceIDMiddleware(logger *log.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		// Try to get trace ID from request header
-		traceID := c.GetHeader(TraceIDHeader)
+		traceID := c.Get(TraceIDHeader)
 
 		// Validate if it's a valid UUID
 		if traceID != "" {
@@ -34,18 +34,19 @@ func NewTraceIDMiddleware(logger *log.Logger) gin.HandlerFunc {
 		}
 
 		// Store trace ID in context for use by handlers
-		c.Set(TraceIDContextKey, traceID)
+		c.Locals(TraceIDContextKey, traceID)
 
 		// Set trace ID in response header
-		c.Header(TraceIDHeader, traceID)
+		c.Set(TraceIDHeader, traceID)
 
-		c.Next()
+		return c.Next()
 	}
 }
 
-// GetTraceID extracts trace ID from gin context
-func GetTraceID(c *gin.Context) string {
-	if traceID, exists := c.Get(TraceIDContextKey); exists {
+// GetTraceID extracts trace ID from fiber context
+func GetTraceID(c *fiber.Ctx) string {
+	traceID := c.Locals(TraceIDContextKey)
+	if traceID != nil {
 		if id, ok := traceID.(string); ok {
 			return id
 		}

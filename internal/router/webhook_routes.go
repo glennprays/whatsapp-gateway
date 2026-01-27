@@ -1,16 +1,16 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 )
 
-func initWebhookRoutes(r *gin.RouterGroup, h *handler.Handler) {
+func initWebhookRoutes(r fiber.Router, h *handler.Handler) {
 	webhookGroup := r.Group("/webhook")
 	webhookGroup.Use(authMiddleware.JWTAuthentication())
 	{
-		webhookGroup.GET("/", h.WhatsappWebhookHandler.GetWebhookURL)
-		webhookGroup.POST("/", h.WhatsappWebhookHandler.SetWebhookURL)
-		webhookGroup.DELETE("/", h.WhatsappWebhookHandler.DeleteWebhookURL)
+		webhookGroup.Get("/", h.WhatsappWebhookHandler.GetWebhookURL)
+		webhookGroup.Post("/", h.WhatsappWebhookHandler.SetWebhookURL)
+		webhookGroup.Delete("/", h.WhatsappWebhookHandler.DeleteWebhookURL)
 	}
 }

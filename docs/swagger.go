@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gin-gonic/gin"
 	"github.com/glennprays/whatsapp-gateway/config"
+	"github.com/gofiber/fiber/v2"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -25,14 +25,13 @@ func NewSwagger(conf *config.Config) {
 	log.Info("Swagger documentation loaded successfully.")
 }
 
-func ServeDynamicSwaggerGin(c *gin.Context) {
+func ServeDynamicSwaggerFiber(c *fiber.Ctx) error {
 	if len(swaggerByte) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Swagger documentation not found"})
-		return
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Swagger documentation not found"})
 	}
 
-	c.Header("Content-Type", "application/x-yaml")
-	c.String(http.StatusOK, string(swaggerByte))
+	c.Set("Content-Type", "application/x-yaml")
+	return c.Status(http.StatusOK).SendString(string(swaggerByte))
 }
 
 func serveDynamicSwagger() []byte {

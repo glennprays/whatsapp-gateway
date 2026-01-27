@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	authDomain "github.com/glennprays/whatsapp-gateway/domain/auth"
@@ -36,14 +36,13 @@ func NewAuthHandler(
 	}
 }
 
-func (h *AuthHandler) Register(c *gin.Context) {
+func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 
 	var req authDomain.RegistrationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		h.logger.Error(traceID, "Failed to bind request data", nil, customLog.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
-		return
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request data"})
 	}
 
 	if req.SecretKey != h.config.BasicAuthSecretKey {
@@ -51,8 +50,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(req.PhoneNumber)),
 		})
 		err := errors.New("invalid secret key")
-		c.JSON(http.StatusForbidden, httperror.FromError(errDomain.NewError(errDomain.ErrForbidden, err)))
-		return
+		return c.Status(http.StatusForbidden).JSON(httperror.FromError(errDomain.NewError(errDomain.ErrForbidden, err)))
 	}
 
 	token, err := h.jwtManager.GenerateTokens(req.PhoneNumber)
@@ -61,15 +59,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(req.PhoneNumber)),
 		}, customLog.Error(err))
 		err := errors.New("failed to generate token")
-		c.JSON(http.StatusInternalServerError, httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err)))
-		return
+		return c.Status(http.StatusInternalServerError).JSON(httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err)))
 	}
 
 	h.logger.Info(traceID, "User registered successfully", []customLog.Field{
 		customLog.String("phone_number", whatsapp.MaskedPhoneNumber(req.PhoneNumber)),
 	})
 
-	c.JSON(http.StatusCreated, authDomain.RegistrationResponse{
+	return c.Status(http.StatusCreated).JSON(authDomain.RegistrationResponse{
 		Token: token,
 	})
 }

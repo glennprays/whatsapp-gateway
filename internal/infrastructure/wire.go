@@ -5,10 +5,8 @@ package infrastructure
 
 import (
 	"database/sql"
-	"net/http"
-	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/internal/database"
@@ -117,30 +115,20 @@ func ProvideAuthMiddleware(jwtManager *auth.JWTManager) *middleware.AuthMiddlewa
 }
 
 // ProvideTraceIDMiddleware initializes trace ID middleware
-func ProvideTraceIDMiddleware(logger *log.Logger) gin.HandlerFunc {
+func ProvideTraceIDMiddleware(logger *log.Logger) fiber.Handler {
 	return middleware.NewTraceIDMiddleware(logger)
 }
 
 // ProvideRouter sets up the router
-func ProvideRouter(cfg *config.Config, traceIDMw gin.HandlerFunc, authMiddleware *middleware.AuthMiddleware, mainHandler *handler.Handler, logger *log.Logger) *gin.Engine {
+func ProvideRouter(cfg *config.Config, traceIDMw fiber.Handler, authMiddleware *middleware.AuthMiddleware, mainHandler *handler.Handler, logger *log.Logger) *fiber.App {
 	return router.SetupRouter(cfg, traceIDMw, authMiddleware, mainHandler, logger)
-}
-
-// ProvideHTTPServer creates HTTP server instance
-func ProvideHTTPServer(cfg *config.Config, routerEngine *gin.Engine) *http.Server {
-	return &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      routerEngine,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
 }
 
 // App holds the application components
 type App struct {
-	Server *http.Server
-	Logger *log.Logger
+	FiberApp *fiber.App
+	Config   *config.Config
+	Logger   *log.Logger
 }
 
 // InitializeApp wires up all dependencies and returns App with cleanup function
@@ -159,8 +147,7 @@ func InitializeApp() (*App, func(), error) {
 		ProvideAuthMiddleware,
 		ProvideTraceIDMiddleware,
 		ProvideRouter,
-		ProvideHTTPServer,
-		wire.Struct(new(App), "*"),
+		wire.Struct(new(App), "FiberApp", "Config", "Logger"),
 	)
 	return nil, nil, nil
 }

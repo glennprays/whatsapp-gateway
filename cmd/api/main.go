@@ -1,13 +1,9 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -52,8 +48,8 @@ func main() {
 	app.Logger.Info(traceID, "Starting server", []log.Field{log.String("port", cfg.Port)})
 
 	go func() {
-		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			app.Logger.Fatal(traceID, "HTTP server ListenAndServe failed", []log.Field{log.Error(err)})
+		if err := app.FiberApp.Listen(":" + cfg.Port); err != nil {
+			app.Logger.Fatal(traceID, "HTTP server Listen failed", []log.Field{log.Error(err)})
 		}
 		app.Logger.Info(traceID, "HTTP server stopped", nil)
 	}()
@@ -63,10 +59,7 @@ func main() {
 	<-quit
 	app.Logger.Info(traceID, "Shutdown signal received, initiating graceful shutdown", nil)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := app.Server.Shutdown(ctx); err != nil {
+	if err := app.FiberApp.Shutdown(); err != nil {
 		app.Logger.Fatal(traceID, "Server forced to shutdown", []log.Field{log.Error(err)})
 	}
 

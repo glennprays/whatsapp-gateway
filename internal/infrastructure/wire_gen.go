@@ -8,7 +8,6 @@ package infrastructure
 
 import (
 	"database/sql"
-	"github.com/gin-gonic/gin"
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/internal/database"
@@ -20,8 +19,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
-	"net/http"
-	"time"
+	"github.com/gofiber/fiber/v2"
 )
 
 // Injectors from wire.go:
@@ -36,7 +34,7 @@ func InitializeApp() (*App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	handlerFunc := ProvideTraceIDMiddleware(logger)
+	v := ProvideTraceIDMiddleware(logger)
 	jwtManager := ProvideJWTManager(config)
 	authMiddleware := ProvideAuthMiddleware(jwtManager)
 	db, err := ProvideDatabase(config)
@@ -49,13 +47,13 @@ func InitializeApp() (*App, func(), error) {
 	whatsappAuthHandler := ProvideWhatsappAuthHandler(manager, logger)
 	whatsappWebhookHandler := ProvideWhatsappWebhookHandler(manager, logger)
 	handler := ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler)
-	engine := ProvideRouter(config, handlerFunc, authMiddleware, handler, logger)
-	server := ProvideHTTPServer(config, engine)
-	app := &App{
-		Server: server,
-		Logger: logger,
+	app := ProvideRouter(config, v, authMiddleware, handler, logger)
+	infrastructureApp := &App{
+		FiberApp: app,
+		Config:   config,
+		Logger:   logger,
 	}
-	return app, func() {
+	return infrastructureApp, func() {
 	}, nil
 }
 
@@ -155,30 +153,20 @@ func ProvideAuthMiddleware(jwtManager *auth.JWTManager) *middleware.AuthMiddlewa
 }
 
 // ProvideTraceIDMiddleware initializes trace ID middleware
-func ProvideTraceIDMiddleware(logger *log.Logger) gin.HandlerFunc {
+func ProvideTraceIDMiddleware(logger *log.Logger) fiber.Handler {
 	return middleware.NewTraceIDMiddleware(logger)
 }
 
 // ProvideRouter sets up the router
-func ProvideRouter(cfg *config.Config, traceIDMw gin.HandlerFunc, authMiddleware *middleware.AuthMiddleware, mainHandler *handler.Handler, logger *log.Logger) *gin.Engine {
+func ProvideRouter(cfg *config.Config, traceIDMw fiber.Handler, authMiddleware *middleware.AuthMiddleware, mainHandler *handler.Handler, logger *log.Logger) *fiber.App {
 	return router.SetupRouter(cfg, traceIDMw, authMiddleware, mainHandler, logger)
-}
-
-// ProvideHTTPServer creates HTTP server instance
-func ProvideHTTPServer(cfg *config.Config, routerEngine *gin.Engine) *http.Server {
-	return &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      routerEngine,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
 }
 
 // App holds the application components
 type App struct {
-	Server *http.Server
-	Logger *log.Logger
+	FiberApp *fiber.App
+	Config   *config.Config
+	Logger   *log.Logger
 }
 
 // Cleanup syncs the logger before shutdown

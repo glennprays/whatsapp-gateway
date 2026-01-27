@@ -1,7 +1,7 @@
 package whatsapp_handler
 
 import (
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	customLog "github.com/glennprays/log"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
@@ -23,71 +23,64 @@ func NewWhatsappWebhookHandler(manager whatsapp.Manager, logger *customLog.Logge
 	}
 }
 
-func (h *WhatsappWebhookHandler) GetWebhookURL(c *gin.Context) {
+func (h *WhatsappWebhookHandler) GetWebhookURL(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	webhookURL, err := h.whatsappManager.GetWebhookURL(c.Request.Context(), phoneNumber)
+	webhookURL, err := h.whatsappManager.GetWebhookURL(c.Context(), phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to get webhook URL for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
 	if webhookURL == nil {
 		webhookURL = new(string)
 	}
 
-	c.JSON(200, gin.H{"url": webhookURL})
+	return c.Status(200).JSON(fiber.Map{"url": webhookURL})
 }
 
-func (h *WhatsappWebhookHandler) SetWebhookURL(c *gin.Context) {
+func (h *WhatsappWebhookHandler) SetWebhookURL(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
 	var req waDomain.Webhook
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		log.Errorf("Failed to bind JSON for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	err := h.whatsappManager.SetWebhookURL(c.Request.Context(), phoneNumber, &req)
+	err := h.whatsappManager.SetWebhookURL(c.Context(), phoneNumber, &req)
 	if err != nil {
 		log.Errorf("Failed to set webhook URL for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(200, gin.H{"success": true})
+	return c.Status(200).JSON(fiber.Map{"success": true})
 }
 
-func (h *WhatsappWebhookHandler) DeleteWebhookURL(c *gin.Context) {
+func (h *WhatsappWebhookHandler) DeleteWebhookURL(c *fiber.Ctx) error {
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
 		log.Error(constant.ErrPhoneNumberNotFound)
-		c.Abort()
-		return
+		return nil
 	}
 
-	err := h.whatsappManager.DeleteWebhookURL(c.Request.Context(), phoneNumber)
+	err := h.whatsappManager.DeleteWebhookURL(c.Context(), phoneNumber)
 	if err != nil {
 		log.Errorf("Failed to delete webhook URL for Phone Number: %s, error: %v", whatsapp.MaskedPhoneNumber(phoneNumber), err)
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		return
+		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	c.JSON(200, gin.H{"success": true})
+	return c.Status(200).JSON(fiber.Map{"success": true})
 }

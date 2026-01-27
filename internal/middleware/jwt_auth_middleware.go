@@ -4,20 +4,19 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/contextkeys"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 )
 
-func (m *AuthMiddleware) JWTAuthentication() gin.HandlerFunc {
-	return func(c *gin.Context) {
+func (m *AuthMiddleware) JWTAuthentication() fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		tokenString, err := m.extractBearerToken(c)
 		if err != nil {
 			apiErr := httperror.FromError(err)
-			c.AbortWithStatusJSON(apiErr.Status, apiErr)
-			return
+			return c.Status(apiErr.Status).JSON(apiErr)
 		}
 
 		claims, err := m.JwtManager.ValidateToken(tokenString)
@@ -38,18 +37,17 @@ func (m *AuthMiddleware) JWTAuthentication() gin.HandlerFunc {
 
 			appErr := errDomain.NewError(svcErr, errors.New(message))
 			apiErr := httperror.FromError(appErr)
-			c.AbortWithStatusJSON(apiErr.Status, apiErr)
-			return
+			return c.Status(apiErr.Status).JSON(apiErr)
 		}
 
-		c.Set(string(contextkeys.PhoneNumber), claims.PhoneNumber)
+		c.Locals(string(contextkeys.PhoneNumber), claims.PhoneNumber)
 
-		c.Next()
+		return c.Next()
 	}
 }
 
-func (m *AuthMiddleware) extractBearerToken(c *gin.Context) (string, error) {
-	authHeader := c.GetHeader(AuthorizationHeaderKey)
+func (m *AuthMiddleware) extractBearerToken(c *fiber.Ctx) (string, error) {
+	authHeader := c.Get(AuthorizationHeaderKey)
 	if authHeader == "" {
 		appErr := errors.New("authorization header required")
 		return "", errDomain.NewError(errDomain.ErrUnauthorized, appErr)
