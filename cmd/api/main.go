@@ -30,7 +30,7 @@ func main() {
 
 	go func() {
 		if err := app.FiberApp.Listen(":" + app.Config.Port); err != nil {
-			app.Logger.Fatal(traceID, "HTTP server Listen failed", []log.Field{log.Error(err)})
+			app.Logger.Fatal(traceID, "HTTP server Listen failed", err)
 		}
 		app.Logger.Info(traceID, "HTTP server stopped", nil)
 	}()
