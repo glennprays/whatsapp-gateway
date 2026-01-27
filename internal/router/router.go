@@ -1,60 +1,73 @@
 package router
 
 import (
-	"errors"
-	"log"
+	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
-	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
-	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
 )
 
 var (
 	cfg            *config.Config
 	basePath       string
 	authMiddleware *middleware.AuthMiddleware
+	logger         *log.Logger
 )
 
 func SetupRouter(
 	conf *config.Config,
+	traceIDMw fiber.Handler,
 	authMw *middleware.AuthMiddleware,
 	h *handler.Handler,
-) *gin.Engine {
+	lgr *log.Logger,
+) *fiber.App {
 	cfg = conf
 	basePath = cfg.BasePath
 	authMiddleware = authMw
+	logger = lgr
 
-	router := gin.Default()
-	api := router.Group(basePath)
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		ErrorHandler:          middleware.ErrorHandler(),
+	})
 
-	api.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "timestamp": time.Now().Format(time.RFC3339)})
+	// Apply trace ID middleware first (must be before any other middleware)
+	app.Use(traceIDMw)
+
+	// Apply recovery and default middleware
+	app.Use(recover.New())
+
+	app.Use(middleware.NewHTTPLogger(logger))
+
+	api := app.Group(basePath)
+
+	api.Get("/health", func(c *fiber.Ctx) error {
+		traceID := middleware.GetTraceID(c)
+		logger.Info(traceID, "Health check endpoint accessed", nil)
+		return c.Status(http.StatusOK).JSON(fiber.Map{
+			"status":    "ok",
+			"timestamp": time.Now().Format(time.RFC3339),
+			"trace_id":  traceID,
+		})
 	})
 
 	if cfg.EnableSwagger {
-		log.Println("Swagger is enabled, initializing Swagger routes...")
-		initSwaggerRoutes(router)
+		traceID := fmt.Sprintf("SWAGGER-INIT:%s", uuid.New().String())
+		logger.Info(traceID, "Swagger is enabled, initializing Swagger routes", nil)
+		initSwaggerRoutes(app)
 	}
 
-	api.POST("/register", h.AuthHandler.Register)
+	api.Post("/register", h.AuthHandler.Register)
 
 	initWhatsappRoutes(api, h)
 	initWebhookRoutes(api, h)
 
-	router.NoRoute(func(c *gin.Context) {
-		err := errDomain.NewError(errDomain.ErrNotFound, errors.New("the requested resource could not found"))
-		c.JSON(http.StatusNotFound, httperror.FromError(err))
-	})
-
-	router.NoMethod(func(c *gin.Context) {
-		err := errDomain.NewError(errDomain.ErrMethodNotAllowed, errors.New("the requested method is not allowed"))
-		c.JSON(http.StatusMethodNotAllowed, httperror.FromError(err))
-	})
-
-	return router
+	return app
 }

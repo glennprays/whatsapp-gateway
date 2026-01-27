@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swagger UI - Authentication Required</title>
+    <link rel="icon" type="image/png" href="./favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="./favicon-16x16.png" sizes="16x16" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            background: #fafafa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #3b4151;
+        }
+
+        .login-wrapper {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .swagger-logo {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 15px;
+        }
+
+        .swagger-logo svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #3b4151;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #7d8492;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #3b4151;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #ffffff;
+            color: #3b4151;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #49cc90;
+        }
+
+        button[type="submit"] {
+            width: 100%;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            background: #49cc90;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button[type="submit"]:hover {
+            background: #3eb87f;
+        }
+
+        button[type="submit"]:active {
+            background: #359970;
+        }
+
+        .info-box {
+            margin-top: 20px;
+            padding: 12px;
+            background: #f7f7f7;
+            border-left: 3px solid #49cc90;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #7d8492;
+        }
+
+        .info-box strong {
+            color: #3b4151;
+        }
+
+        .error-message {
+            display: none;
+            margin-bottom: 20px;
+            padding: 12px;
+            background: #ffebee;
+            border-left: 3px solid #f44336;
+            border-radius: 4px;
+            color: #c62828;
+            font-size: 13px;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-container">
+            <div class="login-header">
+                <div class="swagger-logo">
+                    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.318 0L20 2.682l-6.364 6.364L20 15.409 17.318 18l-6.364-6.364L4.591 18 1.909 15.318l6.363-6.364L1.909 2.591 4.591 0l6.363 6.364z" fill="#49cc90"/>
+                    </svg>
+                </div>
+                <h1>Swagger UI</h1>
+                <p class="subtitle">Authentication Required</p>
+            </div>
+
+            <div id="errorMessage" class="error-message">
+                Invalid username or password. Please try again.
+            </div>
+
+            <form method="POST" id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        autofocus
+                        autocomplete="username"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        autocomplete="current-password"
+                    />
+                </div>
+
+                <button type="submit">Sign In</button>
+            </form>
+
+            <div class="info-box">
+                <strong>Note:</strong> This documentation is protected. Please enter your credentials to continue.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if there's an error parameter in the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error') === '1') {
+            document.getElementById('errorMessage').classList.add('show');
+        }
+
+        // Preserve redirect parameter on form submission
+        const form = document.getElementById('loginForm');
+        const redirect = urlParams.get('redirect');
+        if (redirect) {
+            form.action = '?redirect=' + encodeURIComponent(redirect);
+        }
+    </script>
+</body>
+</html>

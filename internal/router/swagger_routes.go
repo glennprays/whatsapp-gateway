@@ -4,19 +4,25 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/glennprays/whatsapp-gateway/docs"
+	"github.com/glennprays/whatsapp-gateway/internal/middleware"
+	"github.com/gofiber/fiber/v2"
 )
 
-func initSwaggerRoutes(r *gin.Engine) {
-	swaggerGroup := r.Group(fmt.Sprintf(`/%s`, cfg.SwaggerBasePath))
-	swaggerGroup.Use(authMiddleware.BasicAuthMiddleware(cfg.SwaggerUser, cfg.SwaggerPassword))
+func initSwaggerRoutes(r *fiber.App) {
+	sessionAuth := middleware.NewSwaggerSessionAuth(
+		cfg.SwaggerUser,
+		cfg.SwaggerPassword,
+	)
+	swaggerGroup := r.Group(cfg.SwaggerBasePath, sessionAuth.Handler(cfg.SwaggerBasePath))
 
-	swaggerGroup.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "./ui/index.html")
+	swaggerGroup.Get("/", func(c *fiber.Ctx) error {
+		return c.Redirect(fmt.Sprintf("%s/ui/index.html", cfg.SwaggerBasePath), http.StatusMovedPermanently)
 	})
 
-	swaggerGroup.GET("/yaml", docs.ServeDynamicSwaggerGin)
+	swaggerGroup.Get("/yaml", docs.ServeDynamicSwaggerFiber)
 
-	swaggerGroup.Static("/ui", "./docs/swagger-ui")
+	swaggerGroup.Static("/ui", "docs/swagger-ui", fiber.Static{
+		Index: "index.html",
+	})
 }

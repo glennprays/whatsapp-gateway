@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
@@ -22,6 +23,7 @@ type (
 		Client       Client
 		EventHandler Handler
 		Cipher       *cipherx.Cipher
+		Logger       *customLog.Logger
 	}
 	Manager interface {
 		RegisterClient(ctx context.Context, phoneNumber string)
@@ -42,7 +44,7 @@ func init() {
 	Clients = make(map[string]*whatsmeow.Client)
 }
 
-func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger) Manager {
 	ctx := context.Background()
 
 	evtHandler := NewHandler()
@@ -83,6 +85,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		Client:       client,
 		EventHandler: evtHandler,
 		Cipher:       cp,
+		Logger:       logger,
 	}
 }
 

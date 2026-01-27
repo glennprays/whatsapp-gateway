@@ -1,20 +1,15 @@
 package middleware
 
 import (
-	"net/http"
-
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/basicauth"
 )
 
-func (m *AuthMiddleware) BasicAuthMiddleware(expectedUser, expectedPassword string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, password, hasAuth := c.Request.BasicAuth()
-
-		if hasAuth && user == expectedUser && password == expectedPassword {
-			c.Next()
-		} else {
-			c.Header("WWW-Authenticate", `Basic realm="Restricted"`)
-			c.AbortWithStatus(http.StatusUnauthorized)
-		}
-	}
+func (m *AuthMiddleware) BasicAuthMiddleware(expectedUser, expectedPassword string) fiber.Handler {
+	return basicauth.New(basicauth.Config{
+		Users: map[string]string{
+			expectedUser: expectedPassword,
+		},
+		Realm: "Restricted",
+	})
 }

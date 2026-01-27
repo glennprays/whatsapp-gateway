@@ -2,19 +2,22 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/glennprays/log"
+	"github.com/google/uuid"
 )
 
-func NewConnection(driverName string, dataSouceName string) (*sql.DB, error) {
+func NewConnection(logger *log.Logger, driverName string, dataSouceName string) (*sql.DB, error) {
+	dbTraceID := fmt.Sprintf("DB-INIT:%s", uuid.New().String())
 	db, err := sql.Open(driverName, dataSouceName)
 	if err != nil {
-		log.Warnf("Error Open Database: %v", err)
+		logger.Warn(dbTraceID, "Error Open Database", log.Error(err))
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Warnf("Error Ping Database: %v", err)
+		logger.Warn(dbTraceID, "Error Ping Database", log.Error(err))
 	}
-	log.Info("Database connection established successfully")
+	logger.Info(dbTraceID, "Database connection established successfully", nil)
 	return db, nil
 }

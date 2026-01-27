@@ -3,19 +3,18 @@ package utils
 import (
 	"errors"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/contextkeys"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 )
 
-func MustGetPhoneNumber(c *gin.Context) (string, bool) {
-	raw, ok := c.Get(string(contextkeys.PhoneNumber))
-	if !ok {
+func MustGetPhoneNumber(c *fiber.Ctx) (string, bool) {
+	raw := c.Locals(string(contextkeys.PhoneNumber))
+	if raw == nil {
 		err := errDomain.NewError(errDomain.ErrUnauthorized, errors.New("phone number not found in context"))
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		c.Abort()
+		c.Status(httpErr.Status).JSON(httpErr)
 		return "", false
 	}
 
@@ -23,8 +22,7 @@ func MustGetPhoneNumber(c *gin.Context) (string, bool) {
 	if !ok {
 		err := errDomain.NewError(errDomain.ErrUnauthorized, errors.New("invalid phone number format"))
 		httpErr := httperror.FromError(err)
-		c.JSON(httpErr.Status, httpErr)
-		c.Abort()
+		c.Status(httpErr.Status).JSON(httpErr)
 		return "", false
 	}
 
