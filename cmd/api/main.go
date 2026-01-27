@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -15,40 +17,19 @@ import (
 func main() {
 	// Generate trace ID for startup logs
 	traceID := uuid.New().String()
-
-	// Create temporary logger for startup (before app initialization)
-	tempCfg := log.Config{
-		Service:      "whatsapp-gateway",
-		Env:          "development",
-		Level:        log.InfoLevel,
-		Output:       log.OutputStdout,
-		EnableCaller: false,
-	}
-	tempLogger, err := log.New(tempCfg)
-	if err != nil {
-		panic("Failed to create temporary logger: " + err.Error())
-	}
-
-	tempLogger.Info(traceID, "Starting WhatsApp Gateway", nil)
-	tempLogger.Info(traceID, "Loading configuration and initializing dependencies", nil)
-
-	cfg, err := config.Load()
-	if err != nil {
-		tempLogger.Fatal(traceID, "Failed to load configuration", []log.Field{log.Error(err)})
-	}
-	docs.NewSwagger(cfg)
-
-	tempLogger.Info(traceID, "Initializing application with Wire", nil)
 	app, cleanup, err := infrastructure.InitializeApp()
 	if err != nil {
-		tempLogger.Fatal(traceID, "Failed to initialize application", []log.Field{log.Error(err)})
+		panic("Failed to initialize application: " + err.Error())
 	}
 	defer cleanup()
+	docs.NewSwagger(traceID, app.Config, app.Logger)
 
-	app.Logger.Info(traceID, "Starting server", []log.Field{log.String("port", cfg.Port)})
+	app.Logger.Info(traceID, "Starting server", map[string]any{
+		"port": app.Config.Port,
+	})
 
 	go func() {
-		if err := app.FiberApp.Listen(":" + cfg.Port); err != nil {
+		if err := app.FiberApp.Listen(":" + app.Config.Port); err != nil {
 			app.Logger.Fatal(traceID, "HTTP server Listen failed", []log.Field{log.Error(err)})
 		}
 		app.Logger.Info(traceID, "HTTP server stopped", nil)
@@ -59,8 +40,13 @@ func main() {
 	<-quit
 	app.Logger.Info(traceID, "Shutdown signal received, initiating graceful shutdown", nil)
 
-	if err := app.FiberApp.Shutdown(); err != nil {
-		app.Logger.Fatal(traceID, "Server forced to shutdown", []log.Field{log.Error(err)})
+	if app.Config.Env != config.DEV {
+		timeoutSeconds := 10
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+		defer cancel()
+		if err := app.FiberApp.ShutdownWithContext(ctx); err != nil {
+			app.Logger.Fatal(traceID, "Server forced to shutdown", []log.Field{log.Error(err)})
+		}
 	}
 
 	app.Logger.Info(traceID, "Server exiting gracefully", nil)

@@ -1,18 +1,17 @@
 package router
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
-	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
-	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
 )
 
 var (
@@ -36,6 +35,7 @@ func SetupRouter(
 
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
+		ErrorHandler:          middleware.ErrorHandler(),
 	})
 
 	// Apply trace ID middleware first (must be before any other middleware)
@@ -43,6 +43,8 @@ func SetupRouter(
 
 	// Apply recovery and default middleware
 	app.Use(recover.New())
+
+	app.Use(middleware.NewHTTPLogger(logger))
 
 	api := app.Group(basePath)
 
@@ -57,8 +59,7 @@ func SetupRouter(
 	})
 
 	if cfg.EnableSwagger {
-		// Generate a unique trace ID for swagger initialization (no context available yet)
-		traceID := "swagger-init-" + cfg.Port
+		traceID := fmt.Sprintf("SWAGGER-INIT:%s", uuid.New().String())
 		logger.Info(traceID, "Swagger is enabled, initializing Swagger routes", nil)
 		initSwaggerRoutes(app)
 	}
@@ -67,17 +68,6 @@ func SetupRouter(
 
 	initWhatsappRoutes(api, h)
 	initWebhookRoutes(api, h)
-
-	// Catch-all for 404 Not Found (must be registered LAST)
-	app.Use(func(c *fiber.Ctx) error {
-		traceID := middleware.GetTraceID(c)
-		err := errDomain.NewError(errDomain.ErrNotFound, errors.New("the requested resource could not found"))
-		logger.Warn(traceID, "Resource not found", []log.Field{
-			log.String("path", c.Path()),
-			log.String("method", c.Method()),
-		})
-		return c.Status(http.StatusNotFound).JSON(httperror.FromError(err))
-	})
 
 	return app
 }

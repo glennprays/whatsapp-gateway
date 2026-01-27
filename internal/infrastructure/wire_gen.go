@@ -37,7 +37,7 @@ func InitializeApp() (*App, func(), error) {
 	v := ProvideTraceIDMiddleware(logger)
 	jwtManager := ProvideJWTManager(config)
 	authMiddleware := ProvideAuthMiddleware(jwtManager)
-	db, err := ProvideDatabase(config)
+	db, err := ProvideDatabase(config, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,8 +104,8 @@ func ProvideLogger(cfg *config.Config) (*log.Logger, error) {
 }
 
 // ProvideDatabase initializes database connection
-func ProvideDatabase(cfg *config.Config) (*sql.DB, error) {
-	return database.NewConnection(cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
+func ProvideDatabase(cfg *config.Config, logger *log.Logger) (*sql.DB, error) {
+	return database.NewConnection(logger, cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
 }
 
 // ProvideCipher initializes encryption cipher

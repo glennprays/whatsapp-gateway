@@ -1,22 +1,38 @@
 package router
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/whatsapp-gateway/docs"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/basicauth"
 )
 
 func initSwaggerRoutes(r *fiber.App) {
-	swaggerGroup := r.Group(fmt.Sprintf(`/%s`, cfg.SwaggerBasePath))
-	swaggerGroup.Use(authMiddleware.BasicAuthMiddleware(cfg.SwaggerUser, cfg.SwaggerPassword))
+	swaggerGroup := r.Group(
+		cfg.SwaggerBasePath,
+		basicauth.New(basicauth.Config{
+			Users: map[string]string{
+				cfg.SwaggerUser: cfg.SwaggerPassword,
+			},
+			Realm: "Swagger Docs",
+			Unauthorized: func(c *fiber.Ctx) error {
+				c.Set("WWW-Authenticate", `Basic realm="Swagger Docs", charset="UTF-8"`)
+				return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+			},
+		}),
+	)
 
+	// Redirect base path to Swagger UI
 	swaggerGroup.Get("/", func(c *fiber.Ctx) error {
 		return c.Redirect("./ui/index.html", http.StatusMovedPermanently)
 	})
 
+	// Serve swagger YAML (or JSON) dynamically
 	swaggerGroup.Get("/yaml", docs.ServeDynamicSwaggerFiber)
 
-	swaggerGroup.Static("/ui", "./docs/swagger-ui")
+	// Serve Swagger UI static files
+	swaggerGroup.Static("/ui", "docs/swagger-ui", fiber.Static{
+		Index: "index.html",
+	})
 }

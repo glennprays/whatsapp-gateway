@@ -1,13 +1,15 @@
 package middleware
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/log"
+	"github.com/glennprays/whatsapp-gateway/internal/utils"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 const (
 	TraceIDHeader     = "X-Trace-ID"
+	DetectedIPHeader  = "X-Detected-IP"
 	TraceIDContextKey = "trace_id"
 )
 
@@ -20,12 +22,7 @@ func NewTraceIDMiddleware(logger *log.Logger) fiber.Handler {
 		// Validate if it's a valid UUID
 		if traceID != "" {
 			if _, err := uuid.Parse(traceID); err != nil {
-				// Invalid UUID format, generate new one and log warning
 				newTraceID := uuid.New().String()
-				logger.Warn(newTraceID, "Invalid trace ID format received, generating new one", []log.Field{
-					log.String("invalid_trace_id", traceID),
-					log.String("new_trace_id", newTraceID),
-				})
 				traceID = newTraceID
 			}
 		} else {
@@ -36,8 +33,8 @@ func NewTraceIDMiddleware(logger *log.Logger) fiber.Handler {
 		// Store trace ID in context for use by handlers
 		c.Locals(TraceIDContextKey, traceID)
 
-		// Set trace ID in response header
 		c.Set(TraceIDHeader, traceID)
+		c.Set(DetectedIPHeader, utils.GetIPFromFiberCtx(c))
 
 		return c.Next()
 	}

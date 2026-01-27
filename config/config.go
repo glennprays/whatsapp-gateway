@@ -32,7 +32,7 @@ type Config struct {
 	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"debug"`
 	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
-	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"true"`
+	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 }
 
 type Environment string

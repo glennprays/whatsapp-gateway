@@ -6,7 +6,6 @@ package infrastructure
 import (
 	"database/sql"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/internal/database"
@@ -18,6 +17,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/wire"
 )
 
@@ -66,8 +66,8 @@ func ProvideLogger(cfg *config.Config) (*log.Logger, error) {
 }
 
 // ProvideDatabase initializes database connection
-func ProvideDatabase(cfg *config.Config) (*sql.DB, error) {
-	return database.NewConnection(cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
+func ProvideDatabase(cfg *config.Config, logger *log.Logger) (*sql.DB, error) {
+	return database.NewConnection(logger, cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
 }
 
 // ProvideCipher initializes encryption cipher

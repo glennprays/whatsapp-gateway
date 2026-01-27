@@ -1,10 +1,12 @@
 window.onload = function () {
-  //<editor-fold desc="Changeable Configuration Block">
+  const pathParts = window.location.pathname.split('/');
 
-  // Dynamically compute the URL to swagger.yaml based on the current path
-  const currentPath = window.location.pathname;
-  // Remove the trailing slash if any, and append 'swagger.yaml'
-  const swaggerYamlUrl = currentPath.replace('/ui/', '/') + 'yaml'
+  // Remove 'index.html' and 'ui'
+  pathParts.pop(); // index.html
+  pathParts.pop(); // ui
+
+  const basePath = pathParts.join('/');
+  const swaggerYamlUrl = `${basePath}/yaml`;
 
   window.ui = SwaggerUIBundle({
     url: swaggerYamlUrl,
@@ -19,6 +21,4 @@ window.onload = function () {
     ],
     layout: "StandaloneLayout"
   });
-
-  //</editor-fold>
 };
