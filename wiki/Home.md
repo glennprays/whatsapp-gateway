@@ -7,6 +7,7 @@ Welcome to the WhatsApp Gateway documentation! This wiki provides comprehensive 
 ### Getting Started
 - **[Development Guide](Development-Guide.md)** - Learn how to run the gateway in development mode and build with Docker
 - **[Environment Variables](Environment-Variables.md)** - Complete reference for all configuration options
+- **[Architecture Guide](Architecture-Guide.md)** - Understand the Clean Architecture design and patterns
 
 ### Usage Guides
 - **[Gateway Usage Flow](Gateway-Usage-Flow.md)** - Step-by-step guide on how to use the gateway API

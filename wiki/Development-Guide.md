@@ -38,7 +38,21 @@ Download all required Go modules:
 go mod download
 ```
 
-### 4. Run the Application
+### 4. Install Wire (Dependency Injection Tool)
+
+The project uses [Google Wire](https://github.com/google/wire) for dependency injection. Install it:
+
+```bash
+go install github.com/google/wire/cmd/wire@latest
+```
+
+If you modify any `provider.go` files or `internal/infrastructure/wire.go`, regenerate the Wire code:
+
+```bash
+wire gen ./internal/infrastructure
+```
+
+### 5. Run the Application
 
 You can run the application using either of these methods:
 
@@ -56,7 +70,7 @@ The server will start on the configured port (default: 3000). You can access:
 - **API endpoints**: `http://localhost:3000/api/v1/`
 - **Swagger documentation**: `http://localhost:3000/docs/` (if enabled)
 
-### 5. Verify Installation
+### 6. Verify Installation
 
 Check if the server is running:
 
@@ -132,6 +146,25 @@ docker-compose up -d
 ```
 
 ## Development Tips
+
+### Understanding the Architecture
+
+The project follows **Clean Architecture** with four layers:
+1. **Presentation** - HTTP handlers (thin layer)
+2. **Use Case** - Business logic
+3. **Domain** - Core models and interfaces
+4. **Infrastructure** - External services (WhatsApp, Database, Queue)
+
+See the [Architecture Guide](Architecture-Guide.md) for detailed information.
+
+### Working with Dependency Injection
+
+The project uses Google Wire for compile-time DI. When you:
+- Create a new service/usecase/handler
+- Modify any `provider.go` file
+- Update `internal/infrastructure/wire.go`
+
+**Always run**: `wire gen ./internal/infrastructure`
 
 ### Database Management
 
