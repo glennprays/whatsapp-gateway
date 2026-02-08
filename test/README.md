@@ -1,6 +1,47 @@
 # WhatsApp Gateway Testing
 
-This directory contains testing utilities for the WhatsApp Gateway.
+This directory contains comprehensive testing utilities for the WhatsApp Gateway trace ID logging and webhook implementation.
+
+## Quick Start - Run All Tests
+
+The easiest way to run all tests:
+
+```bash
+cd test
+./run_all_tests.sh
+```
+
+This master script will guide you through:
+1. Starting the webhook server
+2. Testing queue mode (RabbitMQ enabled)
+3. Testing direct mode (RabbitMQ disabled)
+4. Verifying implementation
+
+## Individual Test Scripts
+
+### 1. Master Test Runner
+```bash
+./run_all_tests.sh
+```
+Runs all test phases in sequence with guided prompts.
+
+### 2. Queue Mode Test
+```bash
+./test_queue_mode.sh
+```
+Tests webhook delivery with RabbitMQ enabled (async processing).
+
+### 3. Direct Mode Test
+```bash
+./test_direct_mode.sh
+```
+Tests webhook delivery with RabbitMQ disabled (sync processing).
+
+### 4. Verification Script
+```bash
+./verify_implementation.sh
+```
+Analyzes logs and verifies trace ID propagation and webhook implementation.
 
 ## Webhook Test Server
 
