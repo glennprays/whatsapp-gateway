@@ -8,6 +8,7 @@ import (
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
@@ -24,6 +25,7 @@ type (
 		EventHandler Handler
 		Cipher       *cipherx.Cipher
 		Logger       *customLog.Logger
+		Queue        domainQueue.MessageQueue
 	}
 	Manager interface {
 		RegisterClient(ctx context.Context, phoneNumber string)
@@ -35,6 +37,11 @@ type (
 		GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error)
 		SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, phoneNumber string) error
+		SendTextMessage(ctx context.Context, phoneNumber string, to string, message string) (string, error)
+		SendImageMessage(ctx context.Context, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		ReactToMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, emoji string) error
+		DeleteMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string) error
+		EditMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, newText string) error
 	}
 )
 
@@ -44,10 +51,8 @@ func init() {
 	Clients = make(map[string]*whatsmeow.Client)
 }
 
-func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue) Manager {
 	ctx := context.Background()
-
-	evtHandler := NewHandler()
 
 	dbLog := waLog.Stdout("Database", config.WhatsmeowLogLevel, true)
 	container := sqlstore.NewWithDB(db, dbType, dbLog)
@@ -55,6 +60,12 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		log.Fatalf("Failed to upgrade database schema: %v", err)
 	}
 	repository := NewWhatsappRepository(db)
+
+	// Create webhook sender
+	webhookSender := NewWebhookSender(cp)
+
+	// Create event handler with repository, sender, and queue
+	evtHandler := NewHandler(repository, webhookSender, queue)
 
 	client := NewClient(container, config, repository)
 
@@ -86,6 +97,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		EventHandler: evtHandler,
 		Cipher:       cp,
 		Logger:       logger,
+		Queue:        queue,
 	}
 }
 
@@ -169,4 +181,144 @@ func (m *manager) DeleteWebhookURL(ctx context.Context, phoneNumber string) erro
 	}
 
 	return m.Client.DeleteWebhookURL(ctx, phoneNumber)
+}
+
+func (m *manager) SendTextMessage(ctx context.Context, phoneNumber string, to string, message string) (string, error) {
+	m.Logger.Info(
+		"",
+		"Sending text message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", to),
+		},
+	)
+
+	messageID, err := m.Client.SendTextMessage(ctx, phoneNumber, to, message)
+	if err != nil {
+		log.Errorf("Failed to send text message for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return "", err
+	}
+
+	m.Logger.Info(
+		"",
+		"Successfully sent text message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) SendImageMessage(ctx context.Context, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error) {
+	m.Logger.Info(
+		"",
+		"Sending image message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", to),
+		},
+	)
+
+	messageID, err := m.Client.SendImageMessage(ctx, phoneNumber, to, imageBytes, mimeType, caption, isViewOnce)
+	if err != nil {
+		log.Errorf("Failed to send image message for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return "", err
+	}
+
+	m.Logger.Info(
+		"",
+		"Successfully sent image message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) ReactToMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, emoji string) error {
+	m.Logger.Info(
+		"",
+		"Reacting to message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	err := m.Client.ReactToMessage(ctx, phoneNumber, chatJID, messageID, emoji)
+	if err != nil {
+		log.Errorf("Failed to react to message for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return err
+	}
+
+	m.Logger.Info(
+		"",
+		"Successfully reacted to message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	return nil
+}
+
+func (m *manager) DeleteMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string) error {
+	m.Logger.Info(
+		"",
+		"Deleting message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	err := m.Client.DeleteMessage(ctx, phoneNumber, chatJID, messageID)
+	if err != nil {
+		log.Errorf("Failed to delete message for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return err
+	}
+
+	m.Logger.Info(
+		"",
+		"Successfully deleted message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	return nil
+}
+
+func (m *manager) EditMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, newText string) error {
+	m.Logger.Info(
+		"",
+		"Editing message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	err := m.Client.EditMessage(ctx, phoneNumber, chatJID, messageID, newText)
+	if err != nil {
+		log.Errorf("Failed to edit message for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+		return err
+	}
+
+	m.Logger.Info(
+		"",
+		"Successfully edited message",
+		[]customLog.Field{
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.String("message_id", messageID),
+		},
+	)
+
+	return nil
 }
