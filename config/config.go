@@ -33,6 +33,24 @@ type Config struct {
 	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
+
+	// RabbitMQ Configuration
+	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
+	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
+	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
+	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+
+	// Worker Pool Sizes
+	WorkerIncomingEvents   int `mapstructure:"WORKER_INCOMING_EVENTS" default:"5"`
+	WorkerWebhookDelivery  int `mapstructure:"WORKER_WEBHOOK_DELIVERY" default:"10"`
+	WorkerOutgoingMessages int `mapstructure:"WORKER_OUTGOING_MESSAGES" default:"3"`
+
+	// Queue Retry Settings
+	QueueMaxRetries int `mapstructure:"QUEUE_MAX_RETRIES" default:"3"`
+
+	// Status Webhook Configuration
+	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
+	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
 }
 
 type Environment string
