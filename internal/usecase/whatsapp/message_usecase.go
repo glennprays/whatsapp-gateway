@@ -52,6 +52,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
 			JobID:       jobID,
 			PhoneNumber: phoneNumber,
 			Type:        "text",
@@ -80,7 +81,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
-	messageID, err := uc.whatsappManager.SendTextMessage(ctx, phoneNumber, req.Msisdn, req.Message)
+	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send text message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -125,6 +126,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
 			JobID:       jobID,
 			PhoneNumber: phoneNumber,
 			Type:        "image",
@@ -156,7 +158,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
-	messageID, err := uc.whatsappManager.SendImageMessage(ctx, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce)
+	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send image message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -176,7 +178,7 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
-	err := uc.whatsappManager.ReactToMessage(ctx, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
+	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -193,7 +195,7 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageDeleteRequest,
 ) error {
-	err := uc.whatsappManager.DeleteMessage(ctx, phoneNumber, req.Msisdn, req.MessageID)
+	err := uc.whatsappManager.DeleteMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to delete message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -210,7 +212,7 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
-	err := uc.whatsappManager.EditMessage(ctx, phoneNumber, req.Msisdn, req.MessageID, req.NewMessage)
+	err := uc.whatsappManager.EditMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.NewMessage)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to edit message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

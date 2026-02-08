@@ -19,6 +19,7 @@ type MessageQueue interface {
 
 // IncomingEventMessage represents a WhatsApp incoming event
 type IncomingEventMessage struct {
+	TraceID     string
 	PhoneNumber string
 	JID         string
 	Event       []byte // JSON-serialized *events.Message
@@ -28,6 +29,7 @@ type IncomingEventMessage struct {
 
 // OutgoingMessageJob represents an outgoing message job
 type OutgoingMessageJob struct {
+	TraceID     string
 	JobID       string
 	PhoneNumber string
 	Type        string // "text", "image", "react", "delete", "edit"
@@ -45,6 +47,7 @@ type OutgoingMessageJob struct {
 
 // WebhookDeliveryMessage represents a webhook delivery task
 type WebhookDeliveryMessage struct {
+	TraceID    string
 	WebhookURL string
 	HmacSecret string // Encrypted
 	Payload    map[string]interface{}

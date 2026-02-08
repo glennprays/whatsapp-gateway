@@ -33,9 +33,18 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		return fmt.Errorf("failed to unmarshal outgoing message job: %w", err)
 	}
 
+	// Extract trace ID from job, with fallback
+	traceID := job.TraceID
+	if traceID == "" {
+		h.Logger.Warn("", "Job missing trace_id, generating new one", []customLog.Field{
+			customLog.String("job_id", job.JobID),
+		})
+		traceID = fmt.Sprintf("job-%s", job.JobID)
+	}
+
 	// Update job status to processing
 	if err := h.JobRepo.UpdateStatus(ctx, job.JobID, "processing", "", ""); err != nil {
-		h.Logger.Error("", fmt.Sprintf("Failed to update job %s to processing", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, fmt.Sprintf("Failed to update job %s to processing", job.JobID), nil, customLog.Error(err))
 	}
 
 	// Process based on job type using Manager interface
@@ -44,27 +53,27 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	switch job.Type {
 	case "text":
-		messageID, err = h.Manager.SendTextMessage(ctx, job.PhoneNumber, job.To, job.Text)
+		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text)
 	case "image":
 		// Decode base64 image data
 		imageBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode image data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendImageMessage(ctx, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
+			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
 		}
 	case "react":
-		err = h.Manager.ReactToMessage(ctx, job.PhoneNumber, job.To, job.MessageID, job.Emoji)
+		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID, job.Emoji)
 		if err == nil {
 			messageID = job.MessageID // For react, use the original message ID
 		}
 	case "delete":
-		err = h.Manager.DeleteMessage(ctx, job.PhoneNumber, job.To, job.MessageID)
+		err = h.Manager.DeleteMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID)
 		if err == nil {
 			messageID = job.MessageID
 		}
 	case "edit":
-		err = h.Manager.EditMessage(ctx, job.PhoneNumber, job.To, job.MessageID, job.NewText)
+		err = h.Manager.EditMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID, job.NewText)
 		if err == nil {
 			messageID = job.MessageID
 		}
@@ -77,26 +86,27 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		h.JobRepo.UpdateStatus(ctx, job.JobID, "failed", "", errMsg)
 
 		// Send failure webhook notification
-		h.sendStatusWebhook(ctx, job, domainQueue.EventMessageFailed, "", errMsg)
+		h.sendStatusWebhook(ctx, traceID, job, domainQueue.EventMessageFailed, "", errMsg)
 
 		return err
 	}
 
 	// Update job status to completed
 	if err := h.JobRepo.UpdateStatus(ctx, job.JobID, "completed", messageID, ""); err != nil {
-		h.Logger.Error("", fmt.Sprintf("Failed to update job %s to completed", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, fmt.Sprintf("Failed to update job %s to completed", job.JobID), nil, customLog.Error(err))
 	}
 
 	// Send success webhook notification
-	h.sendStatusWebhook(ctx, job, domainQueue.EventMessageSent, messageID, "")
+	h.sendStatusWebhook(ctx, traceID, job, domainQueue.EventMessageSent, messageID, "")
 
-	h.Logger.Debug("", fmt.Sprintf("Successfully processed job %s, message_id: %s", job.JobID, messageID), nil)
+	h.Logger.Debug(traceID, fmt.Sprintf("Successfully processed job %s, message_id: %s", job.JobID, messageID), nil)
 	return nil
 }
 
 // sendStatusWebhook sends a webhook notification for message status updates
 func (h *OutgoingMessageHandler) sendStatusWebhook(
 	ctx context.Context,
+	traceID string,
 	job domainQueue.OutgoingMessageJob,
 	event domainQueue.StatusWebhookEvent,
 	messageID string,
@@ -117,19 +127,19 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		}
 	}
 	if !eventEnabled {
-		h.Logger.Debug("", fmt.Sprintf("Status webhook event %s not enabled", event), nil)
+		h.Logger.Debug(traceID, fmt.Sprintf("Status webhook event %s not enabled", event), nil)
 		return
 	}
 
 	// Get webhook configuration for this phone number
 	webhook, _, err := h.Repository.GetWebhookByPhone(ctx, job.PhoneNumber)
 	if err != nil {
-		h.Logger.Error("", "Failed to get webhook config for status notification", nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil, customLog.Error(err))
 		return
 	}
 
 	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug("", fmt.Sprintf("No webhook URL configured for phone %s", job.PhoneNumber), nil)
+		h.Logger.Debug(traceID, fmt.Sprintf("No webhook URL configured for phone %s", job.PhoneNumber), nil)
 		return
 	}
 
@@ -170,8 +180,8 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 
 	// Send webhook (with HMAC signing and retry logic)
 	if err := h.Sender.Send(ctx, webhook.Url, webhook.HmacSecret, payloadMap); err != nil {
-		h.Logger.Error("", fmt.Sprintf("Failed to send status webhook for job %s", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, fmt.Sprintf("Failed to send status webhook for job %s", job.JobID), nil, customLog.Error(err))
 	} else {
-		h.Logger.Debug("", fmt.Sprintf("Successfully sent status webhook %s for job %s", event, job.JobID), nil)
+		h.Logger.Debug(traceID, fmt.Sprintf("Successfully sent status webhook %s for job %s", event, job.JobID), nil)
 	}
 }

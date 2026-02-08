@@ -6,9 +6,9 @@ import (
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
+	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	whatsapp_usecase "github.com/glennprays/whatsapp-gateway/internal/usecase/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 type WhatsappWebhookHandler struct {
@@ -24,14 +24,15 @@ func NewWhatsappWebhookHandler(whatsappWebhookUsecase *whatsapp_usecase.Whatsapp
 }
 
 func (h *WhatsappWebhookHandler) GetWebhookURL(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error(constant.ErrPhoneNumberNotFound)
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
 		return nil
 	}
 
 	// Call usecase
-	webhookURL, err := h.whatsappWebhookUsecase.GetWebhookURL(c.Context(), phoneNumber)
+	webhookURL, err := h.whatsappWebhookUsecase.GetWebhookURL(c.Context(), traceID, phoneNumber)
 	if err != nil {
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
@@ -41,9 +42,10 @@ func (h *WhatsappWebhookHandler) GetWebhookURL(c *fiber.Ctx) error {
 }
 
 func (h *WhatsappWebhookHandler) SetWebhookURL(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error(constant.ErrPhoneNumberNotFound)
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
 		return nil
 	}
 
@@ -54,7 +56,7 @@ func (h *WhatsappWebhookHandler) SetWebhookURL(c *fiber.Ctx) error {
 	}
 
 	// Call usecase
-	err := h.whatsappWebhookUsecase.SetWebhookURL(c.Context(), phoneNumber, &req)
+	err := h.whatsappWebhookUsecase.SetWebhookURL(c.Context(), traceID, phoneNumber, &req)
 	if err != nil {
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
@@ -64,14 +66,15 @@ func (h *WhatsappWebhookHandler) SetWebhookURL(c *fiber.Ctx) error {
 }
 
 func (h *WhatsappWebhookHandler) DeleteWebhookURL(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
-		log.Error(constant.ErrPhoneNumberNotFound)
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
 		return nil
 	}
 
 	// Call usecase
-	err := h.whatsappWebhookUsecase.DeleteWebhookURL(c.Context(), phoneNumber)
+	err := h.whatsappWebhookUsecase.DeleteWebhookURL(c.Context(), traceID, phoneNumber)
 	if err != nil {
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)

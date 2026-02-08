@@ -52,9 +52,9 @@ func (uc *WhatsappAuthUsecase) LoginQRCode(ctx context.Context, traceID, phoneNu
 	}
 
 	// Register client and get QR code
-	uc.whatsappManager.RegisterClient(ctx, phoneNumber)
+	uc.whatsappManager.RegisterClient(ctx, traceID, phoneNumber)
 
-	qrCode, timeout, err := uc.whatsappManager.LoginQRCode(ctx, phoneNumber)
+	qrCode, timeout, err := uc.whatsappManager.LoginQRCode(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to generate QR code", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -70,9 +70,9 @@ func (uc *WhatsappAuthUsecase) LoginQRCode(ctx context.Context, traceID, phoneNu
 
 // LoginPairCode generates pairing code for WhatsApp login
 func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phoneNumber string) (*PairCodeResponse, error) {
-	uc.whatsappManager.RegisterClient(ctx, phoneNumber)
+	uc.whatsappManager.RegisterClient(ctx, traceID, phoneNumber)
 
-	pairCode, timeout, err := uc.whatsappManager.LoginPairCode(ctx, phoneNumber)
+	pairCode, timeout, err := uc.whatsappManager.LoginPairCode(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to generate pair code", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -88,7 +88,7 @@ func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phone
 
 // GetLoginStatus returns the current login status
 func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phoneNumber string) (bool, error) {
-	status, err := uc.whatsappManager.LoginStatus(ctx, phoneNumber)
+	status, err := uc.whatsappManager.LoginStatus(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to get login status", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -101,7 +101,7 @@ func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phon
 
 // Logout handles WhatsApp logout
 func (uc *WhatsappAuthUsecase) Logout(ctx context.Context, traceID, phoneNumber string) error {
-	err := uc.whatsappManager.Logout(ctx, phoneNumber)
+	err := uc.whatsappManager.Logout(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to logout", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -114,7 +114,7 @@ func (uc *WhatsappAuthUsecase) Logout(ctx context.Context, traceID, phoneNumber 
 
 // Reconnect handles WhatsApp reconnection
 func (uc *WhatsappAuthUsecase) Reconnect(ctx context.Context, traceID, phoneNumber string) error {
-	err := uc.whatsappManager.Reconnect(ctx, phoneNumber)
+	err := uc.whatsappManager.Reconnect(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to reconnect", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

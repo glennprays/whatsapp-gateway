@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	customLog "github.com/glennprays/log"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
-	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -16,22 +17,27 @@ type (
 		repository WhatsAppRepository
 		sender     *WebhookSender
 		queue      domainQueue.MessageQueue
+		logger     *customLog.Logger
 	}
 	Handler interface {
 		HandleEvent(jid string, evt any)
 	}
 )
 
-func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue) Handler {
+func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger) Handler {
 	return &handler{
 		repository: repo,
 		sender:     sender,
 		queue:      queue,
+		logger:     logger,
 	}
 }
 
 // Handle messages, events, QR
 func (h *handler) HandleEvent(phoneNumber string, evt any) {
+	// Generate trace ID for this incoming event
+	traceID := uuid.New().String()
+
 	// Type switch on event
 	switch v := evt.(type) {
 	case *events.Message:
@@ -43,7 +49,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		// Get client for webhook lookup
 		client := Clients[phoneNumber]
 		if client == nil || client.Store == nil || client.Store.ID == nil {
-			log.Errorf("Client not found for phone %s", MaskedPhoneNumber(phoneNumber))
+			h.logger.Error(traceID, "Client not found for phone "+MaskedPhoneNumber(phoneNumber), nil)
 			return
 		}
 
@@ -53,13 +59,14 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		if h.queue != nil && h.queue.IsHealthy() {
 			eventJSON, err := json.Marshal(v)
 			if err != nil {
-				log.Errorf("Failed to marshal event for %s: %v", MaskedPhoneNumber(phoneNumber), err)
+				h.logger.Error(traceID, "Failed to marshal event for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(phoneNumber, jid, v)
+				go h.deliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
 			err = h.queue.PublishIncomingEvent(context.Background(), domainQueue.IncomingEventMessage{
+				TraceID:     traceID,
 				PhoneNumber: phoneNumber,
 				JID:         jid,
 				Event:       eventJSON,
@@ -68,22 +75,22 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			})
 
 			if err != nil {
-				log.Warnf("Queue publish failed for %s, using direct delivery: %v", MaskedPhoneNumber(phoneNumber), err)
+				h.logger.Error(traceID, "Queue publish failed for "+MaskedPhoneNumber(phoneNumber)+", using direct delivery", nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(phoneNumber, jid, v)
+				go h.deliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
-			log.Debugf("Successfully queued incoming event for %s", MaskedPhoneNumber(phoneNumber))
+			h.logger.Debug(traceID, "Successfully queued incoming event for "+MaskedPhoneNumber(phoneNumber), nil)
 			return
 		}
 
 		// Direct mode (or fallback): deliver webhook asynchronously
-		go h.deliverWebhook(phoneNumber, jid, v)
+		go h.deliverWebhook(traceID, phoneNumber, jid, v)
 	}
 }
 
-func (h *handler) deliverWebhook(phoneNumber string, jid string, msg *events.Message) {
+func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string, msg *events.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -100,9 +107,9 @@ func (h *handler) deliverWebhook(phoneNumber string, jid string, msg *events.Mes
 	// Send webhook
 	err = h.sender.Send(ctx, webhook.Url, webhook.HmacSecret, payload)
 	if err != nil {
-		log.Errorf("Failed to deliver webhook for %s to %s: %v", MaskedPhoneNumber(phoneNumber), webhook.Url, err)
+		h.logger.Error(traceID, "Failed to deliver webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+webhook.Url, nil, customLog.Error(err))
 	} else {
-		log.Infof("Successfully delivered webhook for %s to %s", MaskedPhoneNumber(phoneNumber), webhook.Url)
+		h.logger.Info(traceID, "Successfully delivered webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+webhook.Url, nil)
 	}
 }
 
