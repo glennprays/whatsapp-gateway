@@ -1,0 +1,345 @@
+package queue
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+
+	customLog "github.com/glennprays/log"
+	amqp "github.com/rabbitmq/amqp091-go"
+
+	"github.com/glennprays/whatsapp-gateway/config"
+	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+)
+
+type RabbitMQQueue struct {
+	config     *config.Config
+	logger     *customLog.Logger
+	conn       *amqp.Connection
+	channel    *amqp.Channel
+	mu         sync.RWMutex
+	healthy    bool
+	workerPool *WorkerPool
+}
+
+func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQueue, error) {
+	mq := &RabbitMQQueue{
+		config:  cfg,
+		logger:  logger,
+		healthy: false,
+	}
+
+	if err := mq.connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+	}
+
+	if err := mq.setupTopology(); err != nil {
+		return nil, fmt.Errorf("failed to setup RabbitMQ topology: %w", err)
+	}
+
+	mq.healthy = true
+	logger.Info("", "RabbitMQ connection established", nil)
+
+	// Monitor connection health
+	go mq.monitorConnection()
+
+	return mq, nil
+}
+
+func (mq *RabbitMQQueue) connect() error {
+	conn, err := amqp.DialConfig(mq.config.RabbitMQURL, amqp.Config{
+		Properties: amqp.Table{
+			"connection_name": mq.config.RabbitMQConnectionName,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		conn.Close()
+		return err
+	}
+
+	// Set prefetch count for load balancing across workers
+	if err := ch.Qos(mq.config.RabbitMQPrefetchCount, 0, false); err != nil {
+		ch.Close()
+		conn.Close()
+		return err
+	}
+
+	mq.mu.Lock()
+	mq.conn = conn
+	mq.channel = ch
+	mq.mu.Unlock()
+
+	return nil
+}
+
+func (mq *RabbitMQQueue) setupTopology() error {
+	mq.mu.RLock()
+	ch := mq.channel
+	mq.mu.RUnlock()
+
+	// Declare main exchange
+	if err := ch.ExchangeDeclare(
+		ExchangeName,
+		ExchangeType,
+		true,  // durable
+		false, // auto-deleted
+		false, // internal
+		false, // no-wait
+		nil,   // arguments
+	); err != nil {
+		return fmt.Errorf("failed to declare exchange: %w", err)
+	}
+
+	// Declare dead letter exchange
+	if err := ch.ExchangeDeclare(
+		ExchangeDLX,
+		"direct",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	); err != nil {
+		return fmt.Errorf("failed to declare DLX: %w", err)
+	}
+
+	// Define queues with their DLQ
+	queues := []struct {
+		name       string
+		routingKey string
+		dlq        string
+	}{
+		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents},
+		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery},
+		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages},
+	}
+
+	for _, q := range queues {
+		// Declare DLQ
+		if _, err := ch.QueueDeclare(
+			q.dlq,
+			true,  // durable
+			false, // auto-delete
+			false, // exclusive
+			false, // no-wait
+			nil,
+		); err != nil {
+			return fmt.Errorf("failed to declare DLQ %s: %w", q.dlq, err)
+		}
+
+		// Bind DLQ to DLX
+		if err := ch.QueueBind(
+			q.dlq,
+			q.dlq,
+			ExchangeDLX,
+			false,
+			nil,
+		); err != nil {
+			return fmt.Errorf("failed to bind DLQ %s: %w", q.dlq, err)
+		}
+
+		// Declare main queue with DLX configuration
+		if _, err := ch.QueueDeclare(
+			q.name,
+			true,
+			false,
+			false,
+			false,
+			amqp.Table{
+				"x-dead-letter-exchange":    ExchangeDLX,
+				"x-dead-letter-routing-key": q.dlq,
+			},
+		); err != nil {
+			return fmt.Errorf("failed to declare queue %s: %w", q.name, err)
+		}
+
+		// Bind queue to exchange
+		if err := ch.QueueBind(
+			q.name,
+			q.routingKey,
+			ExchangeName,
+			false,
+			nil,
+		); err != nil {
+			return fmt.Errorf("failed to bind queue %s: %w", q.name, err)
+		}
+	}
+
+	return nil
+}
+
+func (mq *RabbitMQQueue) monitorConnection() {
+	for {
+		mq.mu.RLock()
+		conn := mq.conn
+		mq.mu.RUnlock()
+
+		if conn != nil {
+			closeChan := make(chan *amqp.Error)
+			conn.NotifyClose(closeChan)
+
+			err := <-closeChan
+			if err != nil {
+				mq.logger.Error("", "RabbitMQ connection closed", nil, customLog.Error(err))
+				mq.mu.Lock()
+				mq.healthy = false
+				mq.mu.Unlock()
+
+				// Attempt reconnection
+				mq.logger.Info("", "Attempting to reconnect to RabbitMQ...", nil)
+				for {
+					time.Sleep(5 * time.Second)
+					if err := mq.connect(); err != nil {
+						mq.logger.Error("", "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
+						continue
+					}
+
+					if err := mq.setupTopology(); err != nil {
+						mq.logger.Error("", "Failed to setup topology after reconnect", nil, customLog.Error(err))
+						continue
+					}
+
+					mq.mu.Lock()
+					mq.healthy = true
+					mq.mu.Unlock()
+					mq.logger.Info("", "Successfully reconnected to RabbitMQ", nil)
+					break
+				}
+			}
+		}
+	}
+}
+
+func (mq *RabbitMQQueue) PublishIncomingEvent(ctx context.Context, event domainQueue.IncomingEventMessage) error {
+	return mq.publish(ctx, RoutingKeyIncomingEvent, event)
+}
+
+func (mq *RabbitMQQueue) PublishOutgoingMessage(ctx context.Context, job domainQueue.OutgoingMessageJob) error {
+	return mq.publish(ctx, RoutingKeyOutgoingMsg, job)
+}
+
+func (mq *RabbitMQQueue) PublishWebhookDelivery(ctx context.Context, msg domainQueue.WebhookDeliveryMessage) error {
+	return mq.publish(ctx, RoutingKeyWebhook, msg)
+}
+
+func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload interface{}) error {
+	mq.mu.RLock()
+	ch := mq.channel
+	healthy := mq.healthy
+	mq.mu.RUnlock()
+
+	if !healthy {
+		return fmt.Errorf("RabbitMQ connection is not healthy")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	return ch.PublishWithContext(
+		publishCtx,
+		ExchangeName,
+		routingKey,
+		false, // mandatory
+		false, // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now(),
+		},
+	)
+}
+
+func (mq *RabbitMQQueue) IsHealthy() bool {
+	mq.mu.RLock()
+	defer mq.mu.RUnlock()
+	return mq.healthy
+}
+
+func (mq *RabbitMQQueue) StartWorkers(
+	incomingHandler MessageHandler,
+	webhookHandler MessageHandler,
+	outgoingHandler MessageHandler,
+) error {
+	mq.mu.RLock()
+	ch := mq.channel
+	mq.mu.RUnlock()
+
+	workerPool := &WorkerPool{
+		config: mq.config,
+		logger: mq.logger,
+		pools:  make(map[string]*WorkerGroup),
+	}
+
+	// Start incoming events workers
+	if err := workerPool.StartWorkerGroup(
+		QueueIncomingEvents,
+		mq.config.WorkerIncomingEvents,
+		ch,
+		incomingHandler,
+	); err != nil {
+		return fmt.Errorf("failed to start incoming events workers: %w", err)
+	}
+
+	// Start webhook delivery workers
+	if err := workerPool.StartWorkerGroup(
+		QueueWebhookDelivery,
+		mq.config.WorkerWebhookDelivery,
+		ch,
+		webhookHandler,
+	); err != nil {
+		return fmt.Errorf("failed to start webhook delivery workers: %w", err)
+	}
+
+	// Start outgoing messages workers
+	if err := workerPool.StartWorkerGroup(
+		QueueOutgoingMessages,
+		mq.config.WorkerOutgoingMessages,
+		ch,
+		outgoingHandler,
+	); err != nil {
+		return fmt.Errorf("failed to start outgoing messages workers: %w", err)
+	}
+
+	mq.workerPool = workerPool
+	return nil
+}
+
+func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
+	mq.logger.Info("", "Shutting down RabbitMQ queue...", nil)
+
+	if mq.workerPool != nil {
+		mq.workerPool.Shutdown(timeout)
+	}
+
+	mq.mu.Lock()
+	defer mq.mu.Unlock()
+
+	if mq.channel != nil {
+		if err := mq.channel.Close(); err != nil {
+			mq.logger.Error("", "Failed to close channel", nil, customLog.Error(err))
+		}
+	}
+
+	if mq.conn != nil {
+		if err := mq.conn.Close(); err != nil {
+			mq.logger.Error("", "Failed to close connection", nil, customLog.Error(err))
+		}
+	}
+
+	mq.healthy = false
+	mq.logger.Info("", "RabbitMQ queue shut down successfully", nil)
+	return nil
+}

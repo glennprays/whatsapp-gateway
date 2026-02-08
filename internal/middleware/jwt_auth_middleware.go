@@ -4,11 +4,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/contextkeys"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
+	"github.com/gofiber/fiber/v2"
 )
 
 func (m *AuthMiddleware) JWTAuthentication() fiber.Handler {
@@ -49,7 +49,7 @@ func (m *AuthMiddleware) JWTAuthentication() fiber.Handler {
 func (m *AuthMiddleware) extractBearerToken(c *fiber.Ctx) (string, error) {
 	authHeader := c.Get(AuthorizationHeaderKey)
 	if authHeader == "" {
-		appErr := errors.New("authorization header required")
+		appErr := errors.New("authorization required")
 		return "", errDomain.NewError(errDomain.ErrUnauthorized, appErr)
 	}
 

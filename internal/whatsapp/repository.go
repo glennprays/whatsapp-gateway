@@ -14,6 +14,7 @@ type whatsAppRepository struct {
 type WhatsAppRepository interface {
 	SetWebhook(ctx context.Context, jid string, webhookURL string, hmacSecret string) error
 	GetWebhook(ctx context.Context, jid string) (*waDomain.Webhook, error)
+	GetWebhookByPhone(ctx context.Context, phoneNumber string) (*waDomain.Webhook, string, error)
 	DeleteWebhook(ctx context.Context, jid string) error
 }
 
@@ -49,6 +50,40 @@ func (r *whatsAppRepository) GetWebhook(ctx context.Context, jid string) (*waDom
 		webhook.HmacSecret = hmacSecret.String
 	}
 	return &webhook, nil
+}
+
+func (r *whatsAppRepository) GetWebhookByPhone(ctx context.Context, phoneNumber string) (*waDomain.Webhook, string, error) {
+	var webhookURL sql.NullString
+	var hmacSecret sql.NullString
+	var jid string
+
+	// Query webhook by joining with whatsmeow_device table
+	// The JID format is: phoneNumber@s.whatsapp.net
+	query := `
+		SELECT dw.webhook_url, dw.hmac_secret, dw.jid
+		FROM device_webhooks dw
+		INNER JOIN whatsmeow_device wd ON dw.jid = wd.jid
+		WHERE wd.jid LIKE $1
+		LIMIT 1
+	`
+
+	err := r.DB.QueryRowContext(ctx, query, phoneNumber+"@%").Scan(&webhookURL, &hmacSecret, &jid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+
+	webhook := waDomain.Webhook{}
+	if webhookURL.Valid {
+		webhook.Url = webhookURL.String
+	}
+	if hmacSecret.Valid {
+		webhook.HmacSecret = hmacSecret.String
+	}
+
+	return &webhook, jid, nil
 }
 
 func (r *whatsAppRepository) DeleteWebhook(ctx context.Context, jid string) error {

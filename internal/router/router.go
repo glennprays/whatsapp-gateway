@@ -7,6 +7,7 @@ import (
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
+	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
@@ -27,6 +28,7 @@ func SetupRouter(
 	authMw *middleware.AuthMiddleware,
 	h *handler.Handler,
 	lgr *log.Logger,
+	queue domainQueue.MessageQueue,
 ) *fiber.App {
 	cfg = conf
 	basePath = cfg.BasePath
@@ -51,11 +53,26 @@ func SetupRouter(
 	api.Get("/health", func(c *fiber.Ctx) error {
 		traceID := middleware.GetTraceID(c)
 		logger.Info(traceID, "Health check endpoint accessed", nil)
-		return c.Status(http.StatusOK).JSON(fiber.Map{
+
+		response := fiber.Map{
 			"status":    "ok",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"trace_id":  traceID,
-		})
+		}
+
+		// Add queue health check if RabbitMQ is enabled
+		if cfg.RabbitMQEnabled && queue != nil {
+			response["queue"] = fiber.Map{
+				"enabled":   true,
+				"connected": queue.IsHealthy(),
+			}
+
+			if !queue.IsHealthy() {
+				response["status"] = "degraded"
+			}
+		}
+
+		return c.Status(http.StatusOK).JSON(response)
 	})
 
 	if cfg.EnableSwagger {
@@ -68,6 +85,7 @@ func SetupRouter(
 
 	initWhatsappRoutes(api, h)
 	initWebhookRoutes(api, h)
+	initMessageRoutes(api, h)
 
 	return app
 }

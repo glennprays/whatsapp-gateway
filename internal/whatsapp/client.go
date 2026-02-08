@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
@@ -12,8 +13,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary"
+	waE2E "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
@@ -34,6 +37,11 @@ type (
 		GetWebhookURL(ctx context.Context, phoneNumber string) (*string, error)
 		SetWebhookURL(ctx context.Context, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, phoneNumber string) error
+		SendTextMessage(ctx context.Context, phoneNumber string, to string, message string) (string, error)
+		SendImageMessage(ctx context.Context, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		ReactToMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, emoji string) error
+		DeleteMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string) error
+		EditMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, newText string) error
 	}
 )
 
@@ -205,6 +213,180 @@ func (c *client) DeleteWebhookURL(ctx context.Context, phoneNumber string) error
 	if err != nil {
 		log.Errorf("Failed to delete webhook URL for %s: %v", MaskedPhoneNumber(phoneNumber), err)
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	return nil
+}
+
+func (c *client) SendTextMessage(ctx context.Context, phoneNumber string, to string, message string) (string, error) {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	if !client.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	msg := &waE2E.Message{
+		Conversation: proto.String(message),
+	}
+
+	resp, err := client.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send message: %w", err))
+	}
+
+	return resp.ID, nil
+}
+
+func (c *client) SendImageMessage(ctx context.Context, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error) {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	if !client.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Upload image to WhatsApp servers
+	uploaded, err := client.Upload(ctx, imageBytes, whatsmeow.MediaImage)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload image: %w", err))
+	}
+
+	// Build image message
+	imageMsg := &waE2E.ImageMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(imageBytes))),
+	}
+
+	if caption != "" {
+		imageMsg.Caption = proto.String(caption)
+	}
+
+	var msg *waE2E.Message
+	if isViewOnce {
+		msg = &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{
+					ImageMessage: imageMsg,
+				},
+			},
+		}
+	} else {
+		msg = &waE2E.Message{
+			ImageMessage: imageMsg,
+		}
+	}
+
+	resp, err := client.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send image message: %w", err))
+	}
+
+	return resp.ID, nil
+}
+
+func (c *client) ReactToMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, emoji string) error {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	if !client.IsLoggedIn() {
+		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(chatJID)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Build reaction message
+	msg := &waE2E.Message{
+		ReactionMessage: &waE2E.ReactionMessage{
+			Key: &waE2E.MessageKey{
+				RemoteJID: proto.String(chatJID),
+				FromMe:    proto.Bool(false),
+				ID:        proto.String(messageID),
+			},
+			Text:              proto.String(emoji),
+			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
+		},
+	}
+
+	_, err = client.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send reaction: %w", err))
+	}
+
+	return nil
+}
+
+func (c *client) DeleteMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string) error {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	if !client.IsLoggedIn() {
+		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(chatJID)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Build revoke message
+	_, err = client.SendMessage(ctx, toJID, client.BuildRevoke(toJID, types.EmptyJID, messageID))
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to delete message: %w", err))
+	}
+
+	return nil
+}
+
+func (c *client) EditMessage(ctx context.Context, phoneNumber string, chatJID string, messageID string, newText string) error {
+	client := Clients[phoneNumber]
+	if client == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	if !client.IsLoggedIn() {
+		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(chatJID)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Build edit message
+	editMsg := &waE2E.Message{
+		Conversation: proto.String(newText),
+	}
+
+	_, err = client.SendMessage(ctx, toJID, client.BuildEdit(toJID, messageID, editMsg))
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to edit message: %w", err))
 	}
 
 	return nil
