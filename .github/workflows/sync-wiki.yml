@@ -1,0 +1,63 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'wiki/**'
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout wiki repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync wiki files
+        run: |
+          # Remove old files from wiki repo (except .git)
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+
+          # Copy new files from main repo's wiki/ directory
+          cp -r wiki/* wiki-repo/
+
+          # Check if there are changes
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Add all changes
+          git add .
+
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to wiki"
+          else
+            git commit -m "docs: sync wiki from main repo
+
+            Auto-synced from main repository wiki directory
+            Commit: ${{ github.sha }}
+            Workflow: ${{ github.workflow }}"
+
+            git push
+            echo "✅ Wiki synced successfully!"
+          fi
+
+      - name: Summary
+        run: |
+          echo "### Wiki Sync Complete! 📚" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Wiki has been automatically synchronized." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [View Wiki](https://github.com/${{ github.repository }}/wiki)" >> $GITHUB_STEP_SUMMARY
