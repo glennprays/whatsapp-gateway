@@ -2,6 +2,7 @@ package whatsapp_usecase
 
 import (
 	customLog "github.com/glennprays/log"
+	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
@@ -23,6 +24,9 @@ func ProvideWhatsappMessageUsecase(
 	logger *customLog.Logger,
 	queue domainQueue.MessageQueue,
 	jobRepo *queue.JobRepository,
+	whatsappRepo whatsapp.WhatsAppRepository,
+	webhookSender *whatsapp.WebhookSender,
+	cfg *config.Config,
 ) *WhatsappMessageUsecase {
-	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo)
+	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo, whatsappRepo, webhookSender, cfg)
 }

@@ -3,12 +3,15 @@ package whatsapp_usecase
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	customLog "github.com/glennprays/log"
+	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
@@ -23,6 +26,9 @@ type WhatsappMessageUsecase struct {
 	logger          *customLog.Logger
 	queue           domainQueue.MessageQueue
 	jobRepo         *queue.JobRepository
+	whatsappRepo    whatsapp.WhatsAppRepository
+	webhookSender   *whatsapp.WebhookSender
+	config          *config.Config
 }
 
 // NewWhatsappMessageUsecase creates a new message usecase
@@ -31,12 +37,18 @@ func NewWhatsappMessageUsecase(
 	logger *customLog.Logger,
 	queue domainQueue.MessageQueue,
 	jobRepo *queue.JobRepository,
+	whatsappRepo whatsapp.WhatsAppRepository,
+	webhookSender *whatsapp.WebhookSender,
+	cfg *config.Config,
 ) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
 		whatsappManager: manager,
 		logger:          logger,
 		queue:           queue,
 		jobRepo:         jobRepo,
+		whatsappRepo:    whatsappRepo,
+		webhookSender:   webhookSender,
+		config:          cfg,
 	}
 }
 
@@ -72,6 +84,9 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.Error(err))
 			}
 
+			// Send message.queued webhook
+			uc.sendQueuedWebhook(ctx, traceID, job)
+
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
 				Status:  "queued",
@@ -86,8 +101,15 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 		uc.logger.Error(traceID, "Failed to send text message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
 		}, customLog.Error(err))
+
+		// Send message.failed webhook in direct mode
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+
 		return nil, nil, err
 	}
+
+	// Send message.sent webhook in direct mode
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
 
 	return &waDomain.SendMessageResponse{
 		Success:   true,
@@ -149,6 +171,9 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.Error(err))
 			}
 
+			// Send message.queued webhook
+			uc.sendQueuedWebhook(ctx, traceID, job)
+
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
 				Status:  "queued",
@@ -163,8 +188,15 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		uc.logger.Error(traceID, "Failed to send image message", []customLog.Field{
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
 		}, customLog.Error(err))
+
+		// Send message.failed webhook in direct mode
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+
 		return nil, nil, err
 	}
+
+	// Send message.sent webhook in direct mode
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
 
 	return &waDomain.SendMessageResponse{
 		Success:   true,
@@ -270,4 +302,131 @@ func (uc *WhatsappMessageUsecase) GetJobStatus(
 	}
 
 	return response, nil
+}
+
+// sendQueuedWebhook sends a message.queued webhook notification
+func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
+	ctx context.Context,
+	traceID string,
+	job domainQueue.OutgoingMessageJob,
+) {
+	// Check if webhook status events enabled
+	if !uc.config.WebhookStatusEventsEnabled {
+		return
+	}
+
+	// Check if message.queued is in enabled events
+	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
+	found := false
+	for _, evt := range enabledEvents {
+		if strings.TrimSpace(evt) == string(domainQueue.EventMessageQueued) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	// Get webhook config
+	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, job.PhoneNumber)
+	if err != nil || webhook == nil || webhook.Url == "" {
+		return
+	}
+
+	// Build payload
+	payload := map[string]interface{}{
+		"event":        string(domainQueue.EventMessageQueued),
+		"job_id":       job.JobID,
+		"to":           job.To,
+		"phone_number": job.PhoneNumber,
+		"timestamp":    time.Now().Unix(),
+	}
+
+	// Send webhook
+	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
+		uc.logger.Error(traceID, "Failed to send queued webhook", nil, customLog.Error(err))
+	} else {
+		uc.logger.Debug(traceID, fmt.Sprintf("Sent message.queued webhook for job %s", job.JobID), nil)
+	}
+}
+
+// sendDirectSentWebhook sends a message.sent webhook in direct mode
+func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
+	ctx context.Context,
+	traceID, phoneNumber, to, messageID string,
+) {
+	if !uc.config.WebhookStatusEventsEnabled {
+		return
+	}
+
+	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
+	found := false
+	for _, evt := range enabledEvents {
+		if strings.TrimSpace(evt) == string(domainQueue.EventMessageSent) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, phoneNumber)
+	if err != nil || webhook == nil || webhook.Url == "" {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event":        string(domainQueue.EventMessageSent),
+		"to":           to,
+		"phone_number": phoneNumber,
+		"timestamp":    time.Now().Unix(),
+		"message_id":   messageID,
+	}
+
+	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
+		uc.logger.Error(traceID, "Failed to send direct sent webhook", nil, customLog.Error(err))
+	} else {
+		uc.logger.Debug(traceID, "Sent message.sent webhook (direct mode)", nil)
+	}
+}
+
+// sendDirectFailedWebhook sends a message.failed webhook in direct mode
+func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
+	ctx context.Context,
+	traceID, phoneNumber, to, errorMsg string,
+) {
+	if !uc.config.WebhookStatusEventsEnabled {
+		return
+	}
+
+	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
+	found := false
+	for _, evt := range enabledEvents {
+		if strings.TrimSpace(evt) == string(domainQueue.EventMessageFailed) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, phoneNumber)
+	if err != nil || webhook == nil || webhook.Url == "" {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event":        string(domainQueue.EventMessageFailed),
+		"to":           to,
+		"phone_number": phoneNumber,
+		"timestamp":    time.Now().Unix(),
+		"error":        errorMsg,
+	}
+
+	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
+		uc.logger.Error(traceID, "Failed to send direct failed webhook", nil, customLog.Error(err))
+	}
 }
