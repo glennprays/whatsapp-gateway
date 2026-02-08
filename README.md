@@ -20,7 +20,7 @@ The gateway sits between your backend and WhatsApp, maintaining all the persiste
 ## Quick Start
 
 ### Prerequisites
-- Go 1.24 or higher
+- Go 1.25 or higher
 - SQLite or PostgreSQL (for storing WhatsApp session data)
 
 ### Installation

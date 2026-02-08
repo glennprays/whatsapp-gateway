@@ -6,7 +6,7 @@ This guide will help you set up and run the WhatsApp Gateway in development mode
 
 Before you begin, ensure you have the following installed:
 
-- **Go 1.24 or higher** - [Download Go](https://golang.org/dl/)
+- **Go 1.25 or higher** - [Download Go](https://golang.org/dl/)
 - **Git** - For cloning the repository
 - **SQLite or PostgreSQL** - For storing WhatsApp session data
 - **Docker** (optional) - For containerized deployment

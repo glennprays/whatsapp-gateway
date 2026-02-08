@@ -1,4 +1,4 @@
-# Wiki Documentation
+# Wiki Documentation 
 
 This directory contains the complete wiki documentation for the WhatsApp Gateway project.
 
