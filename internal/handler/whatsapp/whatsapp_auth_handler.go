@@ -1,55 +1,33 @@
 package whatsapp_handler
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
 	customLog "github.com/glennprays/log"
-	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
+	whatsapp_usecase "github.com/glennprays/whatsapp-gateway/internal/usecase/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
-	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/gofiber/fiber/v2"
 )
 
-var formatMap map[string]bool
-
-func init() {
-	formatMap = map[string]bool{
-		"json": true,
-		"html": true,
-	}
-}
-
 type WhatsappAuthHandler struct {
-	whatsappManager whatsapp.Manager
-	logger          *customLog.Logger
+	whatsappAuthUsecase *whatsapp_usecase.WhatsappAuthUsecase
+	logger              *customLog.Logger
 }
 
-func NewWhatsappAuthHandler(manager whatsapp.Manager, logger *customLog.Logger) *WhatsappAuthHandler {
+func NewWhatsappAuthHandler(whatsappAuthUsecase *whatsapp_usecase.WhatsappAuthUsecase, logger *customLog.Logger) *WhatsappAuthHandler {
 	return &WhatsappAuthHandler{
-		whatsappManager: manager,
-		logger:          logger,
+		whatsappAuthUsecase: whatsappAuthUsecase,
+		logger:              logger,
 	}
 }
 
 func (h *WhatsappAuthHandler) LoginQRCode(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	format := c.Params("format")
-	if format == "" {
-		err := errDomain.NewError(errDomain.ErrBadRequest, errors.New("format params is required"))
-		httpErr := httperror.FromError(err)
-		return c.Status(httpErr.Status).JSON(httpErr)
-	}
-
-	if _, ok := formatMap[format]; !ok {
-		err := errDomain.NewError(errDomain.ErrBadRequest, errors.New("invalid format params"))
-		httpErr := httperror.FromError(err)
-		return c.Status(httpErr.Status).JSON(httpErr)
-	}
 
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
 	if !ok {
@@ -58,22 +36,20 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	h.whatsappManager.RegisterClient(ctx, phoneNumber)
 
-	qrCode, timeout, err := h.whatsappManager.LoginQRCode(ctx, phoneNumber)
+	// Call usecase
+	response, err := h.whatsappAuthUsecase.LoginQRCode(ctx, traceID, phoneNumber, format)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to generate QR code", []customLog.Field{
-			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
-		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
+		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
+	// Format response based on format parameter
 	switch format {
 	case "json":
 		return c.Status(http.StatusOK).JSON(fiber.Map{
-			"qr_code": qrCode,
-			"timeout": timeout,
+			"qr_code": response.QRCode,
+			"timeout": response.Timeout,
 		})
 	case "html":
 		html := fmt.Sprintf(`
@@ -123,7 +99,7 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *fiber.Ctx) error {
 	</div>
 </body>
 </html>
-`, qrCode, timeout)
+`, response.QRCode, response.Timeout)
 		return c.Status(http.StatusOK).Type("text/html", "utf-8").Send([]byte(html))
 	}
 	return nil
@@ -139,19 +115,16 @@ func (h *WhatsappAuthHandler) LoginPairCode(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 
-	h.whatsappManager.RegisterClient(ctx, phoneNumber)
-	pairCode, timeout, err := h.whatsappManager.LoginPairCode(ctx, phoneNumber)
+	// Call usecase
+	response, err := h.whatsappAuthUsecase.LoginPairCode(ctx, traceID, phoneNumber)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to generate pair code", []customLog.Field{
-			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
-		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrInternalFailure, err))
+		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
-		"pair_code":  pairCode,
-		"expires_in": timeout,
+		"pair_code":  response.PairCode,
+		"expires_in": response.ExpiresIn,
 	})
 }
 
@@ -163,11 +136,9 @@ func (h *WhatsappAuthHandler) GetLoginStatus(c *fiber.Ctx) error {
 		return nil
 	}
 
-	status, err := h.whatsappManager.LoginStatus(c.Context(), phoneNumber)
+	// Call usecase
+	status, err := h.whatsappAuthUsecase.GetLoginStatus(c.Context(), traceID, phoneNumber)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to get login status", []customLog.Field{
-			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
@@ -185,11 +156,9 @@ func (h *WhatsappAuthHandler) Logout(c *fiber.Ctx) error {
 		return nil
 	}
 
-	err := h.whatsappManager.Logout(c.Context(), phoneNumber)
+	// Call usecase
+	err := h.whatsappAuthUsecase.Logout(c.Context(), traceID, phoneNumber)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to logout", []customLog.Field{
-			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
@@ -207,11 +176,9 @@ func (h *WhatsappAuthHandler) Reconnect(c *fiber.Ctx) error {
 		return nil
 	}
 
-	err := h.whatsappManager.Reconnect(c.Context(), phoneNumber)
+	// Call usecase
+	err := h.whatsappAuthUsecase.Reconnect(c.Context(), traceID, phoneNumber)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to reconnect", []customLog.Field{
-			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
