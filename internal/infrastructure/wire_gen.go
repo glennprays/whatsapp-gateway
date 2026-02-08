@@ -7,68 +7,69 @@
 package infrastructure
 
 import (
-	"database/sql"
-	"fmt"
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
-	"github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	"github.com/glennprays/whatsapp-gateway/internal/handler/auth"
 	"github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
-	queue3 "github.com/glennprays/whatsapp-gateway/internal/queue"
-	"github.com/glennprays/whatsapp-gateway/internal/queue/handlers"
+	queue2 "github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/router"
+	"github.com/glennprays/whatsapp-gateway/internal/usecase/auth"
+	"github.com/glennprays/whatsapp-gateway/internal/usecase/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
-	queue2 "github.com/glennprays/whatsapp-gateway/pkg/queue"
+	"github.com/glennprays/whatsapp-gateway/pkg/queue"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // Injectors from wire.go:
 
 // InitializeApp wires up all dependencies and returns App with cleanup function
 func InitializeApp() (*App, func(), error) {
-	config, err := ProvideConfig()
+	configConfig, err := config.ProvideConfig()
 	if err != nil {
 		return nil, nil, err
 	}
-	logger, err := ProvideLogger(config)
+	logger, err := config.ProvideLogger(configConfig)
 	if err != nil {
 		return nil, nil, err
 	}
-	v := ProvideTraceIDMiddleware(logger)
-	jwtManager := ProvideJWTManager(config)
-	authMiddleware := ProvideAuthMiddleware(jwtManager)
-	db, err := ProvideDatabase(config, logger)
+	v := middleware.ProvideTraceIDMiddleware(logger)
+	jwtManager := auth.ProvideJWTManager(configConfig)
+	authMiddleware := middleware.ProvideAuthMiddleware(jwtManager)
+	db, err := database.ProvideDatabase(configConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	cipher := ProvideCipher(config)
-	messageQueue, err := ProvideMessageQueue(config, logger)
+	cipher := cipherx.ProvideCipher(configConfig)
+	messageQueue, err := queue.ProvideMessageQueue(configConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	manager := ProvideWhatsappManager(config, db, cipher, logger, messageQueue)
-	authHandler := ProvideAuthHandler(config, jwtManager, manager, logger)
-	whatsappAuthHandler := ProvideWhatsappAuthHandler(manager, logger)
-	whatsappWebhookHandler := ProvideWhatsappWebhookHandler(manager, logger)
-	jobRepository := ProvideJobRepository(db)
-	whatsappMessageHandler := ProvideWhatsappMessageHandler(manager, logger, messageQueue, jobRepository)
-	handler := ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
-	app := ProvideRouter(config, v, authMiddleware, handler, logger, messageQueue)
-	whatsAppRepository := ProvideWhatsAppRepository(db)
-	webhookSender := ProvideWebhookSender(cipher)
-	workerManager, err := ProvideQueueWorkers(config, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository)
+	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue)
+	authUsecase := auth_usecase.ProvideAuthUsecase(configConfig, jwtManager, manager, logger)
+	authHandler := auth_handler.ProvideAuthHandler(authUsecase, logger)
+	whatsappAuthUsecase := whatsapp_usecase.ProvideWhatsappAuthUsecase(manager, logger)
+	whatsappAuthHandler := whatsapp_handler.ProvideWhatsappAuthHandler(whatsappAuthUsecase, logger)
+	whatsappWebhookUsecase := whatsapp_usecase.ProvideWhatsappWebhookUsecase(manager, logger)
+	whatsappWebhookHandler := whatsapp_handler.ProvideWhatsappWebhookHandler(whatsappWebhookUsecase, logger)
+	jobRepository := queue2.ProvideJobRepository(db)
+	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository)
+	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
+	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
+	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue)
+	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
+	webhookSender := whatsapp.ProvideWebhookSender(cipher)
+	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository)
 	if err != nil {
 		return nil, nil, err
 	}
 	infrastructureApp := &App{
 		FiberApp: app,
-		Config:   config,
+		Config:   configConfig,
 		Logger:   logger,
 		Workers:  workerManager,
 	}
@@ -78,206 +79,12 @@ func InitializeApp() (*App, func(), error) {
 
 // wire.go:
 
-// ProvideConfig loads application configuration
-func ProvideConfig() (*config.Config, error) {
-	return config.Load()
-}
-
-// ProvideLogger initializes logger based on configuration
-func ProvideLogger(cfg *config.Config) (*log.Logger, error) {
-	// Map string level to log.Level
-	var level log.Level
-	switch cfg.LogLevel {
-	case "debug":
-		level = log.DebugLevel
-	case "info":
-		level = log.InfoLevel
-	case "warn":
-		level = log.WarnLevel
-	case "error":
-		level = log.ErrorLevel
-	case "fatal":
-		level = log.FatalLevel
-	default:
-		level = log.InfoLevel
-	}
-
-	// Map string output to log.OutputType
-	var output log.OutputType
-	if cfg.LogOutput == "file" {
-		output = log.OutputFile
-	} else {
-		output = log.OutputStdout
-	}
-
-	logConfig := log.Config{
-		Service:      "whatsapp-gateway",
-		Env:          cfg.Env.String(),
-		Level:        level,
-		Output:       output,
-		FilePath:     cfg.LogFilePath,
-		EnableCaller: cfg.EnableCaller,
-	}
-
-	return log.New(logConfig)
-}
-
-// ProvideDatabase initializes database connection
-func ProvideDatabase(cfg *config.Config, logger *log.Logger) (*sql.DB, error) {
-	return database.NewConnection(logger, cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
-}
-
-// ProvideCipher initializes encryption cipher
-func ProvideCipher(cfg *config.Config) *cipherx.Cipher {
-	return cipherx.NewCipher(cfg.WhatsappWebhookHmacEncryptionMasterKey)
-}
-
-// ProvideMessageQueue initializes queue (RabbitMQ or fallback)
-func ProvideMessageQueue(cfg *config.Config, logger *log.Logger) (queue.MessageQueue, error) {
-	traceID := fmt.Sprintf("QUEUE-INIT:%s", uuid.New().String())
-
-	if !cfg.RabbitMQEnabled {
-		logger.Info(traceID, "RabbitMQ disabled, using direct processing", nil)
-		return queue2.NewDirectQueue(logger), nil
-	}
-
-	logger.Info(traceID, "RabbitMQ enabled, connecting...", nil)
-	mq, err := queue2.NewRabbitMQQueue(cfg, logger)
-	if err != nil {
-		logger.Error(traceID, "Failed to connect to RabbitMQ, falling back to direct processing", nil, log.Error(err))
-		return queue2.NewDirectQueue(logger), nil
-	}
-
-	logger.Info(traceID, "RabbitMQ connected successfully", nil)
-	return mq, nil
-}
-
-// ProvideJobRepository initializes job tracking repository
-func ProvideJobRepository(db *sql.DB) *queue3.JobRepository {
-	return queue3.NewJobRepository(db)
-}
-
-// ProvideWhatsappManager initializes WhatsApp manager
-func ProvideWhatsappManager(cfg *config.Config, db *sql.DB, cipher *cipherx.Cipher, logger *log.Logger, queue4 queue.MessageQueue) whatsapp.Manager {
-	return whatsapp.NewManager(cfg, cfg.WhatsappDatastoreType, db, cipher, logger, queue4)
-}
-
-// ProvideJWTManager initializes JWT manager
-func ProvideJWTManager(cfg *config.Config) *auth.JWTManager {
-	return auth.NewJWTManager(cfg.JwtSecret, cfg.JwtIssuer, cfg.GetJwtDuration())
-}
-
-// ProvideAuthHandler initializes authentication handler
-func ProvideAuthHandler(cfg *config.Config, jwtManager *auth.JWTManager, whatsappManager whatsapp.Manager, logger *log.Logger) *auth_handler.AuthHandler {
-	return auth_handler.NewAuthHandler(cfg, jwtManager, whatsappManager, logger)
-}
-
-// ProvideWhatsappAuthHandler initializes WhatsApp authentication handler
-func ProvideWhatsappAuthHandler(whatsappManager whatsapp.Manager, logger *log.Logger) *whatsapp_handler.WhatsappAuthHandler {
-	return whatsapp_handler.NewWhatsappAuthHandler(whatsappManager, logger)
-}
-
-// ProvideWhatsappWebhookHandler initializes WhatsApp webhook handler
-func ProvideWhatsappWebhookHandler(whatsappManager whatsapp.Manager, logger *log.Logger) *whatsapp_handler.WhatsappWebhookHandler {
-	return whatsapp_handler.NewWhatsappWebhookHandler(whatsappManager, logger)
-}
-
-// ProvideWhatsappMessageHandler initializes WhatsApp message handler
-func ProvideWhatsappMessageHandler(whatsappManager whatsapp.Manager, logger *log.Logger, queue4 queue.MessageQueue, jobRepo *queue3.JobRepository) *whatsapp_handler.WhatsappMessageHandler {
-	return whatsapp_handler.NewWhatsappMessageHandler(whatsappManager, logger, queue4, jobRepo)
-}
-
-// ProvideMainHandler initializes main handler
-func ProvideMainHandler(
-	authHandler *auth_handler.AuthHandler,
-	whatsappAuthHandler *whatsapp_handler.WhatsappAuthHandler,
-	whatsappWebhookHandler *whatsapp_handler.WhatsappWebhookHandler,
-	whatsappMessageHandler *whatsapp_handler.WhatsappMessageHandler,
-) *handler.Handler {
-	return handler.NewHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
-}
-
-// ProvideAuthMiddleware initializes authentication middleware
-func ProvideAuthMiddleware(jwtManager *auth.JWTManager) *middleware.AuthMiddleware {
-	return middleware.NewAuthMiddleware(jwtManager)
-}
-
-// ProvideTraceIDMiddleware initializes trace ID middleware
-func ProvideTraceIDMiddleware(logger *log.Logger) fiber.Handler {
-	return middleware.NewTraceIDMiddleware(logger)
-}
-
-// ProvideRouter sets up the router
-func ProvideRouter(cfg *config.Config, traceIDMw fiber.Handler, authMiddleware *middleware.AuthMiddleware, mainHandler *handler.Handler, logger *log.Logger, queue4 queue.MessageQueue) *fiber.App {
-	return router.SetupRouter(cfg, traceIDMw, authMiddleware, mainHandler, logger, queue4)
-}
-
-// ProvideQueueWorkers starts worker pools
-func ProvideQueueWorkers(
-	cfg *config.Config,
-	mq queue.MessageQueue,
-	repo whatsapp.WhatsAppRepository,
-	sender *whatsapp.WebhookSender,
-	manager whatsapp.Manager,
-	logger *log.Logger,
-	jobRepo *queue3.JobRepository,
-) (*queue2.WorkerManager, error) {
-	if !cfg.RabbitMQEnabled {
-		return nil, nil
-	}
-
-	rabbitMQ, ok := mq.(*queue2.RabbitMQQueue)
-	if !ok {
-		return nil, nil
-	}
-
-	incomingHandler := &handlers.IncomingEventHandler{
-		Repository: repo,
-		Publisher:  rabbitMQ,
-		Logger:     logger,
-	}
-
-	webhookHandler := &handlers.WebhookDeliveryHandler{
-		Sender: sender,
-		Logger: logger,
-	}
-
-	outgoingHandler := &handlers.OutgoingMessageHandler{
-		Manager:    manager,
-		Logger:     logger,
-		JobRepo:    jobRepo,
-		Repository: repo,
-		Sender:     sender,
-		Config:     cfg,
-	}
-
-	if err := rabbitMQ.StartWorkers(
-		incomingHandler.Handle,
-		webhookHandler.Handle,
-		outgoingHandler.Handle,
-	); err != nil {
-		return nil, err
-	}
-
-	return &queue2.WorkerManager{Queue: rabbitMQ}, nil
-}
-
-// ProvideWebhookSender creates webhook sender
-func ProvideWebhookSender(cipher *cipherx.Cipher) *whatsapp.WebhookSender {
-	return whatsapp.NewWebhookSender(cipher)
-}
-
-// ProvideWhatsAppRepository creates repository
-func ProvideWhatsAppRepository(db *sql.DB) whatsapp.WhatsAppRepository {
-	return whatsapp.NewWhatsappRepository(db)
-}
-
 // App holds the application components
 type App struct {
 	FiberApp *fiber.App
 	Config   *config.Config
 	Logger   *log.Logger
-	Workers  *queue2.WorkerManager
+	Workers  *queue.WorkerManager
 }
 
 // Cleanup syncs the logger before shutdown
