@@ -12,6 +12,13 @@ import (
 	"github.com/glennprays/whatsapp-gateway/config"
 )
 
+// Trace IDs for worker pool operations (not tied to user requests)
+const (
+	traceIDWorkerInit     = "WORKER-INIT"
+	traceIDWorkerProcess  = "WORKER-PROCESS"
+	traceIDWorkerShutdown = "WORKER-SHUTDOWN"
+)
+
 type MessageHandler func(ctx context.Context, body []byte, headers amqp.Table) error
 
 type WorkerGroup struct {
@@ -72,7 +79,7 @@ func (wp *WorkerPool) StartWorkerGroup(
 	wp.pools[queueName] = group
 	wp.mu.Unlock()
 
-	wp.logger.Info("", fmt.Sprintf("Started %d workers for queue %s", workerCount, queueName), nil)
+	wp.logger.Info(traceIDWorkerInit, fmt.Sprintf("Started %d workers for queue %s", workerCount, queueName), nil)
 	return nil
 }
 
@@ -80,17 +87,17 @@ func (wg *WorkerGroup) worker(id int, msgs <-chan amqp.Delivery) {
 	defer wg.wg.Done()
 
 	workerName := fmt.Sprintf("%s-worker-%d", wg.queueName, id)
-	wg.logger.Info("", fmt.Sprintf("Worker %s started", workerName), nil)
+	wg.logger.Info(traceIDWorkerInit, fmt.Sprintf("Worker %s started", workerName), nil)
 
 	for {
 		select {
 		case <-wg.stopChan:
-			wg.logger.Info("", fmt.Sprintf("Worker %s stopping", workerName), nil)
+			wg.logger.Info(traceIDWorkerShutdown, fmt.Sprintf("Worker %s stopping", workerName), nil)
 			return
 
 		case msg, ok := <-msgs:
 			if !ok {
-				wg.logger.Info("", fmt.Sprintf("Worker %s: message channel closed", workerName), nil)
+				wg.logger.Info(traceIDWorkerShutdown, fmt.Sprintf("Worker %s: message channel closed", workerName), nil)
 				return
 			}
 
@@ -103,13 +110,13 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 	ctx := context.Background()
 	retryCount := getRetryCount(msg.Headers)
 
-	wg.logger.Debug("", fmt.Sprintf("Worker %s processing message (retry: %d)", workerName, retryCount), nil)
+	wg.logger.Debug(traceIDWorkerProcess, fmt.Sprintf("Worker %s processing message (retry: %d)", workerName, retryCount), nil)
 
 	// Process message with handler
 	err := wg.handler(ctx, msg.Body, msg.Headers)
 
 	if err != nil {
-		wg.logger.Error("", fmt.Sprintf("Worker %s: handler error", workerName), nil, customLog.Error(err))
+		wg.logger.Error(traceIDWorkerProcess, fmt.Sprintf("Worker %s: handler error", workerName), nil, customLog.Error(err))
 
 		// Retry with exponential backoff
 		if retryCount < wg.config.QueueMaxRetries {
@@ -126,7 +133,7 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 				backoffDelay = 25 * time.Second
 			}
 
-			wg.logger.Info("", fmt.Sprintf("Worker %s: retrying in %s (attempt %d/%d)", workerName, backoffDelay, retryCount+1, wg.config.QueueMaxRetries), nil)
+			wg.logger.Info(traceIDWorkerProcess, fmt.Sprintf("Worker %s: retrying in %s (attempt %d/%d)", workerName, backoffDelay, retryCount+1, wg.config.QueueMaxRetries), nil)
 
 			// Sleep for backoff delay
 			time.Sleep(backoffDelay)
@@ -139,22 +146,22 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 
 			// Requeue message (NACK with requeue)
 			if err := msg.Nack(false, true); err != nil {
-				wg.logger.Error("", fmt.Sprintf("Worker %s: failed to NACK message", workerName), nil, customLog.Error(err))
+				wg.logger.Error(traceIDWorkerProcess, fmt.Sprintf("Worker %s: failed to NACK message", workerName), nil, customLog.Error(err))
 			}
 			return
 		}
 
 		// Max retries exceeded, send to DLQ
-		wg.logger.Error("", fmt.Sprintf("Worker %s: max retries exceeded, sending to DLQ", workerName), nil, customLog.Error(err))
+		wg.logger.Error(traceIDWorkerProcess, fmt.Sprintf("Worker %s: max retries exceeded, sending to DLQ", workerName), nil, customLog.Error(err))
 		if err := msg.Nack(false, false); err != nil {
-			wg.logger.Error("", fmt.Sprintf("Worker %s: failed to NACK message to DLQ", workerName), nil, customLog.Error(err))
+			wg.logger.Error(traceIDWorkerProcess, fmt.Sprintf("Worker %s: failed to NACK message to DLQ", workerName), nil, customLog.Error(err))
 		}
 		return
 	}
 
 	// Success: ACK message
 	if err := msg.Ack(false); err != nil {
-		wg.logger.Error("", fmt.Sprintf("Worker %s: failed to ACK message", workerName), nil, customLog.Error(err))
+		wg.logger.Error(traceIDWorkerProcess, fmt.Sprintf("Worker %s: failed to ACK message", workerName), nil, customLog.Error(err))
 	}
 }
 
@@ -177,7 +184,7 @@ func getRetryCount(headers amqp.Table) int {
 }
 
 func (wp *WorkerPool) Shutdown(timeout time.Duration) {
-	wp.logger.Info("", "Shutting down worker pools...", nil)
+	wp.logger.Info(traceIDWorkerShutdown, "Shutting down worker pools...", nil)
 
 	wp.mu.RLock()
 	defer wp.mu.RUnlock()
@@ -194,13 +201,13 @@ func (wp *WorkerPool) Shutdown(timeout time.Duration) {
 
 		select {
 		case <-done:
-			wp.logger.Info("", fmt.Sprintf("Worker group %s shut down gracefully", queueName), nil)
+			wp.logger.Info(traceIDWorkerShutdown, fmt.Sprintf("Worker group %s shut down gracefully", queueName), nil)
 		case <-time.After(timeout):
-			wp.logger.Warn("", fmt.Sprintf("Worker group %s shutdown timeout", queueName), nil)
+			wp.logger.Warn(traceIDWorkerShutdown, fmt.Sprintf("Worker group %s shutdown timeout", queueName), nil)
 		}
 	}
 
-	wp.logger.Info("", "All worker pools shut down", nil)
+	wp.logger.Info(traceIDWorkerShutdown, "All worker pools shut down", nil)
 }
 
 // WorkerManager wraps the queue for graceful shutdown

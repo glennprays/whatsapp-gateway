@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
-	customLog "github.com/glennprays/log"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary"
 	waE2E "go.mau.fi/whatsmeow/binary/proto"
@@ -277,6 +277,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		FileEncSHA256: uploaded.FileEncSHA256,
 		FileSHA256:    uploaded.FileSHA256,
 		FileLength:    proto.Uint64(uint64(len(imageBytes))),
+		ViewOnce:      &isViewOnce,
 	}
 
 	if caption != "" {

@@ -36,10 +36,11 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 	// Extract trace ID from job, with fallback
 	traceID := job.TraceID
 	if traceID == "" {
-		h.Logger.Warn("", "Job missing trace_id, generating new one", []customLog.Field{
+		// Generate fallback trace ID first, then use it for logging
+		traceID = fmt.Sprintf("job-%s", job.JobID)
+		h.Logger.Warn(traceID, "Job missing trace_id, using fallback", []customLog.Field{
 			customLog.String("job_id", job.JobID),
 		})
-		traceID = fmt.Sprintf("job-%s", job.JobID)
 	}
 
 	// Update job status to processing

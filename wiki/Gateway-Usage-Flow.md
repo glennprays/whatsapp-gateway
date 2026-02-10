@@ -277,6 +277,21 @@ curl -X DELETE http://localhost:3000/api/v1/webhook \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
+
+## MSISDN Format 
+When specifying phone numbers (MSISDN) in API requests, always use the international format without the '+' sign or any spaces. 
+**Personal Number** 
+```
+<phone_number>@s.whatsapp.net 
+Example: 628123xxxx@s.whatsapp.net
+```
+
+**Group Number** 
+```
+<group_id>@g.us 
+Example: 12345xxxxx@g.us
+```
+
 ## Additional Resources
 
 For detailed API specifications and all available endpoints, refer to:

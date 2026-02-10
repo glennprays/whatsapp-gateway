@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	customLog "github.com/glennprays/log"
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -21,6 +22,7 @@ type IncomingEventHandler struct {
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
+	traceID := uuid.New().String()
 	// Unmarshal incoming event message
 	var eventMsg domainQueue.IncomingEventMessage
 	if err := json.Unmarshal(body, &eventMsg); err != nil {
@@ -62,7 +64,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 		return fmt.Errorf("failed to publish webhook delivery: %w", err)
 	}
 
-	h.Logger.Debug("", fmt.Sprintf("Queued webhook delivery for message %s", eventMsg.MessageID), nil)
+	h.Logger.Debug(traceID, fmt.Sprintf("Queued webhook delivery for message %s", eventMsg.MessageID), nil)
 	return nil
 }
 

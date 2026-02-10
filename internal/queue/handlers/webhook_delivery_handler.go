@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	customLog "github.com/glennprays/log"
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
@@ -18,6 +19,7 @@ type WebhookDeliveryHandler struct {
 }
 
 func (h *WebhookDeliveryHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
+	traceID := uuid.New().String()
 	// Unmarshal webhook delivery message
 	var webhookMsg domainQueue.WebhookDeliveryMessage
 	if err := json.Unmarshal(body, &webhookMsg); err != nil {
@@ -29,6 +31,6 @@ func (h *WebhookDeliveryHandler) Handle(ctx context.Context, body []byte, header
 		return fmt.Errorf("failed to deliver webhook: %w", err)
 	}
 
-	h.Logger.Debug("", fmt.Sprintf("Successfully delivered webhook for message %s", webhookMsg.MessageID), nil)
+	h.Logger.Debug(traceID, fmt.Sprintf("Successfully delivered webhook for message %s", webhookMsg.MessageID), nil)
 	return nil
 }

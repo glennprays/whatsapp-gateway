@@ -8,11 +8,25 @@ import (
 	"time"
 
 	customLog "github.com/glennprays/log"
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 )
+
+// Trace IDs for RabbitMQ operations (not tied to user requests)
+var (
+	traceIDRabbitMQInit   string
+	traceIDRabbitMQHealth string
+	traceIDRabbitMQClose  string
+)
+
+func init() {
+	traceIDRabbitMQInit = fmt.Sprintf("RABBITMQ-INIT:%s", uuid.New().String())
+	traceIDRabbitMQHealth = fmt.Sprintf("RABBITMQ-HEALTH:%s", uuid.New().String())
+	traceIDRabbitMQClose = fmt.Sprintf("RABBITMQ-CLOSE:%s", uuid.New().String())
+}
 
 type RabbitMQQueue struct {
 	config     *config.Config
@@ -40,7 +54,7 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 	}
 
 	mq.healthy = true
-	logger.Info("", "RabbitMQ connection established", nil)
+	logger.Info(traceIDRabbitMQInit, "RabbitMQ connection established", nil)
 
 	// Monitor connection health
 	go mq.monitorConnection()
@@ -187,29 +201,29 @@ func (mq *RabbitMQQueue) monitorConnection() {
 
 			err := <-closeChan
 			if err != nil {
-				mq.logger.Error("", "RabbitMQ connection closed", nil, customLog.Error(err))
+				mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
 				mq.mu.Lock()
 				mq.healthy = false
 				mq.mu.Unlock()
 
 				// Attempt reconnection
-				mq.logger.Info("", "Attempting to reconnect to RabbitMQ...", nil)
+				mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
 				for {
 					time.Sleep(5 * time.Second)
 					if err := mq.connect(); err != nil {
-						mq.logger.Error("", "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
+						mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
 						continue
 					}
 
 					if err := mq.setupTopology(); err != nil {
-						mq.logger.Error("", "Failed to setup topology after reconnect", nil, customLog.Error(err))
+						mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
 						continue
 					}
 
 					mq.mu.Lock()
 					mq.healthy = true
 					mq.mu.Unlock()
-					mq.logger.Info("", "Successfully reconnected to RabbitMQ", nil)
+					mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
 					break
 				}
 			}
@@ -318,7 +332,7 @@ func (mq *RabbitMQQueue) StartWorkers(
 }
 
 func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
-	mq.logger.Info("", "Shutting down RabbitMQ queue...", nil)
+	mq.logger.Info(traceIDRabbitMQClose, "Shutting down RabbitMQ queue...", nil)
 
 	if mq.workerPool != nil {
 		mq.workerPool.Shutdown(timeout)
@@ -329,17 +343,17 @@ func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
 
 	if mq.channel != nil {
 		if err := mq.channel.Close(); err != nil {
-			mq.logger.Error("", "Failed to close channel", nil, customLog.Error(err))
+			mq.logger.Error(traceIDRabbitMQClose, "Failed to close channel", nil, customLog.Error(err))
 		}
 	}
 
 	if mq.conn != nil {
 		if err := mq.conn.Close(); err != nil {
-			mq.logger.Error("", "Failed to close connection", nil, customLog.Error(err))
+			mq.logger.Error(traceIDRabbitMQClose, "Failed to close connection", nil, customLog.Error(err))
 		}
 	}
 
 	mq.healthy = false
-	mq.logger.Info("", "RabbitMQ queue shut down successfully", nil)
+	mq.logger.Info(traceIDRabbitMQClose, "RabbitMQ queue shut down successfully", nil)
 	return nil
 }

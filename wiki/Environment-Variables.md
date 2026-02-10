@@ -87,11 +87,11 @@ cp .env.example .env
 - **Security**: **CRITICAL** - Use a long, random, and secure secret in production
 - **Note**: Changing this will invalidate all existing tokens
 
-#### `JWT_DURATION_MINUTES`
+#### `JWT_TOKEN_DURATION_MINUTES`
 - **Description**: Duration (in minutes) for which the JWT token remains valid
 - **Type**: Integer
 - **Default**: `60`
-- **Example**: `JWT_DURATION_MINUTES=1440` (24 hours)
+- **Example**: `JWT_TOKEN_DURATION_MINUTES=1440` (24 hours)
 - **Note**: Balance security (shorter duration) with user convenience (longer duration)
 
 #### `JWT_ISSUER`
