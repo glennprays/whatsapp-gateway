@@ -1,7 +1,7 @@
 name: Docker Multi-Arch Build
 
 on:
- workflow_run:
+  workflow_run:
     workflows: ["Release (Create Tag)"]
     types:
       - completed
@@ -10,7 +10,7 @@ jobs:
   docker:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'main')
+      github.event.workflow_run.head_branch == 'main'
 
     runs-on: ubuntu-latest
     permissions:
@@ -19,11 +19,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
+
+          if [ -z "$TAG" ]; then
+            echo "No release tag found"
+            exit 1
+          fi
+
+          echo "VERSION=$TAG" >> $GITHUB_OUTPUT
 
       - name: Ensure tag is on main
         run: |
-          git fetch origin main
-          git branch --contains $GITHUB_SHA | grep "main" \
+          git branch --contains "refs/tags/${{ steps.tag.outputs.VERSION }}" | grep "main" \
             || (echo "Tag is not on main branch" && exit 1)
 
       - name: Set up QEMU
@@ -38,10 +54,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version
-        id: tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Build and push multi-arch image
         uses: docker/build-push-action@v5
         with:
@@ -49,5 +61,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE }}:${{ steps.tag.outputs.VERSION }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE }}:latest
+            ${{ vars.DOCKER_IMAGE }}:${{ steps.tag.outputs.VERSION }}
+            ${{ vars.DOCKER_IMAGE }}:latest
