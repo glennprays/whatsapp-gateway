@@ -15,14 +15,14 @@ func ProvideMessageQueue(cfg *config.Config, logger *log.Logger) (domainQueue.Me
 
 	if !cfg.RabbitMQEnabled {
 		logger.Info(traceID, "RabbitMQ disabled, using direct processing", nil)
-		return NewDirectQueue(logger), nil
+		return nil, nil
 	}
 
 	logger.Info(traceID, "RabbitMQ enabled, connecting...", nil)
 	mq, err := NewRabbitMQQueue(cfg, logger)
 	if err != nil {
-		logger.Error(traceID, "Failed to connect to RabbitMQ, falling back to direct processing", nil, log.Error(err))
-		return NewDirectQueue(logger), nil // Graceful fallback
+		logger.Error(traceID, "Failed to connect to RabbitMQ", nil, log.Error(err))
+		return nil, err
 	}
 
 	logger.Info(traceID, "RabbitMQ connected successfully", nil)
