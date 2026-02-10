@@ -61,12 +61,12 @@ jobs:
           done
 
           if [ "$COUNT" -eq 0 ]; then
-            echo "No release label found. Skipping release."
+            echo "No release label found. Skipping."
             exit 0
           fi
 
           if [ "$COUNT" -gt 1 ]; then
-            echo "Multiple release labels found. Failing."
+            echo "Multiple release labels found."
             exit 1
           fi
 
@@ -99,7 +99,10 @@ jobs:
             exit 0
           fi
 
-          IFS='.' read -r MAJOR MINOR PATCH <<< "${{ steps.latest.outputs.TAG#v }}"
+          RAW_TAG="${{ steps.latest.outputs.TAG }}"
+          CLEAN_TAG="${RAW_TAG#v}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CLEAN_TAG"
 
           case "${{ steps.release.outputs.TYPE }}" in
             major)
@@ -161,5 +164,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/whatsapp-gateway:${{ steps.tag.outputs.VERSION }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/whatsapp-gateway:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE }}:${{ steps.tag.outputs.VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKER_IMAGE }}:latest
