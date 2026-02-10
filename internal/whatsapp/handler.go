@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	customLog "github.com/glennprays/log"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -73,7 +73,6 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 				MessageID:   v.Info.ID,
 				Timestamp:   v.Info.Timestamp.Unix(),
 			})
-
 			if err != nil {
 				h.logger.Error(traceID, "Queue publish failed for "+MaskedPhoneNumber(phoneNumber)+", using direct delivery", nil, customLog.Error(err))
 				// Fallback to direct delivery
@@ -115,6 +114,7 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 
 func buildWebhookPayload(msg *events.Message) map[string]interface{} {
 	payload := map[string]interface{}{
+		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
 		"from":       msg.Info.Sender.String(),

@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.24 AS builder
+FROM golang:1.25 AS builder
 
 # Set the current working directory inside the container
 WORKDIR /app
@@ -14,7 +14,11 @@ RUN go mod download
 COPY . .
 
 # Build the Go application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/main ./cmd/api/main.go
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -o /app/main ./cmd/api/main.go
 
 # Stage 2: Prepare CA certificates and timezone data
 FROM debian:bullseye-slim AS certs-and-tzdata
