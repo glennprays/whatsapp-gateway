@@ -57,12 +57,12 @@ func InitializeApp() (*App, func(), error) {
 	whatsappWebhookUsecase := whatsapp_usecase.ProvideWhatsappWebhookUsecase(manager, logger)
 	whatsappWebhookHandler := whatsapp_handler.ProvideWhatsappWebhookHandler(whatsappWebhookUsecase, logger)
 	jobRepository := queue2.ProvideJobRepository(db)
-	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository)
+	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
+	webhookSender := whatsapp.ProvideWebhookSender(cipher)
+	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig)
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
 	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue)
-	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
-	webhookSender := whatsapp.ProvideWebhookSender(cipher)
 	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository)
 	if err != nil {
 		return nil, nil, err

@@ -8,17 +8,32 @@ import (
 	"time"
 
 	customLog "github.com/glennprays/log"
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 )
 
+// Trace IDs for RabbitMQ operations (not tied to user requests)
+var (
+	traceIDRabbitMQInit   string
+	traceIDRabbitMQHealth string
+	traceIDRabbitMQClose  string
+)
+
+func init() {
+	traceIDRabbitMQInit = fmt.Sprintf("RABBITMQ-INIT:%s", uuid.New().String())
+	traceIDRabbitMQHealth = fmt.Sprintf("RABBITMQ-HEALTH:%s", uuid.New().String())
+	traceIDRabbitMQClose = fmt.Sprintf("RABBITMQ-CLOSE:%s", uuid.New().String())
+}
+
 type RabbitMQQueue struct {
 	config     *config.Config
 	logger     *customLog.Logger
 	conn       *amqp.Connection
-	channel    *amqp.Channel
+	publishCh  *amqp.Channel
+	consumeCh  *amqp.Channel
 	mu         sync.RWMutex
 	healthy    bool
 	workerPool *WorkerPool
@@ -40,7 +55,7 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 	}
 
 	mq.healthy = true
-	logger.Info("", "RabbitMQ connection established", nil)
+	logger.Info(traceIDRabbitMQInit, "RabbitMQ connection established", nil)
 
 	// Monitor connection health
 	go mq.monitorConnection()
@@ -58,22 +73,35 @@ func (mq *RabbitMQQueue) connect() error {
 		return err
 	}
 
-	ch, err := conn.Channel()
+	consumeCh, err := conn.Channel()
 	if err != nil {
 		conn.Close()
 		return err
 	}
 
-	// Set prefetch count for load balancing across workers
-	if err := ch.Qos(mq.config.RabbitMQPrefetchCount, 0, false); err != nil {
-		ch.Close()
+	publishCh, err := conn.Channel()
+	if err != nil {
+		consumeCh.Close()
+		conn.Close()
+		return err
+	}
+
+	// QoS ONLY on consume channel
+	if err := consumeCh.Qos(
+		mq.config.RabbitMQPrefetchCount,
+		0,
+		false,
+	); err != nil {
+		publishCh.Close()
+		consumeCh.Close()
 		conn.Close()
 		return err
 	}
 
 	mq.mu.Lock()
 	mq.conn = conn
-	mq.channel = ch
+	mq.consumeCh = consumeCh
+	mq.publishCh = publishCh
 	mq.mu.Unlock()
 
 	return nil
@@ -81,7 +109,7 @@ func (mq *RabbitMQQueue) connect() error {
 
 func (mq *RabbitMQQueue) setupTopology() error {
 	mq.mu.RLock()
-	ch := mq.channel
+	ch := mq.consumeCh
 	mq.mu.RUnlock()
 
 	// Declare main exchange
@@ -187,29 +215,29 @@ func (mq *RabbitMQQueue) monitorConnection() {
 
 			err := <-closeChan
 			if err != nil {
-				mq.logger.Error("", "RabbitMQ connection closed", nil, customLog.Error(err))
+				mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
 				mq.mu.Lock()
 				mq.healthy = false
 				mq.mu.Unlock()
 
 				// Attempt reconnection
-				mq.logger.Info("", "Attempting to reconnect to RabbitMQ...", nil)
+				mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
 				for {
 					time.Sleep(5 * time.Second)
 					if err := mq.connect(); err != nil {
-						mq.logger.Error("", "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
+						mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
 						continue
 					}
 
 					if err := mq.setupTopology(); err != nil {
-						mq.logger.Error("", "Failed to setup topology after reconnect", nil, customLog.Error(err))
+						mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
 						continue
 					}
 
 					mq.mu.Lock()
 					mq.healthy = true
 					mq.mu.Unlock()
-					mq.logger.Info("", "Successfully reconnected to RabbitMQ", nil)
+					mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
 					break
 				}
 			}
@@ -231,7 +259,7 @@ func (mq *RabbitMQQueue) PublishWebhookDelivery(ctx context.Context, msg domainQ
 
 func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload interface{}) error {
 	mq.mu.RLock()
-	ch := mq.channel
+	ch := mq.publishCh
 	healthy := mq.healthy
 	mq.mu.RUnlock()
 
@@ -274,7 +302,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	outgoingHandler MessageHandler,
 ) error {
 	mq.mu.RLock()
-	ch := mq.channel
+	publishCh := mq.publishCh
+	consumeCh := mq.consumeCh
 	mq.mu.RUnlock()
 
 	workerPool := &WorkerPool{
@@ -287,7 +316,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueIncomingEvents,
 		mq.config.WorkerIncomingEvents,
-		ch,
+		publishCh,
+		consumeCh,
 		incomingHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start incoming events workers: %w", err)
@@ -297,7 +327,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueWebhookDelivery,
 		mq.config.WorkerWebhookDelivery,
-		ch,
+		publishCh,
+		consumeCh,
 		webhookHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start webhook delivery workers: %w", err)
@@ -307,7 +338,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueOutgoingMessages,
 		mq.config.WorkerOutgoingMessages,
-		ch,
+		publishCh,
+		consumeCh,
 		outgoingHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start outgoing messages workers: %w", err)
@@ -318,7 +350,7 @@ func (mq *RabbitMQQueue) StartWorkers(
 }
 
 func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
-	mq.logger.Info("", "Shutting down RabbitMQ queue...", nil)
+	mq.logger.Info(traceIDRabbitMQClose, "Shutting down RabbitMQ queue...", nil)
 
 	if mq.workerPool != nil {
 		mq.workerPool.Shutdown(timeout)
@@ -327,19 +359,19 @@ func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
 	mq.mu.Lock()
 	defer mq.mu.Unlock()
 
-	if mq.channel != nil {
-		if err := mq.channel.Close(); err != nil {
-			mq.logger.Error("", "Failed to close channel", nil, customLog.Error(err))
+	if mq.consumeCh != nil {
+		if err := mq.consumeCh.Close(); err != nil {
+			mq.logger.Error(traceIDRabbitMQClose, "Failed to close channel", nil, customLog.Error(err))
 		}
 	}
 
 	if mq.conn != nil {
 		if err := mq.conn.Close(); err != nil {
-			mq.logger.Error("", "Failed to close connection", nil, customLog.Error(err))
+			mq.logger.Error(traceIDRabbitMQClose, "Failed to close connection", nil, customLog.Error(err))
 		}
 	}
 
 	mq.healthy = false
-	mq.logger.Info("", "RabbitMQ queue shut down successfully", nil)
+	mq.logger.Info(traceIDRabbitMQClose, "RabbitMQ queue shut down successfully", nil)
 	return nil
 }
