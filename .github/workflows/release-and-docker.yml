@@ -115,6 +115,11 @@ jobs:
 
           echo "VERSION=v$MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Create and push tag
         run: |
           git tag -a "${{ steps.version.outputs.VERSION }}" \
