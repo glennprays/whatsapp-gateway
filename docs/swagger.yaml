@@ -176,7 +176,120 @@ components:
           type: string
           description: The reaction to add (e.g., "👍", "❤️").
           example: "👍"
-    
+    OutgoingEventMessage:
+      type: string 
+      enum:
+        - message.queued 
+        - message.sent 
+        - message.failed 
+    OutgoingWebhookPayload:
+      type: object
+      properties:
+        event:
+          $ref: '#/components/schemas/OutgoingEventMessage'
+        job_id:
+          type: string
+          description: The ID of the message job.
+          example: "job_1234567890" 
+        to:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        phone_number:
+          type: string
+          description: The sender's phone number.
+          example: "6281234567890"
+        timestamp:
+          type: integer
+          description: The timestamp of the event in Unix epoch format.
+          example: 1625247600
+        message_id:
+          type: string
+          description: The ID of the whatsapp message.
+          example: "msg_1234567890" 
+        metadata:
+          type: object
+          description: Additional metadata related to the event.
+          example: {}
+    IncomingEventMessage:
+      type: string 
+      enum:
+        - message.incoming
+    IncomingMessageType:
+      type: string 
+      enum:
+        - text
+        - image
+        - video
+        - audio
+        - document
+    IncomingMessageMediaInfo:
+      type: object 
+      properties:
+        type:
+          $ref: '#/components/schemas/IncomingMessageType' 
+        url:  
+          type: string 
+          description: The URL to access the media content.
+          example: "https://example.com/media/msg_0987654321" 
+        mime_type:
+          type: string 
+          description: The MIME type of the media content.
+          example: "image/jpeg"
+        filename:
+          type: string 
+          description: The original filename of the media content.
+          example: "photo.jpg"
+        caption:
+          type: string 
+          description: The caption associated with the media, if any.
+          example: "Check out this photo!"
+        size:
+          type: integer 
+          description: The size of the media content in bytes.
+          example: 204800 
+        sha256:
+          type: string 
+          description: The SHA-256 hash of the media content for integrity verification.
+          example: "3a7bd3e2360a3d4f8e8b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"
+
+    IncomingWebhookPayload:
+      type: object 
+      properties:
+        event:
+          $ref: '#/components/schemas/IncomingEventMessage'
+        chat:
+          type: string 
+          description: The chat ID where the message was received.
+          example: "6281234567890@s.whatsapp.net"
+        from:
+          type: string
+          description: The sender's Personal ID or Group ID.
+          example: "6281234567890:87@s.whatsapp.net"
+        is_group:
+          type: boolean
+          description: Indicates if the message is from a group.
+          example: false
+        message_id:
+          type: string
+          description: The ID of the received message.
+          example: "msg_0987654321"
+        push_name:
+          type: string
+          description: The display name of the sender.
+          example: "John Doe"
+        timestamp:
+          type: integer
+          description: The timestamp of the message in Unix epoch format.
+          example: 1625247600 
+        text:
+          type: string
+          description: The text content of the message.
+          example: "Hello, this is a test message."
+        type:
+          $ref: '#/components/schemas/IncomingMessageType' 
+        media:
+          $ref: '#/components/schemas/IncomingMessageMediaInfo'
   securitySchemes:
     accountBearerAuth:
       type: http
@@ -552,4 +665,50 @@ paths:
                     example: true
       security:
         - accountBearerAuth: []
+
+webhooks:
+  outgoingWebhook:
+    post:
+      summary: Outgoing WhatsApp Event Webhook
+      description: >
+        Webhook body when doing outgoing WhatsApp events such as message queued, sent, or failed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutgoingWebhookPayload'
+      responses:
+        '200':
+          description: Webhook received successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+  incomingWebhook:
+    post:
+      summary: Incoming WhatsApp Event Webhook
+      description: >
+        Webhook body when receive incoming WhatsApp messages and events.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncomingWebhookPayload'
+      responses:
+        '200':
+          description: Webhook received successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true 
 

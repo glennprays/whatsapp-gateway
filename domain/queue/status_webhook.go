@@ -10,6 +10,8 @@ const (
 	EventMessageSent StatusWebhookEvent = "message.sent"
 	// EventMessageFailed indicates message failed after retries
 	EventMessageFailed StatusWebhookEvent = "message.failed"
+	// EventMessageIncoming indicates an incoming message was received
+	EventMessageIncoming StatusWebhookEvent = "message.incoming"
 )
 
 // StatusWebhookPayload represents the webhook payload for message status updates

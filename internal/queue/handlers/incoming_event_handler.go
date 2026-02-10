@@ -69,6 +69,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 
 func buildWebhookPayload(msg *events.Message) map[string]interface{} {
 	payload := map[string]interface{}{
+		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
 		"from":       msg.Info.Sender.String(),

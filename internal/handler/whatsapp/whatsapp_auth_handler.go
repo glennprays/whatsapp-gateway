@@ -100,7 +100,7 @@ func (h *WhatsappAuthHandler) LoginQRCode(c *fiber.Ctx) error {
 </body>
 </html>
 `, response.QRCode, response.Timeout)
-		return c.Status(http.StatusOK).Type("text/html", "utf-8").Send([]byte(html))
+		return c.Status(http.StatusOK).Type("html").SendString(html)
 	}
 	return nil
 }
