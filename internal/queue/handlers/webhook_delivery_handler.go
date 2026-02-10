@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	customLog "github.com/glennprays/log"
-	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/pkg/queue"
 )
 
 type WebhookDeliveryHandler struct {
@@ -19,7 +19,8 @@ type WebhookDeliveryHandler struct {
 }
 
 func (h *WebhookDeliveryHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
-	traceID := uuid.New().String()
+	traceID := queue.GetTraceIDWorkerProcess(headers)
+
 	// Unmarshal webhook delivery message
 	var webhookMsg domainQueue.WebhookDeliveryMessage
 	if err := json.Unmarshal(body, &webhookMsg); err != nil {

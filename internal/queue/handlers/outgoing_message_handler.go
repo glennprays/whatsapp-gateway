@@ -132,8 +132,14 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		return
 	}
 
+	JID, err := h.Manager.GetJIDFromPhoneNumber(job.PhoneNumber)
+	if err != nil {
+		h.Logger.Error(traceID, "Failed to get JID from phone number for status notification", nil, customLog.Error(err))
+		return
+	}
+
 	// Get webhook configuration for this phone number
-	webhook, _, err := h.Repository.GetWebhookByPhone(ctx, job.PhoneNumber)
+	webhook, err := h.Repository.GetWebhook(ctx, JID)
 	if err != nil {
 		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil, customLog.Error(err))
 		return

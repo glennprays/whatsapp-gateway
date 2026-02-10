@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/google/uuid"
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
@@ -14,6 +13,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
+	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -42,6 +42,7 @@ type (
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
+		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
 	}
 )
 
@@ -325,4 +326,13 @@ func (m *manager) EditMessage(ctx context.Context, traceID string, phoneNumber s
 	)
 
 	return nil
+}
+
+func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
+	client, exists := Clients[phoneNumber]
+	if !exists {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	return client.Store.ID.String(), nil
 }

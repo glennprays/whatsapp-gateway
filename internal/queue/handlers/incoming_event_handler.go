@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	customLog "github.com/glennprays/log"
-	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -22,7 +21,7 @@ type IncomingEventHandler struct {
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
-	traceID := uuid.New().String()
+	traceID := queue.GetTraceIDWorkerProcess(headers)
 	// Unmarshal incoming event message
 	var eventMsg domainQueue.IncomingEventMessage
 	if err := json.Unmarshal(body, &eventMsg); err != nil {

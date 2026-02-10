@@ -329,7 +329,11 @@ func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 	}
 
 	// Get webhook config
-	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, job.PhoneNumber)
+	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(job.PhoneNumber)
+	if err != nil {
+		return
+	}
+	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
 	if err != nil || webhook == nil || webhook.Url == "" {
 		return
 	}
@@ -372,7 +376,11 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 		return
 	}
 
-	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, phoneNumber)
+	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
+	if err != nil {
+		return
+	}
+	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
 	if err != nil || webhook == nil || webhook.Url == "" {
 		return
 	}
@@ -413,7 +421,11 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 		return
 	}
 
-	webhook, _, err := uc.whatsappRepo.GetWebhookByPhone(ctx, phoneNumber)
+	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
+	if err != nil {
+		return
+	}
+	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
 	if err != nil || webhook == nil || webhook.Url == "" {
 		return
 	}

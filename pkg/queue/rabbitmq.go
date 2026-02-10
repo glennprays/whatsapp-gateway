@@ -32,7 +32,8 @@ type RabbitMQQueue struct {
 	config     *config.Config
 	logger     *customLog.Logger
 	conn       *amqp.Connection
-	channel    *amqp.Channel
+	publishCh  *amqp.Channel
+	consumeCh  *amqp.Channel
 	mu         sync.RWMutex
 	healthy    bool
 	workerPool *WorkerPool
@@ -72,22 +73,35 @@ func (mq *RabbitMQQueue) connect() error {
 		return err
 	}
 
-	ch, err := conn.Channel()
+	consumeCh, err := conn.Channel()
 	if err != nil {
 		conn.Close()
 		return err
 	}
 
-	// Set prefetch count for load balancing across workers
-	if err := ch.Qos(mq.config.RabbitMQPrefetchCount, 0, false); err != nil {
-		ch.Close()
+	publishCh, err := conn.Channel()
+	if err != nil {
+		consumeCh.Close()
+		conn.Close()
+		return err
+	}
+
+	// QoS ONLY on consume channel
+	if err := consumeCh.Qos(
+		mq.config.RabbitMQPrefetchCount,
+		0,
+		false,
+	); err != nil {
+		publishCh.Close()
+		consumeCh.Close()
 		conn.Close()
 		return err
 	}
 
 	mq.mu.Lock()
 	mq.conn = conn
-	mq.channel = ch
+	mq.consumeCh = consumeCh
+	mq.publishCh = publishCh
 	mq.mu.Unlock()
 
 	return nil
@@ -95,7 +109,7 @@ func (mq *RabbitMQQueue) connect() error {
 
 func (mq *RabbitMQQueue) setupTopology() error {
 	mq.mu.RLock()
-	ch := mq.channel
+	ch := mq.consumeCh
 	mq.mu.RUnlock()
 
 	// Declare main exchange
@@ -245,7 +259,7 @@ func (mq *RabbitMQQueue) PublishWebhookDelivery(ctx context.Context, msg domainQ
 
 func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload interface{}) error {
 	mq.mu.RLock()
-	ch := mq.channel
+	ch := mq.publishCh
 	healthy := mq.healthy
 	mq.mu.RUnlock()
 
@@ -288,7 +302,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	outgoingHandler MessageHandler,
 ) error {
 	mq.mu.RLock()
-	ch := mq.channel
+	publishCh := mq.publishCh
+	consumeCh := mq.consumeCh
 	mq.mu.RUnlock()
 
 	workerPool := &WorkerPool{
@@ -301,7 +316,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueIncomingEvents,
 		mq.config.WorkerIncomingEvents,
-		ch,
+		publishCh,
+		consumeCh,
 		incomingHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start incoming events workers: %w", err)
@@ -311,7 +327,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueWebhookDelivery,
 		mq.config.WorkerWebhookDelivery,
-		ch,
+		publishCh,
+		consumeCh,
 		webhookHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start webhook delivery workers: %w", err)
@@ -321,7 +338,8 @@ func (mq *RabbitMQQueue) StartWorkers(
 	if err := workerPool.StartWorkerGroup(
 		QueueOutgoingMessages,
 		mq.config.WorkerOutgoingMessages,
-		ch,
+		publishCh,
+		consumeCh,
 		outgoingHandler,
 	); err != nil {
 		return fmt.Errorf("failed to start outgoing messages workers: %w", err)
@@ -341,8 +359,8 @@ func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
 	mq.mu.Lock()
 	defer mq.mu.Unlock()
 
-	if mq.channel != nil {
-		if err := mq.channel.Close(); err != nil {
+	if mq.consumeCh != nil {
+		if err := mq.consumeCh.Close(); err != nil {
 			mq.logger.Error(traceIDRabbitMQClose, "Failed to close channel", nil, customLog.Error(err))
 		}
 	}
