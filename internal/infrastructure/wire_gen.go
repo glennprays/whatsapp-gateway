@@ -22,6 +22,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	"github.com/glennprays/whatsapp-gateway/pkg/queue"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -59,7 +60,15 @@ func InitializeApp() (*App, func(), error) {
 	jobRepository := queue2.ProvideJobRepository(db)
 	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
 	webhookSender := whatsapp.ProvideWebhookSender(cipher)
-	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig)
+	client, err := database.ProvideRedis(configConfig, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	limiter, err := ratelimiter.ProvideRateLimiter(configConfig, client)
+	if err != nil {
+		return nil, nil, err
+	}
+	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig, limiter)
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
 	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue)

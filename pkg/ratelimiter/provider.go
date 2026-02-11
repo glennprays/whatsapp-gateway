@@ -7,12 +7,12 @@ import (
 
 func ProvideRateLimiter(cfg *config.Config, rdb *redis.Client) (Limiter, error) {
 	limiterCfg := Config{
-		Limit:  cfg.RateLimitRequests,
+		Limit:  cfg.MessageRateLimitRequests,
 		Window: cfg.GetRateLimitDuration(),
 		Prefix: "whatsapp:gateway:ratelimiter:",
 	}
 
-	switch cfg.RateLimitProvider {
+	switch cfg.MessageRateLimitProvider {
 	case ProviderRedis:
 		return NewRedisLimiter(rdb, limiterCfg), nil
 	case ProviderMemory:

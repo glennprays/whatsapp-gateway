@@ -35,9 +35,9 @@ type Config struct {
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 
 	// Rate Limiting Configuration
-	RateLimitProvider        string `mapstructure:"RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
-	RateLimitRequests        int64  `mapstructure:"RATE_LIMIT_REQUESTS" default:"100"`
-	RateLimitDurationSeconds int64  `mapstructure:"RATE_LIMIT_DURATION_SECONDS" default:"60"`
+	MessageRateLimitProvider        string `mapstructure:"MESSAGE_RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
+	MessageRateLimitRequests        int64  `mapstructure:"MESSAGE_RATE_LIMIT_REQUESTS" default:"100"`
+	MessageRateLimitDurationSeconds int64  `mapstructure:"MESSAGE_RATE_LIMIT_DURATION_SECONDS" default:"60"`
 
 	// RabbitMQ Configuration
 	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
@@ -125,6 +125,6 @@ func (c *Config) GetJwtDuration() *time.Duration {
 }
 
 func (c *Config) GetRateLimitDuration() time.Duration {
-	d := time.Duration(c.RateLimitDurationSeconds) * time.Second
+	d := time.Duration(c.MessageRateLimitDurationSeconds) * time.Second
 	return d
 }
