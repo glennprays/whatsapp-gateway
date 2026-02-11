@@ -34,11 +34,20 @@ type Config struct {
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 
+	// Rate Limiting Configuration
+	RateLimitProvider        string `mapstructure:"RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
+	RateLimitRequests        int64  `mapstructure:"RATE_LIMIT_REQUESTS" default:"100"`
+	RateLimitDurationSeconds int64  `mapstructure:"RATE_LIMIT_DURATION_SECONDS" default:"60"`
+
 	// RabbitMQ Configuration
 	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
 	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
 	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+
+	// Redis Configuration
+	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`
+	RedisURI     string `mapstructure:"REDIS_URI" default:"redis://localhost:6379/0"`
 
 	// Worker Pool Sizes
 	WorkerIncomingEvents   int `mapstructure:"WORKER_INCOMING_EVENTS" default:"5"`
@@ -113,4 +122,9 @@ func Load() (*Config, error) {
 func (c *Config) GetJwtDuration() *time.Duration {
 	d := time.Duration(c.JwtDurationMinutes) * time.Minute
 	return &d
+}
+
+func (c *Config) GetRateLimitDuration() time.Duration {
+	d := time.Duration(c.RateLimitDurationSeconds) * time.Second
+	return d
 }
