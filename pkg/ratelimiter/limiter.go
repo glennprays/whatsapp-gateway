@@ -13,6 +13,24 @@ const (
 	ProviderNoop   = "noop"
 )
 
+type RateLimitError struct {
+	RetryAfter time.Duration
+	Limit      int64
+	Remaining  int64
+}
+
+func (e *RateLimitError) Error() string {
+	return "rate limit exceeded"
+}
+
+func (e *RateLimitError) BuildError(res Result) error {
+	return &RateLimitError{
+		RetryAfter: res.RetryAfter,
+		Limit:      res.Limit,
+		Remaining:  res.Remaining,
+	}
+}
+
 type Limiter interface {
 	Allow(ctx context.Context, key string) (Result, error)
 	AllowN(ctx context.Context, key string, n int64) (Result, error)

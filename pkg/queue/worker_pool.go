@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/glennprays/whatsapp-gateway/config"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
 // Trace IDs for worker pool operations (not tied to user requests)
@@ -151,24 +153,33 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 			customLog.Error(err),
 		)
 
-		if retryCount >= wg.config.QueueMaxRetries {
-			_ = msg.Nack(false, false)
-			return
-		}
-
-		headers[RetryCountKey] = retryCount + 1
-
 		task := retryTask{
 			queue:   wg.queueName,
 			headers: headers,
 			body:    msg.Body,
-			delay:   retryBackoff(retryCount),
 		}
 
-		select {
-		case wg.retryCh <- task:
-			// durability boundary crossed
-			_ = msg.Ack(false)
+		var rlErr *ratelimiter.RateLimitError
+		if errors.As(err, &rlErr) {
+			task.delay = rlErr.RetryAfter
+			wg.logger.Warn(
+				traceID,
+				fmt.Sprintf(
+					"Worker %s: rate limited, retrying after %s",
+					workerName,
+					rlErr.RetryAfter,
+				),
+				nil,
+			)
+		} else {
+			if retryCount >= wg.config.QueueMaxRetries {
+				_ = msg.Nack(false, false)
+				return
+			}
+
+			headers[RetryCountKey] = retryCount + 1
+
+			task.delay = retryBackoff(retryCount)
 			wg.logger.Info(
 				traceID,
 				fmt.Sprintf(
@@ -180,6 +191,12 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 				),
 				nil,
 			)
+		}
+
+		select {
+		case wg.retryCh <- task:
+			// durability boundary crossed
+			_ = msg.Ack(false)
 		default:
 			// retry buffer full → DLQ
 			wg.logger.Error(

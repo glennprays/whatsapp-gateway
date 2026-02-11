@@ -72,7 +72,7 @@ func InitializeApp() (*App, func(), error) {
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
 	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue)
-	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository)
+	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, limiter)
 	if err != nil {
 		return nil, nil, err
 	}
