@@ -193,23 +193,32 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 			)
 		}
 
-		select {
-		case wg.retryCh <- task:
-			// durability boundary crossed
-			_ = msg.Ack(false)
-		default:
-			// retry buffer full → DLQ
-			wg.logger.Error(
-				traceID,
-				"retry buffer full, sending to DLQ",
-				nil,
-			)
-			_ = msg.Nack(false, false)
+		if err := wg.publishRetry(task); err != nil {
+			wg.logger.Error(traceID, "failed to publish retry", nil, customLog.Error(err))
+			_ = msg.Nack(false, true)
+			return
 		}
-		return
 	}
 
 	_ = msg.Ack(false)
+}
+
+func (wg *WorkerGroup) publishRetry(task retryTask) error {
+	expiration := fmt.Sprintf("%d", task.delay.Milliseconds())
+
+	return wg.publishCh.Publish(
+		ExchangeName,
+		fmt.Sprintf("%s.retry", task.queue),
+		false,
+		false,
+		amqp.Publishing{
+			Headers:      task.headers,
+			Body:         task.body,
+			DeliveryMode: amqp.Persistent,
+			Expiration:   expiration,
+			Timestamp:    time.Now(),
+		},
+	)
 }
 
 func retryBackoff(retry int) time.Duration {

@@ -19,4 +19,9 @@ const (
 	RoutingKeyIncomingEvent = "event.incoming"
 	RoutingKeyWebhook       = "webhook.delivery"
 	RoutingKeyOutgoingMsg   = "message.outgoing"
+
+	// Retry queue names
+	RetryIncomingEvents   = "whatsapp.events.incoming.retry"
+	RetryWebhookDelivery  = "whatsapp.webhooks.delivery.retry"
+	RetryOutgoingMessages = "whatsapp.messages.outgoing.retry"
 )
