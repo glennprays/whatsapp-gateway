@@ -13,10 +13,12 @@ func NewConnection(logger *log.Logger, driverName string, dataSouceName string) 
 	db, err := sql.Open(driverName, dataSouceName)
 	if err != nil {
 		logger.Warn(dbTraceID, "Error Open Database", log.Error(err))
+		return nil, err
 	}
 
 	if err = db.Ping(); err != nil {
 		logger.Warn(dbTraceID, "Error Ping Database", log.Error(err))
+		return nil, err
 	}
 	logger.Info(dbTraceID, "Database connection established successfully", nil)
 	return db, nil

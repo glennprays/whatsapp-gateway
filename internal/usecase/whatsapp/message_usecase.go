@@ -3,6 +3,7 @@ package whatsapp_usecase
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -17,6 +18,7 @@ import (
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 	"github.com/google/uuid"
 )
 
@@ -29,6 +31,7 @@ type WhatsappMessageUsecase struct {
 	whatsappRepo    whatsapp.WhatsAppRepository
 	webhookSender   *whatsapp.WebhookSender
 	config          *config.Config
+	limiter         ratelimiter.Limiter
 }
 
 // NewWhatsappMessageUsecase creates a new message usecase
@@ -40,6 +43,7 @@ func NewWhatsappMessageUsecase(
 	whatsappRepo whatsapp.WhatsAppRepository,
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
+	limiter ratelimiter.Limiter,
 ) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
 		whatsappManager: manager,
@@ -49,6 +53,7 @@ func NewWhatsappMessageUsecase(
 		whatsappRepo:    whatsappRepo,
 		webhookSender:   webhookSender,
 		config:          cfg,
+		limiter:         limiter,
 	}
 }
 
@@ -96,6 +101,25 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
+	res, err := uc.limiter.Allow(ctx, phoneNumber)
+	if err != nil {
+		uc.logger.Error(traceID, "Rate limiter error", map[string]interface{}{
+			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
+		}, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	if !res.Allowed {
+		uc.logger.Warn(traceID, "Rate limit exceeded", map[string]interface{}{
+			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
+			"limit":        res.Limit,
+			"retry_after":  res.RetryAfter.Seconds(),
+			"reset_after":  res.ResetAfter.Seconds(),
+			"remaining":    res.Remaining,
+		})
+		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, errors.New(fmt.Sprintf("Rate limit exceeded. Retry after %.0f seconds", res.RetryAfter.Seconds())))
+	}
+
 	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send text message", []customLog.Field{

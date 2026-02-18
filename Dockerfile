@@ -17,7 +17,7 @@ COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /app/main ./cmd/api/main.go
 
 # Stage 2: Prepare CA certificates and timezone data
@@ -31,8 +31,8 @@ FROM scratch
 
 # Copy the compiled Go binary from the build stage
 COPY --from=builder /app/main /main
-COPY --from=builder /app/docs/swagger.yaml /docs/swagger.yaml
-COPY --from=builder /app/docs/swagger-ui /docs/swagger-ui
+COPY --from=builder /app/docs/openapi.yaml /docs/openapi.yaml
+COPY --from=builder /app/docs/ui /docs/ui
 
 # Copy CA certificates from the certs stage
 COPY --from=certs-and-tzdata /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
@@ -48,6 +48,7 @@ WORKDIR /
 
 # Set the default timezone to UTC
 ENV TZ=UTC
+ENV PORT=3000
 
 # Command to run the Go application
 CMD ["/main"]

@@ -143,10 +143,11 @@ func (mq *RabbitMQQueue) setupTopology() error {
 		name       string
 		routingKey string
 		dlq        string
+		retry      string
 	}{
-		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents},
-		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery},
-		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages},
+		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents, RetryIncomingEvents},
+		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery, RetryWebhookDelivery},
+		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages, RetryOutgoingMessages},
 	}
 
 	for _, q := range queues {
@@ -186,6 +187,21 @@ func (mq *RabbitMQQueue) setupTopology() error {
 			},
 		); err != nil {
 			return fmt.Errorf("failed to declare queue %s: %w", q.name, err)
+		}
+
+		// Declare retry queue
+		if _, err := ch.QueueDeclare(
+			q.retry,
+			true,
+			false,
+			false,
+			false,
+			amqp.Table{
+				"x-dead-letter-exchange":    ExchangeName,
+				"x-dead-letter-routing-key": q.routingKey,
+			},
+		); err != nil {
+			return fmt.Errorf("failed to declare retry queue %s: %w", q.retry, err)
 		}
 
 		// Bind queue to exchange

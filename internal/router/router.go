@@ -75,10 +75,10 @@ func SetupRouter(
 		return c.Status(http.StatusOK).JSON(response)
 	})
 
-	if cfg.EnableSwagger {
-		traceID := fmt.Sprintf("SWAGGER-INIT:%s", uuid.New().String())
-		logger.Info(traceID, "Swagger is enabled, initializing Swagger routes", nil)
-		initSwaggerRoutes(app)
+	if cfg.EnableDocumentation {
+		traceID := fmt.Sprintf("DOCS-INIT:%s", uuid.New().String())
+		logger.Info(traceID, "Documentation is enabled, initializing Documentation routes", nil)
+		initDocumentationRoutes(app)
 	}
 
 	api.Post("/register", h.AuthHandler.Register)

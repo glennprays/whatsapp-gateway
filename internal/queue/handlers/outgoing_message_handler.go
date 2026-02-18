@@ -15,6 +15,7 @@ import (
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
 type OutgoingMessageHandler struct {
@@ -24,12 +25,14 @@ type OutgoingMessageHandler struct {
 	Repository whatsapp.WhatsAppRepository
 	Sender     *whatsapp.WebhookSender
 	Config     *config.Config
+	Limiter    ratelimiter.Limiter
 }
 
 func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
 	// Unmarshal outgoing message job
+	var err error
 	var job domainQueue.OutgoingMessageJob
-	if err := json.Unmarshal(body, &job); err != nil {
+	if err = json.Unmarshal(body, &job); err != nil {
 		return fmt.Errorf("failed to unmarshal outgoing message job: %w", err)
 	}
 
@@ -43,6 +46,25 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		})
 	}
 
+	var res ratelimiter.Result
+	res, err = h.Limiter.Allow(ctx, job.PhoneNumber)
+	if err != nil {
+		h.Logger.Error(traceID, "Rate limiter error", nil, customLog.Error(err))
+		return err
+	}
+
+	if !res.Allowed {
+		errMsg := fmt.Sprintf("Rate limit exceeded. Retry after %s", res.RetryAfter.String())
+		h.Logger.Warn(traceID, errMsg, map[string]interface{}{
+			"phone_number": job.PhoneNumber,
+			"limit":        res.Limit,
+			"remaining":    res.Remaining,
+		})
+
+		rateLimitErr := &ratelimiter.RateLimitError{}
+		return rateLimitErr.BuildError(res)
+	}
+
 	// Update job status to processing
 	if err := h.JobRepo.UpdateStatus(ctx, job.JobID, "processing", "", ""); err != nil {
 		h.Logger.Error(traceID, fmt.Sprintf("Failed to update job %s to processing", job.JobID), nil, customLog.Error(err))
@@ -50,7 +72,6 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	// Process based on job type using Manager interface
 	var messageID string
-	var err error
 
 	switch job.Type {
 	case "text":

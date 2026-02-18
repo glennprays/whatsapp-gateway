@@ -8,6 +8,7 @@ import (
 	queueHandlers "github.com/glennprays/whatsapp-gateway/internal/queue/handlers"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
 // ProvideQueueWorkers starts worker pools
@@ -19,6 +20,7 @@ func ProvideQueueWorkers(
 	manager whatsapp.Manager,
 	logger *log.Logger,
 	jobRepo *queue.JobRepository,
+	limiter ratelimiter.Limiter,
 ) (*pkgQueue.WorkerManager, error) {
 	if !cfg.RabbitMQEnabled {
 		return nil, nil // No workers in direct mode
@@ -48,6 +50,7 @@ func ProvideQueueWorkers(
 		Repository: repo,
 		Sender:     sender,
 		Config:     cfg,
+		Limiter:    limiter,
 	}
 
 	// Start workers

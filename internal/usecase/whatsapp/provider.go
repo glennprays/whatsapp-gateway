@@ -6,6 +6,7 @@ import (
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
 // ProvideWhatsappAuthUsecase initializes WhatsApp authentication usecase
@@ -27,6 +28,7 @@ func ProvideWhatsappMessageUsecase(
 	whatsappRepo whatsapp.WhatsAppRepository,
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
+	limiter ratelimiter.Limiter,
 ) *WhatsappMessageUsecase {
-	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo, whatsappRepo, webhookSender, cfg)
+	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo, whatsappRepo, webhookSender, cfg, limiter)
 }

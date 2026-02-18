@@ -11,15 +11,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type SwaggerSession struct {
+type DocumentationSession struct {
 	sessions map[string]time.Time
 	mu       sync.RWMutex
 	username string
 	password string
 }
 
-func NewSwaggerSessionAuth(username, password string) *SwaggerSession {
-	s := &SwaggerSession{
+func NewDocsSessionAuth(username, password string) *DocumentationSession {
+	s := &DocumentationSession{
 		sessions: make(map[string]time.Time),
 		username: username,
 		password: password,
@@ -28,7 +28,7 @@ func NewSwaggerSessionAuth(username, password string) *SwaggerSession {
 	return s
 }
 
-func (s *SwaggerSession) getRedirectPath(c *fiber.Ctx, basePath string) string {
+func (s *DocumentationSession) getRedirectPath(c *fiber.Ctx, basePath string) string {
 	redirect := c.Query("redirect")
 	if redirect == "" {
 		return ""
@@ -45,10 +45,10 @@ func (s *SwaggerSession) getRedirectPath(c *fiber.Ctx, basePath string) string {
 	return redirect
 }
 
-func (s *SwaggerSession) Handler(basePath string) fiber.Handler {
+func (s *DocumentationSession) Handler(basePath string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Check if there's a valid session cookie
-		sessionToken := c.Cookies("swagger_session")
+		sessionToken := c.Cookies("docs_session")
 		if sessionToken != "" && s.isValidSession(sessionToken) {
 			return c.Next()
 		}
@@ -61,7 +61,7 @@ func (s *SwaggerSession) Handler(basePath string) fiber.Handler {
 		}
 
 		if currentPath == loginPath {
-			return c.SendFile("docs/swagger-ui/swagger-login.html")
+			return c.SendFile("docs/ui/login.html")
 		}
 
 		redirectURL := loginPath + "?redirect=" + url.QueryEscape(currentPath)
@@ -69,7 +69,7 @@ func (s *SwaggerSession) Handler(basePath string) fiber.Handler {
 	}
 }
 
-func (s *SwaggerSession) handleLogin(c *fiber.Ctx, basePath string) error {
+func (s *DocumentationSession) handleLogin(c *fiber.Ctx, basePath string) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
 
@@ -79,7 +79,7 @@ func (s *SwaggerSession) handleLogin(c *fiber.Ctx, basePath string) error {
 
 		// Set cookie
 		c.Cookie(&fiber.Cookie{
-			Name:     "swagger_session",
+			Name:     "docs_session",
 			Value:    token,
 			Expires:  time.Now().Add(24 * time.Hour),
 			HTTPOnly: true,
@@ -104,7 +104,7 @@ func (s *SwaggerSession) handleLogin(c *fiber.Ctx, basePath string) error {
 	return c.Redirect(loginURL)
 }
 
-func (s *SwaggerSession) createSession() string {
+func (s *DocumentationSession) createSession() string {
 	token := make([]byte, 32)
 	rand.Read(token)
 	tokenStr := hex.EncodeToString(token)
@@ -116,7 +116,7 @@ func (s *SwaggerSession) createSession() string {
 	return tokenStr
 }
 
-func (s *SwaggerSession) isValidSession(token string) bool {
+func (s *DocumentationSession) isValidSession(token string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -128,7 +128,7 @@ func (s *SwaggerSession) isValidSession(token string) bool {
 	return time.Now().Before(expiry)
 }
 
-func (s *SwaggerSession) cleanupExpiredSessions() {
+func (s *DocumentationSession) cleanupExpiredSessions() {
 	ticker := time.NewTicker(30 * time.Minute)
 	for range ticker.C {
 		s.mu.Lock()

@@ -19,6 +19,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/pkg/auth"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/wire"
 )
@@ -40,6 +41,10 @@ func InitializeApp() (*App, func(), error) {
 
 		// Database
 		database.ProvideDatabase,
+		database.ProvideRedis,
+
+		// ratelimiter
+		ratelimiter.ProvideRateLimiter,
 
 		// Infrastructure
 		cipherx.ProvideCipher,

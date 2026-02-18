@@ -10,6 +10,7 @@ var (
 	ErrForbidden        = errors.New("forbidden")
 	ErrConflict         = errors.New("conflict")
 	ErrMethodNotAllowed = errors.New("method not allowed")
+	ErrTooManyRequests  = errors.New("too many requests")
 )
 
 type Error struct {

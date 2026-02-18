@@ -16,10 +16,10 @@ type Config struct {
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
-	EnableSwagger                          bool        `mapstructure:"ENABLE_SWAGGER" default:"true"`
-	SwaggerUser                            string      `mapstructure:"SWAGGER_USER" default:"user"`
-	SwaggerPassword                        string      `mapstructure:"SWAGGER_PASSWORD" default:"password"`
-	SwaggerBasePath                        string      `mapstructure:"SWAGGER_BASE_PATH" default:"/docs"`
+	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"true"`
+	DocumentationUser                      string      `mapstructure:"DOCUMENTATION_USER" default:"user"`
+	DocumentationPassword                  string      `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`
+	DocumentationBasePath                  string      `mapstructure:"DOCUMENTATION_BASE_PATH" default:"/docs"`
 	JwtSecret                              string      `mapstructure:"JWT_SECRET" default:"secret"`
 	JwtDurationMinutes                     int         `mapstructure:"JWT_TOKEN_DURATION_MINUTES" default:"1440"`
 	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
@@ -34,11 +34,20 @@ type Config struct {
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 
+	// Rate Limiting Configuration
+	MessageRateLimitProvider        string `mapstructure:"MESSAGE_RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
+	MessageRateLimitRequests        int64  `mapstructure:"MESSAGE_RATE_LIMIT_REQUESTS" default:"100"`
+	MessageRateLimitDurationSeconds int64  `mapstructure:"MESSAGE_RATE_LIMIT_DURATION_SECONDS" default:"60"`
+
 	// RabbitMQ Configuration
 	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
 	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
 	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+
+	// Redis Configuration
+	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`
+	RedisURI     string `mapstructure:"REDIS_URI" default:"redis://localhost:6379/0"`
 
 	// Worker Pool Sizes
 	WorkerIncomingEvents   int `mapstructure:"WORKER_INCOMING_EVENTS" default:"5"`
@@ -113,4 +122,9 @@ func Load() (*Config, error) {
 func (c *Config) GetJwtDuration() *time.Duration {
 	d := time.Duration(c.JwtDurationMinutes) * time.Minute
 	return &d
+}
+
+func (c *Config) GetRateLimitDuration() time.Duration {
+	d := time.Duration(c.MessageRateLimitDurationSeconds) * time.Second
+	return d
 }
