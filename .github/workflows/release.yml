@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   tag-from-pr:
     if: github.ref == 'refs/heads/main'
@@ -14,11 +19,17 @@ jobs:
       pull-requests: read
 
     steps:
+      # --------------------------------------------------
+      # Checkout full history
+      # --------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # --------------------------------------------------
+      # Get PR associated with this commit
+      # --------------------------------------------------
       - name: Get merged PR
         id: pr
         uses: actions/github-script@v7
@@ -31,7 +42,7 @@ jobs:
             });
 
             if (prs.data.length === 0) {
-              core.info("No PR associated with commit. Skipping release.");
+              core.info("No PR associated with commit.");
               return null;
             }
 
@@ -39,12 +50,18 @@ jobs:
 
       - name: Exit if no PR
         if: steps.pr.outputs.result == ''
-        run: exit 0
+        run: |
+          echo "No PR found. Skipping release."
+          exit 0
 
-      - name: Determine release type from labels
+      # --------------------------------------------------
+      # Determine release type from labels
+      # --------------------------------------------------
+      - name: Determine release type
         id: release
         run: |
           LABELS="${{ join(fromJson(steps.pr.outputs.result).labels.*.name, ' ') }}"
+          echo "PR Labels: $LABELS"
 
           COUNT=0
           for t in major minor patch; do
@@ -60,39 +77,54 @@ jobs:
           fi
 
           if [ "$COUNT" -gt 1 ]; then
-            echo "Multiple release labels found."
+            echo "Multiple release labels found. Failing."
             exit 1
           fi
 
           echo "TYPE=$TYPE" >> $GITHUB_OUTPUT
 
+      # --------------------------------------------------
+      # Fetch tags
+      # --------------------------------------------------
       - name: Fetch tags
         run: git fetch --tags
 
-      - name: Check if first release
-        id: first
+      # --------------------------------------------------
+      # Skip if commit already tagged
+      # --------------------------------------------------
+      - name: Check if commit already tagged
+        id: tagged
         run: |
-          COUNT=$(git tag -l 'v*' | wc -l)
-          if [ "$COUNT" -eq 0 ]; then
-            echo "FIRST=true" >> $GITHUB_OUTPUT
+          if git tag --points-at HEAD | grep -q '^v'; then
+            echo "ALREADY_TAGGED=true" >> $GITHUB_OUTPUT
           else
-            echo "FIRST=false" >> $GITHUB_OUTPUT
+            echo "ALREADY_TAGGED=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Exit if already tagged
+        if: steps.tagged.outputs.ALREADY_TAGGED == 'true'
+        run: |
+          echo "Commit already has a version tag. Skipping."
+          exit 0
+
+      # --------------------------------------------------
+      # Determine latest tag
+      # --------------------------------------------------
       - name: Get latest tag
         id: latest
         run: |
           TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
-          echo "TAG=${TAG:-v0.0.0}" >> $GITHUB_OUTPUT
+          if [ -z "$TAG" ]; then
+            TAG="v0.0.0"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
+      # --------------------------------------------------
+      # Calculate next version
+      # --------------------------------------------------
       - name: Calculate next version
         id: version
         run: |
-          if [ "${{ steps.first.outputs.FIRST }}" = "true" ]; then
-            echo "VERSION=v0.0.1" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
           RAW_TAG="${{ steps.latest.outputs.TAG }}"
           CLEAN_TAG="${RAW_TAG#v}"
 
@@ -100,22 +132,57 @@ jobs:
 
           case "${{ steps.release.outputs.TYPE }}" in
             major)
-              MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+              MAJOR=$((MAJOR+1))
+              MINOR=0
+              PATCH=0
+              ;;
             minor)
-              MINOR=$((MINOR+1)); PATCH=0 ;;
+              MINOR=$((MINOR+1))
+              PATCH=0
+              ;;
             patch)
-              PATCH=$((PATCH+1)) ;;
+              PATCH=$((PATCH+1))
+              ;;
           esac
 
-          echo "VERSION=v$MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
+          VERSION="v$MAJOR.$MINOR.$PATCH"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Next version: $VERSION"
 
+      # --------------------------------------------------
+      # Ensure tag does not already exist remotely
+      # --------------------------------------------------
+      - name: Check if tag already exists
+        id: tag_exists
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+          else
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit if tag exists
+        if: steps.tag_exists.outputs.EXISTS == 'true'
+        run: |
+          echo "Tag already exists. Skipping."
+          exit 0
+
+      # --------------------------------------------------
+      # Configure git identity
+      # --------------------------------------------------
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      # --------------------------------------------------
+      # Create and push tag
+      # --------------------------------------------------
       - name: Create and push tag
         run: |
-          git tag -a "${{ steps.version.outputs.VERSION }}" \
-            -m "Release ${{ steps.version.outputs.VERSION }}"
-          git push origin "${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+          echo "Successfully created tag $VERSION"
