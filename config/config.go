@@ -16,10 +16,10 @@ type Config struct {
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
-	EnableSwagger                          bool        `mapstructure:"ENABLE_SWAGGER" default:"true"`
-	SwaggerUser                            string      `mapstructure:"SWAGGER_USER" default:"user"`
-	SwaggerPassword                        string      `mapstructure:"SWAGGER_PASSWORD" default:"password"`
-	SwaggerBasePath                        string      `mapstructure:"SWAGGER_BASE_PATH" default:"/docs"`
+	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"true"`
+	DocumentationUser                      string      `mapstructure:"DOCUMENTATION_USER" default:"user"`
+	DocumentationPassword                  string      `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`
+	DocumentationBasePath                  string      `mapstructure:"DOCUMENTATION_BASE_PATH" default:"/docs"`
 	JwtSecret                              string      `mapstructure:"JWT_SECRET" default:"secret"`
 	JwtDurationMinutes                     int         `mapstructure:"JWT_TOKEN_DURATION_MINUTES" default:"1440"`
 	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`

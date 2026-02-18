@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whatsapp Gateway Documentation</title>
+
+  <!-- External CSS -->
+    <link rel="stylesheet" href="/{{ .BasePath }}/assets/styles.css">
+  
+  <!-- RapiDoc Web Component -->
+  <script
+    type="module"
+    src="/{{ .BasePath }}/assets/rapidoc-min.js">
+  </script>
+  
+  <!-- Marked.js for Markdown rendering -->
+  <script src="/{{ .BasePath }}/assets/marked.min.js"></script>
+  
+  <!-- Load fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Next.js style header -->
+  <div class="header">
+    <div class="header-content">
+      <div class="header-left">
+        <a href="#" class="logo" id="logo-link">
+          <!-- <div class="logo-icon"></div> -->
+            <span class="logo-text">Whatsapp Gateway</span>
+        </a>
+        <div class="nav-tabs">
+          <button class="nav-tab active" data-view="docs">Docs</button>
+          <button class="nav-tab" data-view="api">API</button>
+        </div>
+      </div>
+      <div class="header-right">
+        <!-- <span class="version-badge">v2.0.0</span> -->
+        <a href="https://github.com/glennprays/whatsapp-gateway" class="github-link" target="_blank">GitHub →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="content-container">
+    <!-- Documentation View (Next.js style) -->
+    <div id="docs-view" class="content-view active">
+      <div class="docs-layout">
+        <!-- Sidebar Navigation - Will be generated dynamically -->
+        <nav class="docs-sidebar" id="sidebar">
+          <!-- Sidebar will be populated by JavaScript -->
+        </nav>
+
+        <!-- Main Content -->
+        <main class="docs-content">
+          <div class="docs-inner">
+            <div class="markdown-content" id="markdown-content">
+              <div class="loading-spinner">
+                <div class="spinner"></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- API Reference View (RapiDoc) -->
+    <div id="api-view" class="content-view">
+      <rapi-doc
+        id="rapi-doc-element"
+        render-style="focused"
+        layout="row"
+        schema-style="table"
+        schema-expand-level="1"
+        show-method-in-nav-bar="as-colored-block"
+        use-path-in-nav-bar="true"
+        allow-try="true"
+        allow-server-selection="true"
+        allow-authentication="true"
+        show-header="false"
+        show-info="true"
+        theme="dark"
+        bg-color="#000000"
+        text-color="#ededed"
+        primary-color="#3b82f6"
+        nav-bg-color="#000000"
+        nav-text-color="#ededed"
+        nav-hover-bg-color="#0a0a0a"
+        nav-accent-color="#3b82f6"
+        font-size="default"
+        response-area-height="400px"
+        style="width: 100%; height: calc(100vh - 64px);"
+      >
+      </rapi-doc>
+    </div>
+  </div>
+
+  <!-- External JavaScript -->
+    <script src="/{{ .BasePath }}/assets/app.js"></script>
+</body>
+</html>

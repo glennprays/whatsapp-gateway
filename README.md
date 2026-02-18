@@ -70,7 +70,7 @@ go build -o api ./cmd/api
 2. **Scan the QR code** with your WhatsApp mobile app
 3. **Start sending messages** through the REST API
 4. **Receive messages** via configured webhooks
-That's it! Check the API documentation at `/docs` (if Swagger is enabled) for detailed endpoint information.
+That's it! Check the API documentation at `/docs` (if Documentation is enabled) for detailed endpoint information.
 
 ## Features
 

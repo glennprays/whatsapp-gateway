@@ -22,8 +22,8 @@ type Runtime struct {
 func NewRuntime(app *App) (*Runtime, error) {
 	traceID := uuid.New().String()
 
-	// Initialize Swagger documentation
-	docs.NewSwagger(traceID, app.Config, app.Logger)
+	// Initialize documentation UI
+	docs.NewDocumentation(traceID, app.Config, app.Logger)
 
 	// Create HTTP server
 	server := NewServer(app.FiberApp, app.Config.Port, app.Logger)

@@ -11,43 +11,43 @@ import (
 )
 
 var (
-	swaggerByte []byte
-	cfg         *config.Config
-	logger      *log.Logger
-	traceID     string
+	docsByte []byte
+	cfg      *config.Config
+	logger   *log.Logger
+	traceID  string
 )
 
-func NewSwagger(trcID string, conf *config.Config, logg *log.Logger) {
+func NewDocumentation(trcID string, conf *config.Config, logg *log.Logger) {
 	logger = logg
 	cfg = conf
 	traceID = trcID
-	swaggerByte = serveDynamicSwagger()
+	docsByte = serveDynamicDocumentation()
 
-	if len(swaggerByte) == 0 {
-		logger.Warn(traceID, "No Swagger documentation found, serving empty response", nil)
+	if len(docsByte) == 0 {
+		logger.Warn(traceID, "No documentation found, serving empty response", nil)
 	}
-	logger.Info(traceID, "Swagger documentation loaded successfully.", nil)
+	logger.Info(traceID, "Documentation loaded successfully.", nil)
 }
 
-func ServeDynamicSwaggerFiber(c *fiber.Ctx) error {
-	if len(swaggerByte) == 0 {
-		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Swagger documentation not found"})
+func ServeDynamicDocumentationFiber(c *fiber.Ctx) error {
+	if len(docsByte) == 0 {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "Documentation not found"})
 	}
 
 	c.Set("Content-Type", "application/x-yaml")
-	return c.Status(http.StatusOK).SendString(string(swaggerByte))
+	return c.Status(http.StatusOK).SendString(string(docsByte))
 }
 
-func serveDynamicSwagger() []byte {
-	yamlFile, err := os.ReadFile("docs/swagger.yaml")
+func serveDynamicDocumentation() []byte {
+	yamlFile, err := os.ReadFile("docs/openapi.yaml")
 	if err != nil {
-		logger.Fatal(traceID, "Error reading swagger.yaml", log.Error(err))
+		logger.Fatal(traceID, "Error reading openapi.yaml", log.Error(err))
 	}
 
 	var data yaml.Node
 	err = yaml.Unmarshal(yamlFile, &data)
 	if err != nil {
-		logger.Fatal(traceID, "Error unmarshaling swagger.yaml", log.Error(err))
+		logger.Fatal(traceID, "Error unmarshaling openapi.yaml", log.Error(err))
 	}
 
 	baseURL := cfg.BasePath
@@ -58,12 +58,12 @@ func serveDynamicSwagger() []byte {
 
 	err = updateServerURL(&data, baseURL)
 	if err != nil {
-		logger.Fatal(traceID, "Error updating server URL in swagger.yaml", log.Error(err))
+		logger.Fatal(traceID, "Error updating server URL in openapi.yaml", log.Error(err))
 	}
 
 	modifiedYAML, err := yaml.Marshal(&data)
 	if err != nil {
-		logger.Fatal(traceID, "Error marshaling modified swagger.yaml", log.Error(err))
+		logger.Fatal(traceID, "Error marshaling modified openapi.yaml", log.Error(err))
 	}
 
 	return modifiedYAML
@@ -86,7 +86,7 @@ func updateServerURL(node *yaml.Node, newURL string) error {
 					for j := 0; j < len(firstServerNode.Content); j += 2 {
 						if firstServerNode.Content[j].Value == "url" {
 							firstServerNode.Content[j+1].Value = newURL
-							logger.Info(traceID, "Updated server URL in Swagger documentation", map[string]any{
+							logger.Info(traceID, "Updated server URL in documentation", map[string]any{
 								"new_url": newURL,
 							})
 							return nil
