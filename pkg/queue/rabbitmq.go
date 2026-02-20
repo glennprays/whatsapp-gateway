@@ -204,6 +204,17 @@ func (mq *RabbitMQQueue) setupTopology() error {
 			return fmt.Errorf("failed to declare retry queue %s: %w", q.retry, err)
 		}
 
+		// Bind retry queue to exchange with retry routing key
+		if err := ch.QueueBind(
+			q.retry,
+			fmt.Sprintf("%s.retry", q.name),
+			ExchangeName,
+			false,
+			nil,
+		); err != nil {
+			return fmt.Errorf("failed to bind retry queue %s: %w", q.retry, err)
+		}
+
 		// Bind queue to exchange
 		if err := ch.QueueBind(
 			q.name,

@@ -42,9 +42,6 @@ type WorkerGroup struct {
 	config    *config.Config
 	stopChan  chan struct{}
 	wg        sync.WaitGroup
-	retryCh   chan retryTask
-	ctx       context.Context
-	cancel    context.CancelFunc
 }
 
 type WorkerPool struct {
@@ -61,7 +58,6 @@ func (wp *WorkerPool) StartWorkerGroup(
 	consumeCh *amqp.Channel,
 	handler MessageHandler,
 ) error {
-	ctx, cancel := context.WithCancel(context.Background())
 	group := &WorkerGroup{
 		queueName: queueName,
 		workers:   workerCount,
@@ -71,11 +67,7 @@ func (wp *WorkerPool) StartWorkerGroup(
 		logger:    wp.logger,
 		config:    wp.config,
 		stopChan:  make(chan struct{}),
-		retryCh:   make(chan retryTask, 1000),
-		ctx:       ctx,
-		cancel:    cancel,
 	}
-	group.startRetryScheduler()
 
 	// Start consuming from queue
 	msgs, err := consumeCh.Consume(
@@ -139,65 +131,67 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 	}
 	headers[TraceIDKey] = traceID
 
-	wg.logger.Debug(
-		traceID,
-		fmt.Sprintf("Worker %s processing message (retry=%d)", workerName, retryCount),
-		nil,
-	)
+	if retryCount > 0 {
+		wg.logger.Info(traceID, fmt.Sprintf(
+			"Worker %s processing RETRY message (attempt %d)",
+			workerName, retryCount+1,
+		), nil)
+	} else {
+		wg.logger.Debug(traceID, fmt.Sprintf(
+			"Worker %s processing message (retry=%d)",
+			workerName, retryCount,
+		), nil)
+	}
 
 	if err := wg.handler(ctx, msg.Body, headers); err != nil {
-		wg.logger.Error(
-			traceID,
-			fmt.Sprintf("Worker %s: handler error", workerName),
-			nil,
-			customLog.Error(err),
-		)
+		if retryCount >= wg.config.QueueMaxRetries {
+			wg.logger.Warn(traceID, fmt.Sprintf(
+				"Worker %s: max retries (%d) exceeded, sending to DLQ",
+				workerName, wg.config.QueueMaxRetries,
+			), nil, customLog.Error(err))
+			_ = msg.Nack(false, false)
+			return
+		}
+
+		newRetryCount := retryCount + 1
+		headers[RetryCountKey] = newRetryCount
+
+		var delay time.Duration
+		var rlErr *ratelimiter.RateLimitError
+		if errors.As(err, &rlErr) {
+			delay = rlErr.RetryAfter
+			wg.logger.Warn(traceID, fmt.Sprintf(
+				"Worker %s: rate limited, scheduling retry %d/%d after %s",
+				workerName, newRetryCount, wg.config.QueueMaxRetries, delay,
+			), nil)
+		} else {
+			delay = retryBackoff(retryCount)
+			wg.logger.Info(traceID, fmt.Sprintf(
+				"Worker %s: handler error, scheduling retry %d/%d in %s",
+				workerName, newRetryCount, wg.config.QueueMaxRetries, delay,
+			), nil, customLog.Error(err))
+		}
 
 		task := retryTask{
 			queue:   wg.queueName,
 			headers: headers,
 			body:    msg.Body,
-		}
-
-		var rlErr *ratelimiter.RateLimitError
-		if errors.As(err, &rlErr) {
-			task.delay = rlErr.RetryAfter
-			wg.logger.Warn(
-				traceID,
-				fmt.Sprintf(
-					"Worker %s: rate limited, retrying after %s",
-					workerName,
-					rlErr.RetryAfter,
-				),
-				nil,
-			)
-		} else {
-			if retryCount >= wg.config.QueueMaxRetries {
-				_ = msg.Nack(false, false)
-				return
-			}
-
-			headers[RetryCountKey] = retryCount + 1
-
-			task.delay = retryBackoff(retryCount)
-			wg.logger.Info(
-				traceID,
-				fmt.Sprintf(
-					"Worker %s scheduled retry in %s (attempt %d/%d)",
-					workerName,
-					task.delay,
-					retryCount+1,
-					wg.config.QueueMaxRetries,
-				),
-				nil,
-			)
+			delay:   delay,
 		}
 
 		if err := wg.publishRetry(task); err != nil {
 			wg.logger.Error(traceID, "failed to publish retry", nil, customLog.Error(err))
-			_ = msg.Nack(false, true)
+			_ = msg.Nack(false, true) // Requeue on publish failure
 			return
 		}
+
+		wg.logger.Info(traceID, fmt.Sprintf(
+			"Worker %s: retry published to %s.retry with %s delay",
+			workerName, wg.queueName, delay,
+		), nil)
+
+		_ = msg.Ack(false) // Ack original message (retry is scheduled)
+		return
 	}
 
 	_ = msg.Ack(false)
@@ -205,10 +199,16 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 
 func (wg *WorkerGroup) publishRetry(task retryTask) error {
 	expiration := fmt.Sprintf("%d", task.delay.Milliseconds())
+	routingKey := fmt.Sprintf("%s.retry", task.queue)
+
+	wg.logger.Debug("RETRY-PUBLISH", fmt.Sprintf(
+		"Publishing to %s with expiration %sms, retryCount=%d",
+		routingKey, expiration, getRetryCount(task.headers),
+	), nil)
 
 	return wg.publishCh.Publish(
 		ExchangeName,
-		fmt.Sprintf("%s.retry", task.queue),
+		routingKey,
 		false,
 		false,
 		amqp.Publishing{
@@ -264,48 +264,6 @@ func GetTraceIDWorkerProcess(headers amqp.Table) string {
 	return uuid.New().String()
 }
 
-func (wg *WorkerGroup) startRetryScheduler() {
-	go func() {
-		for {
-			select {
-			case task := <-wg.retryCh:
-				timer := time.NewTimer(task.delay)
-
-				go func(t retryTask) {
-					select {
-					case <-timer.C:
-						traceID := GetTraceIDWorkerProcess(t.headers)
-						err := wg.publishCh.Publish(
-							"",
-							t.queue,
-							false,
-							false,
-							amqp.Publishing{
-								Headers:      t.headers,
-								Body:         t.body,
-								DeliveryMode: amqp.Persistent,
-							},
-						)
-						if err != nil {
-							wg.logger.Error(
-								traceID,
-								"republish failed",
-								nil,
-								customLog.Error(err),
-							)
-						}
-					case <-wg.ctx.Done():
-						timer.Stop()
-					}
-				}(task)
-
-			case <-wg.ctx.Done():
-				return
-			}
-		}
-	}()
-}
-
 func (wp *WorkerPool) Shutdown(timeout time.Duration) {
 	wp.logger.Info(traceIDWorkerShutdown, "Shutting down worker pools...", nil)
 
@@ -314,7 +272,6 @@ func (wp *WorkerPool) Shutdown(timeout time.Duration) {
 
 	for queueName, group := range wp.pools {
 		close(group.stopChan)
-		close(group.retryCh)
 
 		// Wait for workers to finish with timeout
 		done := make(chan struct{})
