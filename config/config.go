@@ -73,6 +73,7 @@ type Config struct {
 	StorageS3PresignedURLExpiry      int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"3600"`
 	StorageLocalPath                 string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
 	StorageBaseURL                   string `mapstructure:"STORAGE_BASE_URL" default:""`
+	StorageAPIPath                   string `mapstructure:"STORAGE_API_PATH" default:"/storage"`
 }
 
 type Environment string
