@@ -73,6 +73,7 @@ const DOCS_CONFIG = {
       title: "Configuration",
       links: [
         { title: "Environment Variables", file: "configuration/environment-variables" },
+        { title: "Storage Configuration", file: "configuration/storage-configuration" },
 
       ]
     },
