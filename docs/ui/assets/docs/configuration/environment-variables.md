@@ -348,6 +348,106 @@ Default: message.sent,message.failed
 
 Defines which message lifecycle events trigger webhooks.
 
+## Storage Configuration
+
+### STORAGE_PROVIDER
+
+Storage backend provider.
+
+Type: string
+Default: local
+Options:
+- local: Filesystem-based storage (production-ready, full data control)
+- s3: S3/S3-compatible object storage (AWS S3, MinIO, DigitalOcean Spaces, etc.)
+
+Both providers are production-ready. Choose based on infrastructure needs.
+
+### STORAGE_S3_ENDPOINT
+
+S3/S3-compatible service endpoint.
+
+Type: string
+Default: s3.amazonaws.com
+
+AWS S3: s3.amazonaws.com
+MinIO: localhost:9000
+DigitalOcean Spaces: nyc3.digitaloceanspaces.com
+
+### STORAGE_S3_ACCESS_KEY_ID
+
+S3 access key ID.
+
+Type: string
+Default: ""
+
+Required for S3 provider. Can be omitted for local provider.
+
+### STORAGE_S3_SECRET_ACCESS_KEY
+
+S3 secret access key.
+
+Type: string
+Default: ""
+
+Required for S3 provider. Can be omitted for local provider.
+
+### STORAGE_S3_REGION
+
+S3 region.
+
+Type: string
+Default: us-east-1
+
+Required for S3 provider.
+
+### STORAGE_S3_BUCKET
+
+S3 bucket name.
+
+Type: string
+Default: whatsapp-gateway
+
+Required for S3 provider. Bucket must exist or be creatable.
+
+### STORAGE_S3_USE_SSL
+
+Use SSL/TLS for S3 connections.
+
+Type: boolean
+Default: true
+
+Should be true for production. May be false for local MinIO testing.
+
+### STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS
+
+Presigned URL expiration time in seconds.
+
+Type: integer
+Default: 3600
+
+Maximum validity of time-limited access URLs for private files.
+
+### STORAGE_LOCAL_PATH
+
+Local filesystem storage path.
+
+Type: string
+Default: ./storage
+
+For production with Docker, use a persistent volume or bind mount.
+Example: /var/lib/whatsapp-gateway/storage
+
+### STORAGE_BASE_URL
+
+Base URL for public file access (local provider only).
+
+Type: string
+Default: ""
+
+Optional. Used when serving local files via a web server.
+
+Example: https://example.com/storage
+
 ## Production Recommendations
 
 For production deployments:
@@ -360,6 +460,9 @@ For production deployments:
 - Set LOG_LEVEL to info or warn
 - Use strong HMAC secret (32+ random bytes)
 - Restrict HTTP_ORIGIN
+- Use persistent storage for local provider in production (Docker volumes)
+- Enable SSL for S3 provider in production
+- Use appropriate presigned URL expiry based on security requirements
 
 Environment configuration directly impacts system reliability and security.  
 Defaults are intended for development convenience, not hardened production.
