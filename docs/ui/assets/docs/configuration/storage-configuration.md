@@ -277,3 +277,118 @@ Configure alerts for:
 - Disk usage > 80% (local)
 - Storage cost thresholds (S3)
 - Failed upload operations
+
+## Lifecycle and Auto-Delete
+
+### Local Storage Auto-Delete
+
+Local storage supports automatic cleanup of expired files. When enabled, a background goroutine periodically scans the storage directory and deletes files older than the retention period.
+
+**Configuration:**
+
+```bash
+STORAGE_AUTO_DELETE_ENABLED=true
+STORAGE_AUTO_DELETE_INTERVAL_HOURS=24
+WEBHOOK_MEDIA_RETENTION_DAYS=30
+```
+
+**How it works:**
+1. Background goroutine starts when storage is initialized
+2. Every `STORAGE_AUTO_DELETE_INTERVAL_HOURS`, scans the storage directory
+3. Files with modification time older than `WEBHOOK_MEDIA_RETENTION_DAYS` are deleted
+4. Empty directories are cleaned up automatically
+5. Cleanup activity is logged with trace IDs for correlation
+
+**Important Notes:**
+- Set `WEBHOOK_MEDIA_RETENTION_DAYS=0` to disable auto-delete
+- The goroutine respects the `stopCleanup` channel for graceful shutdown
+- Hidden files (starting with `.`) are never deleted
+- Directories are skipped; only files are evaluated for deletion
+
+### S3 Storage Auto-Delete
+
+S3 storage uses native S3 lifecycle policies for automatic expiration. This is more efficient than client-side deletion and works automatically even when the gateway is offline.
+
+**Configuration:**
+
+```bash
+STORAGE_AUTO_DELETE_ENABLED=true
+WEBHOOK_MEDIA_RETENTION_DAYS=30
+```
+
+**How it works:**
+1. When storage is initialized and auto-delete is enabled, a lifecycle policy is set on the bucket
+2. S3 automatically expires objects matching the prefix after `WEBHOOK_MEDIA_RETENTION_DAYS`
+3. No background goroutines needed - S3 handles expiration internally
+4. The lifecycle policy applies only to the `webhook/media/` prefix
+
+**Lifecycle Policy Example:**
+
+```xml
+<LifecycleConfiguration>
+  <Rule>
+    <ID>AutoDeleteMedia</ID>
+    <Prefix>webhook/media/</Prefix>
+    <Status>Enabled</Status>
+    <Expiration>
+      <Days>30</Days>
+    </Expiration>
+  </Rule>
+</LifecycleConfiguration>
+```
+
+**Important Notes:**
+- AWS S3 and compatible services (MinIO, DigitalOcean Spaces) support lifecycle policies
+- Changes to lifecycle policy may take up to 24 hours to take effect in AWS
+- Expired objects incur storage charges until they are deleted
+- For MinIO, lifecycle policies may need to be enabled in the server configuration
+
+### Media Retention Best Practices
+
+**Short-term storage (1-7 days):**
+- Good for ephemeral content that's consumed immediately
+- Reduces storage costs
+- Suitable for chatbots and auto-replies
+
+**Medium-term storage (14-30 days):**
+- Good for content that might need to be re-accessed
+- Balances cost and accessibility
+- Suitable for most applications
+
+**Long-term storage (90+ days):**
+- Required for compliance or archival purposes
+- Consider using cheaper storage tiers (e.g., S3 Glacier)
+- May require additional backup strategies
+
+### Monitoring Auto-Delete
+
+Monitor these metrics for auto-delete health:
+
+- **Local**: Log messages from cleanup goroutine
+- **S3**: CloudWatch metrics for object count and storage size
+- **Alerting**: Set alerts if storage size grows unexpectedly
+
+**Example Log Output:**
+
+```
+INFO cleanup-1234567890 Starting expired files cleanup
+DEBUG cleanup-1234567890 Deleted expired file: /var/lib/whatsapp-gateway/storage/webhook/media/phone123/2024/01/old_file.jpg
+INFO cleanup-1234567890 Cleanup completed: 5 files deleted
+```
+
+### Disabling Auto-Delete
+
+To disable auto-delete completely:
+
+```bash
+# Option 1: Disable auto-delete (files never expire)
+STORAGE_AUTO_DELETE_ENABLED=false
+
+# Option 2: Set retention to 0 (files never expire)
+WEBHOOK_MEDIA_RETENTION_DAYS=0
+```
+
+**Manual cleanup can still be performed via:**
+- Storage management interface (S3 console)
+- File system access (local storage)
+- Direct API calls to `DeleteFile` method
