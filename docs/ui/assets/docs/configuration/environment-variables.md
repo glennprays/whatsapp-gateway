@@ -448,6 +448,17 @@ Optional. Used when serving local files via a web server.
 
 Example: https://example.com/storage
 
+### STORAGE_API_PATH
+
+Path for serving files directly from the gateway.
+
+Type: string
+Default: /storage
+
+Used for direct file serving via gateway HTTP endpoints.
+
+Example: /storage
+
 ## Production Recommendations
 
 For production deployments:
