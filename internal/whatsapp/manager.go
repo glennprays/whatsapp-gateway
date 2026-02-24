@@ -52,7 +52,7 @@ func init() {
 	Clients = make(map[string]*whatsmeow.Client)
 }
 
-func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) Manager {
 	ctx := context.Background()
 	startupTraceID := uuid.New().String()
 
@@ -67,8 +67,8 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	// Create webhook sender
 	webhookSender := NewWebhookSender(cp)
 
-	// Create event handler with repository, sender, and queue
-	evtHandler := NewHandler(repository, webhookSender, queue, logger)
+	// Create event handler with repository, sender, queue, and media downloader
+	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader)
 
 	client := NewClient(container, config, repository, logger)
 

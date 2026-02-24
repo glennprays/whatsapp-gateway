@@ -58,6 +58,7 @@ func InitializeApp() (*App, func(), error) {
 		whatsapp.ProvideWhatsappManager,
 		whatsapp.ProvideWhatsAppRepository,
 		whatsapp.ProvideWebhookSender,
+		whatsapp.ProvideMediaDownloader,
 
 		// Authentication
 		auth.ProvideJWTManager,
