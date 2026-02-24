@@ -61,12 +61,10 @@ func NewLocalStorage(cfg *Config, logger *log.Logger) (domainStorage.Storage, er
 }
 
 // UploadFile uploads a file to local filesystem and returns the object key
-func (s *LocalStorage) UploadFile(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string) (string, error) {
+func (s *LocalStorage) UploadFile(ctx context.Context, traceID string, bucket, key string, reader io.Reader, size int64, contentType string) (string, error) {
 	if !s.healthy {
 		return "", errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-UPLOAD:%s", key)
 
 	// Determine full file path
 	fullPath := s.getFullPath(bucket, key)
@@ -115,22 +113,80 @@ func (s *LocalStorage) GetPublicURL(bucket, key string) string {
 	return key
 }
 
+// GetFile reads a file and returns its content with metadata
+func (s *LocalStorage) GetFile(ctx context.Context, traceID string, bucket, key string) (io.ReadCloser, *domainStorage.FileInfo, error) {
+	if !s.healthy {
+		return nil, nil, errors.New("storage client is not healthy")
+	}
+
+	fullPath := s.getFullPath(bucket, key)
+
+	// Open file
+	file, err := os.Open(fullPath)
+	if err != nil {
+		s.logger.Error(traceID, fmt.Sprintf("Failed to open file (path=%s)", fullPath), nil, log.Error(err))
+		return nil, nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	// Get file info
+	fileInfo, err := file.Stat()
+	if err != nil {
+		file.Close()
+		s.logger.Error(traceID, fmt.Sprintf("Failed to get file info (path=%s)", fullPath), nil, log.Error(err))
+		return nil, nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// Determine content type
+	contentType := s.getContentType(filepath.Ext(key))
+
+	storageFileInfo := &domainStorage.FileInfo{
+		Key:          key,
+		Size:         fileInfo.Size(),
+		LastModified: fileInfo.ModTime(),
+		ETag:         fmt.Sprintf("%d", fileInfo.ModTime().UnixNano()),
+		ContentType:  contentType,
+	}
+
+	return file, storageFileInfo, nil
+}
+
+// getContentType returns the content type for a given file extension
+func (s *LocalStorage) getContentType(ext string) string {
+	ext = strings.ToLower(ext)
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".pdf":
+		return "application/pdf"
+	case ".txt", ".md":
+		return "text/plain; charset=utf-8"
+	case ".json":
+		return "application/json"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // GetPresignedURL returns a time-limited signed URL for the object
 // For local storage, this just returns the public URL since we rely on
 // the reverse proxy or web server for access control
-func (s *LocalStorage) GetPresignedURL(ctx context.Context, bucket, key string, expiry time.Duration) (string, error) {
+func (s *LocalStorage) GetPresignedURL(ctx context.Context, traceID string, bucket, key string, expiry time.Duration) (string, error) {
 	// Local storage doesn't support presigned URLs in the S3 sense
 	// Access is controlled by file permissions and web server configuration
 	return s.GetPublicURL(bucket, key), nil
 }
 
 // CreateFolder creates a folder (prefix) in the storage
-func (s *LocalStorage) CreateFolder(ctx context.Context, bucket, prefix string) error {
+func (s *LocalStorage) CreateFolder(ctx context.Context, traceID string, bucket, prefix string) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-CREATE-FOLDER:%s", prefix)
 
 	// Ensure prefix ends with /
 	if !strings.HasSuffix(prefix, "/") {
@@ -151,12 +207,10 @@ func (s *LocalStorage) CreateFolder(ctx context.Context, bucket, prefix string) 
 }
 
 // SetFolderAccess sets access control for a folder/prefix via file permissions
-func (s *LocalStorage) SetFolderAccess(ctx context.Context, bucket, prefix string, isPublic bool) error {
+func (s *LocalStorage) SetFolderAccess(ctx context.Context, traceID string, bucket, prefix string, isPublic bool) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-SET-ACCESS:%s", prefix)
 
 	// Ensure prefix ends with /
 	if !strings.HasSuffix(prefix, "/") {
@@ -224,12 +278,10 @@ func (s *LocalStorage) SetFolderAccess(ctx context.Context, bucket, prefix strin
 }
 
 // DeleteFile deletes an object from storage
-func (s *LocalStorage) DeleteFile(ctx context.Context, bucket, key string) error {
+func (s *LocalStorage) DeleteFile(ctx context.Context, traceID string, bucket, key string) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-DELETE:%s", key)
 
 	fullPath := s.getFullPath(bucket, key)
 
@@ -253,12 +305,10 @@ func (s *LocalStorage) DeleteFile(ctx context.Context, bucket, key string) error
 }
 
 // ListFiles lists objects under a prefix
-func (s *LocalStorage) ListFiles(ctx context.Context, bucket, prefix string, limit int) ([]domainStorage.FileInfo, error) {
+func (s *LocalStorage) ListFiles(ctx context.Context, traceID string, bucket, prefix string, limit int) ([]domainStorage.FileInfo, error) {
 	if !s.healthy {
 		return nil, errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-LIST:%s", prefix)
 
 	basePath := s.getFullPath(bucket, prefix)
 
