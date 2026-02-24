@@ -7,6 +7,7 @@ import (
 
 	customLog "github.com/glennprays/log"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
 
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
@@ -15,9 +16,10 @@ import (
 )
 
 type IncomingEventHandler struct {
-	Repository whatsapp.WhatsAppRepository
-	Publisher  *queue.RabbitMQQueue
-	Logger     *customLog.Logger
+	Repository     whatsapp.WhatsAppRepository
+	Publisher      *queue.RabbitMQQueue
+	Logger         *customLog.Logger
+	MediaDownloader whatsapp.MediaDownloader
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -38,7 +40,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 	// TODO: Implement duplicate detection if needed
 
 	// Build webhook payload
-	payload := buildWebhookPayload(&waEvent)
+	payload := buildWebhookPayload(&waEvent, h.MediaDownloader, traceID, eventMsg.PhoneNumber)
 
 	// Fetch webhook config from database using JID
 	webhook, err := h.Repository.GetWebhook(ctx, eventMsg.JID)
@@ -67,7 +69,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 	return nil
 }
 
-func buildWebhookPayload(msg *events.Message) map[string]interface{} {
+func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDownloader, traceID string, phoneNumber string) map[string]interface{} {
 	payload := map[string]interface{}{
 		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
@@ -88,50 +90,33 @@ func buildWebhookPayload(msg *events.Message) map[string]interface{} {
 	switch {
 	case msg.Message.ImageMessage != nil:
 		payload["type"] = "image"
-		mediaInfo = map[string]interface{}{
-			"type":      "image",
-			"url":       msg.Message.ImageMessage.GetURL(),
-			"mime_type": msg.Message.ImageMessage.GetMimetype(),
-			"size":      msg.Message.ImageMessage.GetFileLength(),
-			"sha256":    fmt.Sprintf("%x", msg.Message.ImageMessage.GetFileSHA256()),
-		}
-		if caption := msg.Message.ImageMessage.GetCaption(); caption != "" {
-			mediaInfo["caption"] = caption
-		}
+		whatsappURL := msg.Message.ImageMessage.GetURL()
+		storageURL, err := downloadMedia(mediaDownloader, traceID, phoneNumber, msg.Message.ImageMessage, "image")
+		mediaInfo = buildImageMediaInfo(msg.Message.ImageMessage, storageURL, whatsappURL, err)
 
 	case msg.Message.VideoMessage != nil:
 		payload["type"] = "video"
-		mediaInfo = map[string]interface{}{
-			"type":      "video",
-			"url":       msg.Message.VideoMessage.GetURL(),
-			"mime_type": msg.Message.VideoMessage.GetMimetype(),
-			"size":      msg.Message.VideoMessage.GetFileLength(),
-			"sha256":    fmt.Sprintf("%x", msg.Message.VideoMessage.GetFileSHA256()),
-		}
-		if caption := msg.Message.VideoMessage.GetCaption(); caption != "" {
-			mediaInfo["caption"] = caption
-		}
+		whatsappURL := msg.Message.VideoMessage.GetURL()
+		storageURL, err := downloadMedia(mediaDownloader, traceID, phoneNumber, msg.Message.VideoMessage, "video")
+		mediaInfo = buildVideoMediaInfo(msg.Message.VideoMessage, storageURL, whatsappURL, err)
 
 	case msg.Message.AudioMessage != nil:
 		payload["type"] = "audio"
-		mediaInfo = map[string]interface{}{
-			"type":      "audio",
-			"url":       msg.Message.AudioMessage.GetURL(),
-			"mime_type": msg.Message.AudioMessage.GetMimetype(),
-			"size":      msg.Message.AudioMessage.GetFileLength(),
-			"sha256":    fmt.Sprintf("%x", msg.Message.AudioMessage.GetFileSHA256()),
-		}
+		whatsappURL := msg.Message.AudioMessage.GetURL()
+		storageURL, err := downloadMedia(mediaDownloader, traceID, phoneNumber, msg.Message.AudioMessage, "audio")
+		mediaInfo = buildAudioMediaInfo(msg.Message.AudioMessage, storageURL, whatsappURL, err)
 
 	case msg.Message.DocumentMessage != nil:
 		payload["type"] = "document"
-		mediaInfo = map[string]interface{}{
-			"type":      "document",
-			"url":       msg.Message.DocumentMessage.GetURL(),
-			"file_name": msg.Message.DocumentMessage.GetFileName(),
-			"mime_type": msg.Message.DocumentMessage.GetMimetype(),
-			"size":      msg.Message.DocumentMessage.GetFileLength(),
-			"sha256":    fmt.Sprintf("%x", msg.Message.DocumentMessage.GetFileSHA256()),
-		}
+		whatsappURL := msg.Message.DocumentMessage.GetURL()
+		storageURL, err := downloadMedia(mediaDownloader, traceID, phoneNumber, msg.Message.DocumentMessage, "document")
+		mediaInfo = buildDocumentMediaInfo(msg.Message.DocumentMessage, storageURL, whatsappURL, err)
+
+	case msg.Message.StickerMessage != nil:
+		payload["type"] = "sticker"
+		whatsappURL := msg.Message.StickerMessage.GetURL()
+		storageURL, err := downloadMedia(mediaDownloader, traceID, phoneNumber, msg.Message.StickerMessage, "sticker")
+		mediaInfo = buildStickerMediaInfo(msg.Message.StickerMessage, storageURL, whatsappURL, err)
 
 	case msg.Message.Conversation != nil:
 		payload["type"] = "text"
@@ -147,4 +132,154 @@ func buildWebhookPayload(msg *events.Message) map[string]interface{} {
 	}
 
 	return payload
+}
+
+func downloadMedia(
+	mediaDownloader whatsapp.MediaDownloader,
+	traceID string,
+	phoneNumber string,
+	mediaMessage whatsapp.DownloadableMessage,
+	mediaType string,
+) (string, error) {
+	if mediaDownloader == nil {
+		return "", nil
+	}
+	return mediaDownloader.DownloadAndStoreMedia(
+		context.Background(),
+		traceID,
+		phoneNumber,
+		mediaMessage,
+		mediaType,
+	)
+}
+
+func buildImageMediaInfo(
+	imgMsg *proto.ImageMessage,
+	storageURL string,
+	whatsappURL string,
+	storageErr error,
+) map[string]interface{} {
+	mediaInfo := map[string]interface{}{
+		"type":      "image",
+		"mime_type": imgMsg.GetMimetype(),
+		"size":      imgMsg.GetFileLength(),
+		"sha256":    fmt.Sprintf("%x", imgMsg.GetFileSHA256()),
+	}
+
+	// Handle URL based on storage result
+	if storageErr == nil && storageURL != "" {
+		mediaInfo["url"] = storageURL
+		mediaInfo["storage_url"] = storageURL
+	} else {
+		mediaInfo["url"] = whatsappURL
+		mediaInfo["whatsapp_url"] = whatsappURL
+	}
+
+	if caption := imgMsg.GetCaption(); caption != "" {
+		mediaInfo["caption"] = caption
+	}
+
+	return mediaInfo
+}
+
+func buildVideoMediaInfo(
+	vidMsg *proto.VideoMessage,
+	storageURL string,
+	whatsappURL string,
+	storageErr error,
+) map[string]interface{} {
+	mediaInfo := map[string]interface{}{
+		"type":      "video",
+		"mime_type": vidMsg.GetMimetype(),
+		"size":      vidMsg.GetFileLength(),
+		"sha256":    fmt.Sprintf("%x", vidMsg.GetFileSHA256()),
+	}
+
+	if storageErr == nil && storageURL != "" {
+		mediaInfo["url"] = storageURL
+		mediaInfo["storage_url"] = storageURL
+	} else {
+		mediaInfo["url"] = whatsappURL
+		mediaInfo["whatsapp_url"] = whatsappURL
+	}
+
+	if caption := vidMsg.GetCaption(); caption != "" {
+		mediaInfo["caption"] = caption
+	}
+
+	return mediaInfo
+}
+
+func buildAudioMediaInfo(
+	audioMsg *proto.AudioMessage,
+	storageURL string,
+	whatsappURL string,
+	storageErr error,
+) map[string]interface{} {
+	mediaInfo := map[string]interface{}{
+		"type":      "audio",
+		"mime_type": audioMsg.GetMimetype(),
+		"size":      audioMsg.GetFileLength(),
+		"sha256":    fmt.Sprintf("%x", audioMsg.GetFileSHA256()),
+	}
+
+	if storageErr == nil && storageURL != "" {
+		mediaInfo["url"] = storageURL
+		mediaInfo["storage_url"] = storageURL
+	} else {
+		mediaInfo["url"] = whatsappURL
+		mediaInfo["whatsapp_url"] = whatsappURL
+	}
+
+	return mediaInfo
+}
+
+func buildDocumentMediaInfo(
+	docMsg *proto.DocumentMessage,
+	storageURL string,
+	whatsappURL string,
+	storageErr error,
+) map[string]interface{} {
+	mediaInfo := map[string]interface{}{
+		"type":      "document",
+		"file_name": docMsg.GetFileName(),
+		"mime_type": docMsg.GetMimetype(),
+		"size":      docMsg.GetFileLength(),
+		"sha256":    fmt.Sprintf("%x", docMsg.GetFileSHA256()),
+	}
+
+	if storageErr == nil && storageURL != "" {
+		mediaInfo["url"] = storageURL
+		mediaInfo["storage_url"] = storageURL
+	} else {
+		mediaInfo["url"] = whatsappURL
+		mediaInfo["whatsapp_url"] = whatsappURL
+	}
+
+	return mediaInfo
+}
+
+func buildStickerMediaInfo(
+	stickerMsg *proto.StickerMessage,
+	storageURL string,
+	whatsappURL string,
+	storageErr error,
+) map[string]interface{} {
+	mediaInfo := map[string]interface{}{
+		"type": "sticker",
+	}
+
+	if stickerMsg.Mimetype != nil {
+		mediaInfo["mime_type"] = *stickerMsg.Mimetype
+	}
+
+	if storageErr == nil && storageURL != "" {
+		mediaInfo["url"] = storageURL
+		mediaInfo["storage_url"] = storageURL
+	} else {
+		mediaInfo["url"] = whatsappURL
+		mediaInfo["whatsapp_url"] = whatsappURL
+	}
+
+	return mediaInfo
 }
