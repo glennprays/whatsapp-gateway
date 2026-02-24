@@ -17,10 +17,12 @@ import (
 
 // LocalStorage implements the Storage interface using local filesystem
 type LocalStorage struct {
-	config  *Config
-	logger  *log.Logger
-	baseURL string
-	healthy bool
+	config       *Config
+	logger       *log.Logger
+	baseURL      string
+	healthy      bool
+	retentionDays int
+	stopCleanup  chan struct{}
 }
 
 // NewLocalStorage creates a new local filesystem storage client
@@ -49,13 +51,18 @@ func NewLocalStorage(cfg *Config, logger *log.Logger) (domainStorage.Storage, er
 	}
 
 	s := &LocalStorage{
-		config:  cfg,
-		logger:  logger,
-		baseURL: baseURL,
-		healthy: true,
+		config:       cfg,
+		logger:       logger,
+		baseURL:      baseURL,
+		healthy:      true,
+		retentionDays: cfg.RetentionDays,
+		stopCleanup:  make(chan struct{}),
 	}
 
 	logger.Info("STORAGE-INIT", fmt.Sprintf("Local storage initialized at: %s", cfg.LocalPath), nil)
+
+	// Start cleanup goroutine
+	go s.cleanupExpiredFiles()
 
 	return s, nil
 }
@@ -414,4 +421,74 @@ func (s *LocalStorage) cleanupEmptyDirs(path string) {
 			break
 		}
 	}
+}
+
+// cleanupExpiredFiles runs periodic cleanup of expired files
+func (s *LocalStorage) cleanupExpiredFiles() {
+	ticker := time.NewTicker(time.Duration(s.config.AutoDeleteIntervalHours) * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.performCleanup()
+		case <-s.stopCleanup:
+			return
+		}
+	}
+}
+
+// performCleanup deletes files older than retention period
+func (s *LocalStorage) performCleanup() {
+	if s.retentionDays <= 0 {
+		return
+	}
+
+	traceID := fmt.Sprintf("cleanup-%d", time.Now().Unix())
+	s.logger.Info(traceID, "Starting expired files cleanup", nil)
+
+	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
+	deletedCount := 0
+
+	err := filepath.Walk(s.config.LocalPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Skip test files
+		if strings.HasPrefix(filepath.Base(path), ".") {
+			return nil
+		}
+
+		// Check if file is older than retention period
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(path); err != nil {
+				s.logger.Warn(traceID, fmt.Sprintf("Failed to delete expired file: %s", path), nil, log.Error(err))
+			} else {
+				deletedCount++
+				s.logger.Debug(traceID, fmt.Sprintf("Deleted expired file: %s", path), nil)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		s.logger.Error(traceID, "Error during cleanup", nil, log.Error(err))
+	}
+
+	s.logger.Info(traceID, fmt.Sprintf("Cleanup completed: %d files deleted", deletedCount), nil)
+
+	// Try to clean up empty directories
+	s.cleanupEmptyDirs(filepath.Join(s.config.LocalPath, "webhook"))
+}
+
+// Stop gracefully stops the cleanup goroutine
+func (s *LocalStorage) Stop() {
+	close(s.stopCleanup)
 }

@@ -22,4 +22,9 @@ type Config struct {
 	// BaseURL is the base URL for public access (for local provider)
 	// This is used when constructing public URLs for local files
 	BaseURL string
+
+	// Lifecycle Configuration
+	RetentionDays          int
+	AutoDeleteEnabled       bool
+	AutoDeleteIntervalHours int
 }

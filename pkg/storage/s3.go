@@ -12,6 +12,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/minio/minio-go/v7/pkg/set"
 
 	"github.com/glennprays/log"
@@ -20,12 +21,13 @@ import (
 
 // S3Storage implements the Storage interface using S3/S3-compatible storage
 type S3Storage struct {
-	client     *minio.Client
-	config     *Config
-	logger     *log.Logger
-	bucket     string
-	healthy    bool
-	mu         struct {
+	client       *minio.Client
+	config       *Config
+	logger       *log.Logger
+	bucket       string
+	healthy      bool
+	retentionDays int
+	mu           struct {
 		sync.RWMutex
 		policies map[string]string // prefix -> policy JSON
 	}
@@ -57,11 +59,12 @@ func NewS3Storage(cfg *Config, logger *log.Logger) (domainStorage.Storage, error
 	}
 
 	s := &S3Storage{
-		client:  client,
-		config:  cfg,
-		logger:  logger,
-		bucket:  cfg.Bucket,
-		healthy: false,
+		client:       client,
+		config:       cfg,
+		logger:       logger,
+		bucket:       cfg.Bucket,
+		healthy:      false,
+		retentionDays: cfg.RetentionDays,
 	}
 
 	// Initialize policies map
@@ -82,6 +85,15 @@ func NewS3Storage(cfg *Config, logger *log.Logger) (domainStorage.Storage, error
 			return nil, fmt.Errorf("failed to create bucket: %w", err)
 		}
 		logger.Info("STORAGE-INIT", fmt.Sprintf("Created bucket: %s", cfg.Bucket), nil)
+	}
+
+	// Set lifecycle policy if retention is configured
+	if cfg.AutoDeleteEnabled && cfg.RetentionDays > 0 {
+		if err := s.setLifecyclePolicy(ctx, cfg.Bucket, cfg.RetentionDays); err != nil {
+			logger.Warn("STORAGE-INIT", fmt.Sprintf("Failed to set lifecycle policy: %v", err), nil)
+		} else {
+			logger.Info("STORAGE-INIT", fmt.Sprintf("Lifecycle policy set: %d days retention", cfg.RetentionDays), nil)
+		}
 	}
 
 	// Set healthy after successful bucket check
@@ -506,4 +518,36 @@ func (s *S3Storage) IsHealthy() bool {
 	}
 
 	return true
+}
+
+// setLifecyclePolicy sets up automatic expiration for objects
+func (s *S3Storage) setLifecyclePolicy(ctx context.Context, bucket string, retentionDays int) error {
+	// Build lifecycle configuration using minio types
+	config := lifecycle.NewConfiguration()
+	config.Rules = []lifecycle.Rule{
+		{
+			ID:     "AutoDeleteMedia",
+			Status: "Enabled",
+			RuleFilter: lifecycle.Filter{
+				Prefix: s.getMediaPrefix(),
+			},
+			Expiration: lifecycle.Expiration{
+				Days: lifecycle.ExpirationDays(retentionDays),
+			},
+		},
+	}
+
+	err := s.client.SetBucketLifecycle(ctx, bucket, config)
+	if err != nil {
+		return fmt.Errorf("failed to set lifecycle policy: %w", err)
+	}
+
+	return nil
+}
+
+// getMediaPrefix returns the prefix used for media files
+func (s *S3Storage) getMediaPrefix() string {
+	// This should match the WEBHOOK_MEDIA_STORAGE_PREFIX config
+	// For now, default to common prefix
+	return "webhook/media/"
 }

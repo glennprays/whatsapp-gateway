@@ -74,6 +74,17 @@ type Config struct {
 	StorageLocalPath                 string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
 	StorageBaseURL                   string `mapstructure:"STORAGE_BASE_URL" default:""`
 	StorageAPIPath                   string `mapstructure:"STORAGE_API_PATH" default:"/storage"`
+
+	// Webhook Media Configuration
+	WebhookMediaDownloadEnabled       bool   `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_ENABLED" default:"false"`
+	WebhookMediaStoragePrefix         string `mapstructure:"WEBHOOK_MEDIA_STORAGE_PREFIX" default:"webhook/media"`
+	WebhookMediaDownloadTimeoutSeconds int64  `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_TIMEOUT_SECONDS" default:"30"`
+	WebhookMediaFallbackToWhatsAppURL bool   `mapstructure:"WEBHOOK_MEDIA_FALLBACK_TO_WHATSAPP_URL" default:"true"`
+	WebhookMediaRetentionDays        int    `mapstructure:"WEBHOOK_MEDIA_RETENTION_DAYS" default:"30"`
+
+	// Storage Lifecycle Configuration
+	StorageAutoDeleteEnabled         bool   `mapstructure:"STORAGE_AUTO_DELETE_ENABLED" default:"false"`
+	StorageAutoDeleteIntervalHours    int    `mapstructure:"STORAGE_AUTO_DELETE_INTERVAL_HOURS" default:"24"`
 }
 
 type Environment string
