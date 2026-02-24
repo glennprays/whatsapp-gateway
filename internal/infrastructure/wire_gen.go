@@ -52,7 +52,12 @@ func InitializeApp() (*App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue)
+	storageStorage, err := storage.ProvideStorage(configConfig, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	mediaDownloader := whatsapp.ProvideMediaDownloader(storageStorage, configConfig, logger)
+	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue, mediaDownloader)
 	authUsecase := auth_usecase.ProvideAuthUsecase(configConfig, jwtManager, manager, logger)
 	authHandler := auth_handler.ProvideAuthHandler(authUsecase, logger)
 	whatsappAuthUsecase := whatsapp_usecase.ProvideWhatsappAuthUsecase(manager, logger)
@@ -72,14 +77,10 @@ func InitializeApp() (*App, func(), error) {
 	}
 	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig, limiter)
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
-	storageStorage, err := storage.ProvideStorage(configConfig, logger)
-	if err != nil {
-		return nil, nil, err
-	}
 	storageHandler := storage2.ProvideStorageHandler(storageStorage)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler, storageHandler)
 	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue, storageStorage)
-	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, limiter)
+	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, limiter, mediaDownloader)
 	if err != nil {
 		return nil, nil, err
 	}

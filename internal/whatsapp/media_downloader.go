@@ -10,9 +10,9 @@ import (
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
-	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/binary/proto"
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 )
 
 // DownloadableMessage interface from whatsmeow
@@ -136,19 +136,19 @@ func (md *mediaDownloader) getExtension(mediaType string, mediaMessage Downloada
 	// Try to get extension from mime type if available
 	var mimeType string
 	switch m := mediaMessage.(type) {
-	case *proto.ImageMessage:
+	case *waE2E.ImageMessage:
 		if m.Mimetype != nil {
 			mimeType = *m.Mimetype
 		}
-	case *proto.VideoMessage:
+	case *waE2E.VideoMessage:
 		if m.Mimetype != nil {
 			mimeType = *m.Mimetype
 		}
-	case *proto.AudioMessage:
+	case *waE2E.AudioMessage:
 		if m.Mimetype != nil {
 			mimeType = *m.Mimetype
 		}
-	case *proto.DocumentMessage:
+	case *waE2E.DocumentMessage:
 		if m.Mimetype != nil {
 			mimeType = *m.Mimetype
 		}
@@ -199,19 +199,19 @@ func (md *mediaDownloader) getExtension(mediaType string, mediaMessage Downloada
 
 func (md *mediaDownloader) getContentType(mediaMessage DownloadableMessage, mediaType string) string {
 	switch m := mediaMessage.(type) {
-	case *proto.ImageMessage:
+	case *waE2E.ImageMessage:
 		if m.Mimetype != nil {
 			return *m.Mimetype
 		}
-	case *proto.VideoMessage:
+	case *waE2E.VideoMessage:
 		if m.Mimetype != nil {
 			return *m.Mimetype
 		}
-	case *proto.AudioMessage:
+	case *waE2E.AudioMessage:
 		if m.Mimetype != nil {
 			return *m.Mimetype
 		}
-	case *proto.DocumentMessage:
+	case *waE2E.DocumentMessage:
 		if m.Mimetype != nil {
 			return *m.Mimetype
 		}
