@@ -42,7 +42,19 @@ sudo chown whatsapp-gateway:whatsapp-gateway /var/lib/whatsapp-gateway/storage
 sudo chmod 750 /var/lib/whatsapp-gateway/storage
 ```
 
-For public file access, configure your reverse proxy (Nginx example):
+For public file access, you can use either:
+
+**Option 1: Direct Gateway Serving**
+
+Configure the gateway to serve files directly:
+
+```bash
+STORAGE_API_PATH=/storage
+```
+
+Files will be accessible at: `http://your-gateway:3000/storage/path/to/file`
+
+**Option 2: Reverse Proxy Serving (Nginx example)**
 
 ```nginx
 location /storage/ {
@@ -82,6 +94,7 @@ STORAGE_S3_SECRET_ACCESS_KEY=your_secret_key
 STORAGE_S3_REGION=us-east-1
 STORAGE_S3_BUCKET=whatsapp-gateway
 STORAGE_S3_USE_SSL=true
+STORAGE_API_PATH=/storage
 ```
 
 **MinIO Configuration:**
@@ -94,6 +107,7 @@ STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 STORAGE_S3_REGION=us-east-1
 STORAGE_S3_BUCKET=whatsapp-gateway
 STORAGE_S3_USE_SSL=false
+STORAGE_API_PATH=/storage
 ```
 
 **DigitalOcean Spaces Configuration:**
@@ -106,19 +120,49 @@ STORAGE_S3_SECRET_ACCESS_KEY=your_spaces_secret
 STORAGE_S3_REGION=us-east-1
 STORAGE_S3_BUCKET=whatsapp-gateway
 STORAGE_S3_USE_SSL=true
+STORAGE_API_PATH=/storage
 ```
 
 ## Storage Operations
 
-The storage client supports the following operations (available via API endpoints in future releases):
+The storage client supports the following operations:
 
 - **UploadFile**: Upload files with specified content type
+- **GetFile**: Read file content with metadata (used for direct file serving)
 - **GetPublicURL**: Get publicly accessible URL (for public files)
 - **GetPresignedURL**: Get time-limited signed URL (for private files)
 - **CreateFolder**: Create folders/prefixes for organization
 - **SetFolderAccess**: Control access at folder/prefix level
 - **DeleteFile**: Remove files from storage
 - **ListFiles**: Enumerate files in a folder
+
+### Direct File Serving
+
+When `STORAGE_API_PATH` is configured (default: `/storage`), the gateway serves files directly via HTTP:
+
+**Features:**
+- Proper Content-Type headers based on file extension
+- Cache-Control headers for efficient client caching
+- Content-Disposition for inline display
+- Last-Modified and ETag headers for conditional requests
+- Accept-Ranges support for partial content (video streaming)
+
+**Example Usage:**
+
+```
+# Upload a file
+POST /api/media
+Content-Type: multipart/form-data
+
+# Access the file
+GET /storage/uploads/photo.jpg
+
+# Response includes proper headers:
+# Content-Type: image/jpeg
+# Cache-Control: public, max-age=31536000
+# Last-Modified: Mon, 24 Feb 2026 12:00:00 GMT
+# ETag: "1234567890"
+```
 
 ## Access Control
 
