@@ -91,12 +91,10 @@ func NewS3Storage(cfg *Config, logger *log.Logger) (domainStorage.Storage, error
 }
 
 // UploadFile uploads a file to S3 and returns the object key
-func (s *S3Storage) UploadFile(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string) (string, error) {
+func (s *S3Storage) UploadFile(ctx context.Context, traceID string, bucket, key string, reader io.Reader, size int64, contentType string) (string, error) {
 	if !s.healthy {
 		return "", errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-UPLOAD:%s", key)
 
 	// Use configured bucket if not specified
 	if bucket == "" {
@@ -131,8 +129,45 @@ func (s *S3Storage) GetPublicURL(bucket, key string) string {
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, s.config.Endpoint, bucket, key)
 }
 
+// GetFile reads a file and returns its content with metadata
+func (s *S3Storage) GetFile(ctx context.Context, traceID string, bucket, key string) (io.ReadCloser, *domainStorage.FileInfo, error) {
+	if !s.healthy {
+		return nil, nil, errors.New("storage client is not healthy")
+	}
+
+	// Use configured bucket if not specified
+	if bucket == "" {
+		bucket = s.bucket
+	}
+
+	// Get object
+	obj, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		s.logger.Error(traceID, fmt.Sprintf("Failed to get object (bucket=%s, key=%s)", bucket, key), nil, log.Error(err))
+		return nil, nil, fmt.Errorf("failed to get object: %w", err)
+	}
+
+	// Get object info
+	objInfo, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		s.logger.Error(traceID, fmt.Sprintf("Failed to get object info (bucket=%s, key=%s)", bucket, key), nil, log.Error(err))
+		return nil, nil, fmt.Errorf("failed to get object info: %w", err)
+	}
+
+	fileInfo := &domainStorage.FileInfo{
+		Key:          key,
+		Size:         objInfo.Size,
+		LastModified: objInfo.LastModified,
+		ETag:         objInfo.ETag,
+		ContentType:  objInfo.ContentType,
+	}
+
+	return obj, fileInfo, nil
+}
+
 // GetPresignedURL returns a time-limited signed URL for the object
-func (s *S3Storage) GetPresignedURL(ctx context.Context, bucket, key string, expiry time.Duration) (string, error) {
+func (s *S3Storage) GetPresignedURL(ctx context.Context, traceID string, bucket, key string, expiry time.Duration) (string, error) {
 	if !s.healthy {
 		return "", errors.New("storage client is not healthy")
 	}
@@ -142,11 +177,12 @@ func (s *S3Storage) GetPresignedURL(ctx context.Context, bucket, key string, exp
 	}
 
 	if expiry <= 0 {
-		expiry = s.config.PresignedURLExpiry
+		expiry = time.Duration(s.config.PresignedURLExpiry) * time.Second
 	}
 
 	presignedURL, err := s.client.PresignedGetObject(ctx, bucket, key, expiry, nil)
 	if err != nil {
+		s.logger.Error(traceID, fmt.Sprintf("Failed to generate presigned URL (bucket=%s, key=%s)", bucket, key), nil, log.Error(err))
 		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
@@ -154,12 +190,10 @@ func (s *S3Storage) GetPresignedURL(ctx context.Context, bucket, key string, exp
 }
 
 // CreateFolder creates a folder (prefix) in the bucket
-func (s *S3Storage) CreateFolder(ctx context.Context, bucket, prefix string) error {
+func (s *S3Storage) CreateFolder(ctx context.Context, traceID string, bucket, prefix string) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-CREATE-FOLDER:%s", prefix)
 
 	if bucket == "" {
 		bucket = s.bucket
@@ -183,12 +217,10 @@ func (s *S3Storage) CreateFolder(ctx context.Context, bucket, prefix string) err
 }
 
 // SetFolderAccess sets access control for a folder/prefix via bucket policy
-func (s *S3Storage) SetFolderAccess(ctx context.Context, bucket, prefix string, isPublic bool) error {
+func (s *S3Storage) SetFolderAccess(ctx context.Context, traceID string, bucket, prefix string, isPublic bool) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-SET-ACCESS:%s", prefix)
 
 	if bucket == "" {
 		bucket = s.bucket
@@ -380,12 +412,10 @@ func (s *S3Storage) getDefaultBucketPolicy(bucket string) string {
 }
 
 // DeleteFile deletes an object from storage
-func (s *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {
+func (s *S3Storage) DeleteFile(ctx context.Context, traceID string, bucket, key string) error {
 	if !s.healthy {
 		return errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-DELETE:%s", key)
 
 	if bucket == "" {
 		bucket = s.bucket
@@ -403,12 +433,10 @@ func (s *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {
 }
 
 // ListFiles lists objects under a prefix
-func (s *S3Storage) ListFiles(ctx context.Context, bucket, prefix string, limit int) ([]domainStorage.FileInfo, error) {
+func (s *S3Storage) ListFiles(ctx context.Context, traceID string, bucket, prefix string, limit int) ([]domainStorage.FileInfo, error) {
 	if !s.healthy {
 		return nil, errors.New("storage client is not healthy")
 	}
-
-	traceID := fmt.Sprintf("STORAGE-LIST:%s", prefix)
 
 	if bucket == "" {
 		bucket = s.bucket
