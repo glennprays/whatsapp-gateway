@@ -9,6 +9,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+	storage_handler "github.com/glennprays/whatsapp-gateway/internal/handler/storage"
 	whatsapp_handler "github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
@@ -72,6 +73,7 @@ func InitializeApp() (*App, func(), error) {
 		whatsapp_handler.ProvideWhatsappAuthHandler,
 		whatsapp_handler.ProvideWhatsappWebhookHandler,
 		whatsapp_handler.ProvideWhatsappMessageHandler,
+		storage_handler.ProvideStorageHandler,
 		handler.ProvideMainHandler,
 
 		// Middleware
