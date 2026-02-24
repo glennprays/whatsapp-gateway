@@ -60,6 +60,19 @@ type Config struct {
 	// Status Webhook Configuration
 	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
 	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
+
+	// Storage Configuration
+	// Both providers are production-ready - choose based on infrastructure needs
+	StorageProvider                  string `mapstructure:"STORAGE_PROVIDER" default:"local"` // options: s3, local
+	StorageS3Endpoint                string `mapstructure:"STORAGE_S3_ENDPOINT" default:"s3.amazonaws.com"`
+	StorageS3AccessKeyID             string `mapstructure:"STORAGE_S3_ACCESS_KEY_ID" default:""`
+	StorageS3SecretAccessKey         string `mapstructure:"STORAGE_S3_SECRET_ACCESS_KEY" default:""`
+	StorageS3Region                  string `mapstructure:"STORAGE_S3_REGION" default:"us-east-1"`
+	StorageS3Bucket                  string `mapstructure:"STORAGE_S3_BUCKET" default:"whatsapp-gateway"`
+	StorageS3UseSSL                  bool   `mapstructure:"STORAGE_S3_USE_SSL" default:"true"`
+	StorageS3PresignedURLExpiry      int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"3600"`
+	StorageLocalPath                 string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
+	StorageBaseURL                   string `mapstructure:"STORAGE_BASE_URL" default:""`
 }
 
 type Environment string

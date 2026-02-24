@@ -20,6 +20,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
+	"github.com/glennprays/whatsapp-gateway/pkg/storage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/wire"
 )
@@ -50,6 +51,7 @@ func InitializeApp() (*App, func(), error) {
 		cipherx.ProvideCipher,
 		pkgQueue.ProvideMessageQueue,
 		queue.ProvideJobRepository,
+		storage.ProvideStorage,
 
 		// WhatsApp Domain
 		whatsapp.ProvideWhatsappManager,
