@@ -74,7 +74,7 @@ func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDown
 		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
-		"from":       msg.Info.Sender.String(),
+		"from":       whatsapp.StripDeviceIDFromJID(msg.Info.Sender.String()),
 		"chat":       msg.Info.Chat.String(),
 		"is_group":   msg.Info.IsGroup,
 		"push_name":  msg.Info.PushName,

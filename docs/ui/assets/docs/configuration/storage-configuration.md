@@ -185,6 +185,31 @@ Per-folder access control is implemented via bucket policies:
 
 The gateway will automatically configure bucket policies when `SetFolderAccess` is called for a prefix.
 
+### S3 Storage Access
+
+S3-stored media files are accessed via presigned URLs. URLs expire after `STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS`.
+
+**How It Works:**
+
+1. Gateway uploads files to S3
+2. Gateway generates presigned URLs with expiration time
+3. URLs are valid for the configured duration (default: 1 day)
+4. After expiration, URLs become invalid
+
+**Configuration:**
+
+```bash
+# Presigned URL expiration time in seconds
+STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS=86400  # 1 day
+```
+
+**Security Benefits:**
+
+- URLs expire automatically
+- No permanent public access
+- No bucket policy or ACL configuration needed
+- Works with all S3-compatible services
+
 ## Security Considerations
 
 ### Local Filesystem

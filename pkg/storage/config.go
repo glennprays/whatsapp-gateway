@@ -27,4 +27,7 @@ type Config struct {
 	RetentionDays          int
 	AutoDeleteEnabled       bool
 	AutoDeleteIntervalHours int
+
+	// MediaPrefix is the prefix used for webhook media files (e.g., "webhook/media/")
+	MediaPrefix string
 }

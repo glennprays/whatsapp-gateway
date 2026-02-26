@@ -7,6 +7,7 @@ import (
 
 	customLog "github.com/glennprays/log"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
@@ -102,6 +103,12 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 		return
 	}
 
+	// Validate webhook URL to prevent SSRF attacks
+	if err := utils.ValidateURL(webhook.Url); err != nil {
+		h.logger.Error(traceID, "Invalid webhook URL format, skipping delivery", nil, customLog.Error(err))
+		return
+	}
+
 	// Build payload
 	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber)
 
@@ -119,7 +126,7 @@ func buildWebhookPayload(msg *events.Message, mediaDownloader MediaDownloader, t
 		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
-		"from":       msg.Info.Sender.String(),
+		"from":       StripDeviceIDFromJID(msg.Info.Sender.String()),
 		"chat":       msg.Info.Chat.String(),
 		"is_group":   msg.Info.IsGroup,
 		"push_name":  msg.Info.PushName,

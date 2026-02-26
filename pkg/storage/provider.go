@@ -19,12 +19,13 @@ func ProvideStorage(cfg *config.Config, logger *log.Logger) (domainStorage.Stora
 		Region:              cfg.StorageS3Region,
 		Bucket:              cfg.StorageS3Bucket,
 		UseSSL:              cfg.StorageS3UseSSL,
-		PresignedURLExpiry:  time.Duration(cfg.StorageS3PresignedURLExpiry) * time.Second,
+		PresignedURLExpiry:  time.Duration(int64(time.Second) * cfg.StorageS3PresignedURLExpiry),
 		LocalPath:           cfg.StorageLocalPath,
 		BaseURL:             cfg.StorageBaseURL,
-		RetentionDays:       cfg.WebhookMediaRetentionDays,
-		AutoDeleteEnabled:   cfg.StorageAutoDeleteEnabled,
+		RetentionDays:           cfg.WebhookMediaRetentionDays,
+		AutoDeleteEnabled:       cfg.StorageAutoDeleteEnabled,
 		AutoDeleteIntervalHours: cfg.StorageAutoDeleteIntervalHours,
+		MediaPrefix:             cfg.WebhookMediaStoragePrefix,
 	}
 
 	switch cfg.StorageProvider {

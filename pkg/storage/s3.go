@@ -21,13 +21,13 @@ import (
 
 // S3Storage implements the Storage interface using S3/S3-compatible storage
 type S3Storage struct {
-	client       *minio.Client
-	config       *Config
-	logger       *log.Logger
-	bucket       string
-	healthy      bool
+	client        *minio.Client
+	config        *Config
+	logger        *log.Logger
+	bucket        string
+	healthy       bool
 	retentionDays int
-	mu           struct {
+	mu            struct {
 		sync.RWMutex
 		policies map[string]string // prefix -> policy JSON
 	}
@@ -59,11 +59,11 @@ func NewS3Storage(cfg *Config, logger *log.Logger) (domainStorage.Storage, error
 	}
 
 	s := &S3Storage{
-		client:       client,
-		config:       cfg,
-		logger:       logger,
-		bucket:       cfg.Bucket,
-		healthy:      false,
+		client:        client,
+		config:        cfg,
+		logger:        logger,
+		bucket:        cfg.Bucket,
+		healthy:       false,
 		retentionDays: cfg.RetentionDays,
 	}
 
@@ -189,7 +189,7 @@ func (s *S3Storage) GetPresignedURL(ctx context.Context, traceID string, bucket,
 	}
 
 	if expiry <= 0 {
-		expiry = time.Duration(s.config.PresignedURLExpiry) * time.Second
+		expiry = s.config.PresignedURLExpiry
 	}
 
 	presignedURL, err := s.client.PresignedGetObject(ctx, bucket, key, expiry, nil)
@@ -415,7 +415,7 @@ func (s *S3Storage) setPrefixPolicy(ctx context.Context, bucket, prefix string, 
 // getDefaultBucketPolicy returns a default bucket policy structure
 func (s *S3Storage) getDefaultBucketPolicy(bucket string) string {
 	policy := map[string]interface{}{
-		"Version": "2012-10-17",
+		"Version":   "2012-10-17",
 		"Statement": []map[string]interface{}{},
 	}
 
@@ -547,7 +547,13 @@ func (s *S3Storage) setLifecyclePolicy(ctx context.Context, bucket string, reten
 
 // getMediaPrefix returns the prefix used for media files
 func (s *S3Storage) getMediaPrefix() string {
-	// This should match the WEBHOOK_MEDIA_STORAGE_PREFIX config
-	// For now, default to common prefix
+	// Use the configured media prefix
+	if s.config.MediaPrefix != "" {
+		mediaPrefix := s.config.MediaPrefix
+		if !strings.HasSuffix(mediaPrefix, "/") {
+			mediaPrefix += "/"
+		}
+		return mediaPrefix
+	}
 	return "webhook/media/"
 }

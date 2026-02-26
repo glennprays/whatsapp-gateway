@@ -16,7 +16,7 @@ type Config struct {
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
-	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"true"`
+	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"false"`
 	DocumentationUser                      string      `mapstructure:"DOCUMENTATION_USER" default:"user"`
 	DocumentationPassword                  string      `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`
 	DocumentationBasePath                  string      `mapstructure:"DOCUMENTATION_BASE_PATH" default:"/docs"`
@@ -70,7 +70,7 @@ type Config struct {
 	StorageS3Region                  string `mapstructure:"STORAGE_S3_REGION" default:"us-east-1"`
 	StorageS3Bucket                  string `mapstructure:"STORAGE_S3_BUCKET" default:"whatsapp-gateway"`
 	StorageS3UseSSL                  bool   `mapstructure:"STORAGE_S3_USE_SSL" default:"true"`
-	StorageS3PresignedURLExpiry      int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"3600"`
+	StorageS3PresignedURLExpiry      int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"86400"`
 	StorageLocalPath                 string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
 	StorageBaseURL                   string `mapstructure:"STORAGE_BASE_URL" default:""`
 	StorageAPIPath                   string `mapstructure:"STORAGE_API_PATH" default:"/storage"`
@@ -80,7 +80,8 @@ type Config struct {
 	WebhookMediaStoragePrefix         string `mapstructure:"WEBHOOK_MEDIA_STORAGE_PREFIX" default:"webhook/media"`
 	WebhookMediaDownloadTimeoutSeconds int64  `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_TIMEOUT_SECONDS" default:"30"`
 	WebhookMediaFallbackToWhatsAppURL bool   `mapstructure:"WEBHOOK_MEDIA_FALLBACK_TO_WHATSAPP_URL" default:"true"`
-	WebhookMediaRetentionDays        int    `mapstructure:"WEBHOOK_MEDIA_RETENTION_DAYS" default:"30"`
+	WebhookMediaRetentionDays         int    `mapstructure:"WEBHOOK_MEDIA_RETENTION_DAYS" default:"30"`
+	WebhookMediaMaxFileSizeBytes     int64  `mapstructure:"WEBHOOK_MEDIA_MAX_FILE_SIZE_BYTES" default:"10485760"` // 10MB default
 
 	// Storage Lifecycle Configuration
 	StorageAutoDeleteEnabled         bool   `mapstructure:"STORAGE_AUTO_DELETE_ENABLED" default:"false"`

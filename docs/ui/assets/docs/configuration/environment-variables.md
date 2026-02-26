@@ -425,7 +425,7 @@ Presigned URL expiration time in seconds.
 Type: integer
 Default: 3600
 
-Maximum validity of time-limited access URLs for private files.
+Maximum validity of presigned URLs for accessing S3 files. URLs are returned in webhooks and automatically expire after this duration.
 
 ### STORAGE_LOCAL_PATH
 
