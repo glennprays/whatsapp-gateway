@@ -51,6 +51,75 @@ Payload includes:
 
 The payload schema remains stable across versions unless explicitly documented.
 
+### Media Download Behavior
+
+The behavior of media in webhook payloads is controlled by the `WEBHOOK_MEDIA_DOWNLOAD_ENABLED` environment variable.
+
+#### When `WEBHOOK_MEDIA_DOWNLOAD_ENABLED=true` (Recommended)
+
+When media download is enabled, the gateway automatically:
+
+1. Downloads incoming media (images, videos, audio, documents, stickers) from WhatsApp
+2. Stores the media in the configured storage provider (S3 or local filesystem)
+3. Includes a `media` object in the webhook payload with a `url` pointing to the stored media
+
+**Example media payload:**
+```json
+{
+  "media": {
+    "type": "image",
+    "mime_type": "image/jpeg",
+    "size": 16026,
+    "url": "https://s3.amazonaws.com/bucket/media/msg_abc123",
+    "caption": "Check this out!"
+  }
+}
+```
+
+**Security Benefits:**
+- Presigned S3 URLs are time-limited (24h expiry) and cryptographically signed
+- Public local URLs are served from your controlled infrastructure
+- Access can be revoked by deleting the stored media
+- No dependency on WhatsApp's temporary, unauthenticated URLs
+
+#### When `WEBHOOK_MEDIA_DOWNLOAD_ENABLED=false`
+
+When media download is disabled, the gateway:
+
+1. Does NOT download incoming media from WhatsApp
+2. Does NOT include a `media` object in the webhook payload
+3. Only provides the `type` field to indicate the message type
+
+**Example text message payload:**
+```json
+{
+  "type": "text",
+  "text": "Hello, this is a test message."
+}
+```
+
+**Example media message payload (no media object):**
+```json
+{
+  "type": "image",
+  "message_id": "msg_abc123",
+  "timestamp": 1625247600,
+  "from": "6281234567890@s.whatsapp.net",
+  "chat": "6281234567890@s.whatsapp.net"
+}
+```
+
+**Trade-offs:**
+- Smaller webhook payloads (no media data)
+- Faster webhook delivery (no download/upload overhead)
+- Media is not persisted (only available via WhatsApp's temporary URL for 5 minutes)
+- Backend must implement its own media download logic if needed
+- WhatsApp URLs are unauthenticated and pose security risks if intercepted
+
+**Recommendation:**
+
+For production deployments, enable `WEBHOOK_MEDIA_DOWNLOAD_ENABLED=true` for improved security and reliability. The storage provider (S3 or local) should be configured with appropriate access controls and lifecycle policies.
+
 ## Signature Generation (HMAC)
 
 Each webhook request includes a signature header.

@@ -9,6 +9,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	auth_handler "github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+	storage_handler "github.com/glennprays/whatsapp-gateway/internal/handler/storage"
 	whatsapp_handler "github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
@@ -20,6 +21,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
+	"github.com/glennprays/whatsapp-gateway/pkg/storage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/wire"
 )
@@ -50,11 +52,13 @@ func InitializeApp() (*App, func(), error) {
 		cipherx.ProvideCipher,
 		pkgQueue.ProvideMessageQueue,
 		queue.ProvideJobRepository,
+		storage.ProvideStorage,
 
 		// WhatsApp Domain
 		whatsapp.ProvideWhatsappManager,
 		whatsapp.ProvideWhatsAppRepository,
 		whatsapp.ProvideWebhookSender,
+		whatsapp.ProvideMediaDownloader,
 
 		// Authentication
 		auth.ProvideJWTManager,
@@ -70,6 +74,7 @@ func InitializeApp() (*App, func(), error) {
 		whatsapp_handler.ProvideWhatsappAuthHandler,
 		whatsapp_handler.ProvideWhatsappWebhookHandler,
 		whatsapp_handler.ProvideWhatsappMessageHandler,
+		storage_handler.ProvideStorageHandler,
 		handler.ProvideMainHandler,
 
 		// Middleware

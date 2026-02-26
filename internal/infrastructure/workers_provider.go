@@ -21,6 +21,7 @@ func ProvideQueueWorkers(
 	logger *log.Logger,
 	jobRepo *queue.JobRepository,
 	limiter ratelimiter.Limiter,
+	mediaDownloader whatsapp.MediaDownloader,
 ) (*pkgQueue.WorkerManager, error) {
 	if !cfg.RabbitMQEnabled {
 		return nil, nil // No workers in direct mode
@@ -33,9 +34,10 @@ func ProvideQueueWorkers(
 
 	// Create handlers
 	incomingHandler := &queueHandlers.IncomingEventHandler{
-		Repository: repo,
-		Publisher:  rabbitMQ,
-		Logger:     logger,
+		Repository:     repo,
+		Publisher:      rabbitMQ,
+		Logger:         logger,
+		MediaDownloader: mediaDownloader,
 	}
 
 	webhookHandler := &queueHandlers.WebhookDeliveryHandler{

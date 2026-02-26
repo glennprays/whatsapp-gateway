@@ -12,6 +12,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/database"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	"github.com/glennprays/whatsapp-gateway/internal/handler/auth"
+	storage2 "github.com/glennprays/whatsapp-gateway/internal/handler/storage"
 	"github.com/glennprays/whatsapp-gateway/internal/handler/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	queue2 "github.com/glennprays/whatsapp-gateway/internal/queue"
@@ -23,6 +24,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	"github.com/glennprays/whatsapp-gateway/pkg/queue"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
+	"github.com/glennprays/whatsapp-gateway/pkg/storage"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -50,7 +52,12 @@ func InitializeApp() (*App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue)
+	storageStorage, err := storage.ProvideStorage(configConfig, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	mediaDownloader := whatsapp.ProvideMediaDownloader(storageStorage, configConfig, logger)
+	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue, mediaDownloader)
 	authUsecase := auth_usecase.ProvideAuthUsecase(configConfig, jwtManager, manager, logger)
 	authHandler := auth_handler.ProvideAuthHandler(authUsecase, logger)
 	whatsappAuthUsecase := whatsapp_usecase.ProvideWhatsappAuthUsecase(manager, logger)
@@ -70,9 +77,10 @@ func InitializeApp() (*App, func(), error) {
 	}
 	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig, limiter)
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
-	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler)
-	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue)
-	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, limiter)
+	storageHandler := storage2.ProvideStorageHandler(storageStorage)
+	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler, storageHandler)
+	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue, storageStorage)
+	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, limiter, mediaDownloader)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -25,6 +25,26 @@ func WhatsappDecomposeJID(jid string) string {
 	return phoneNumber
 }
 
+// StripDeviceIDFromJID removes the device ID suffix from a WhatsApp JID
+// Example: "6281910481554:2@s.whatsapp.net" → "6281910481554@s.whatsapp.net"
+// Example: "6281910481554@s.whatsapp.net" → "6281910481554@s.whatsapp.net" (no change)
+func StripDeviceIDFromJID(jid string) string {
+	// Find the @ symbol position
+	atIdx := strings.Index(jid, "@")
+	if atIdx == -1 {
+		return jid // Invalid JID format, return as-is
+	}
+
+	// Find the first colon before the @ symbol
+	colonIdx := strings.Index(jid[:atIdx], ":")
+	if colonIdx == -1 {
+		return jid // No device ID suffix, return as-is
+	}
+
+	// Remove the device ID suffix (everything from : to @)
+	return jid[:colonIdx] + jid[atIdx:]
+}
+
 func MaskedPhoneNumber(phoneNumber string) string {
 	if len(phoneNumber) < 4 {
 		return phoneNumber

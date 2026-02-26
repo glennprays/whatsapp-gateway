@@ -7,6 +7,7 @@ import (
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
+	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
@@ -29,6 +30,7 @@ func SetupRouter(
 	h *handler.Handler,
 	lgr *log.Logger,
 	queue domainQueue.MessageQueue,
+	storage domainStorage.Storage,
 ) *fiber.App {
 	cfg = conf
 	basePath = cfg.BasePath
@@ -86,6 +88,9 @@ func SetupRouter(
 	initWhatsappRoutes(api, h)
 	initWebhookRoutes(api, h)
 	initMessageRoutes(api, h)
+
+	// Register storage routes
+	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)
 
 	return app
 }
