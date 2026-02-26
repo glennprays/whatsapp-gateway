@@ -224,34 +224,30 @@ components:
         - audio
         - document
     IncomingMessageMediaInfo:
-      type: object 
+      type: object
       properties:
         type:
-          $ref: '#/components/schemas/IncomingMessageType' 
-        url:  
-          type: string 
-          description: The URL to access the media content.
-          example: "https://example.com/media/msg_0987654321" 
+          $ref: '#/components/schemas/IncomingMessageType'
+        url:
+          type: string
+          description: The URL to access the media content. When WEBHOOK_MEDIA_DOWNLOAD_ENABLED=true, this is a presigned S3 URL (24h expiry) or public local URL. When false, this is the original WhatsApp URL.
+          example: "https://example.com/media/msg_0987654321"
         mime_type:
-          type: string 
+          type: string
           description: The MIME type of the media content.
           example: "image/jpeg"
         filename:
-          type: string 
+          type: string
           description: The original filename of the media content.
           example: "photo.jpg"
         caption:
-          type: string 
+          type: string
           description: The caption associated with the media, if any.
           example: "Check out this photo!"
         size:
-          type: integer 
+          type: integer
           description: The size of the media content in bytes.
-          example: 204800 
-        sha256:
-          type: string 
-          description: The SHA-256 hash of the media content for integrity verification.
-          example: "3a7bd3e2360a3d4f8e8b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f"
+          example: 204800
 
     IncomingWebhookPayload:
       type: object 

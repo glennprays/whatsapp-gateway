@@ -3,7 +3,6 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	customLog "github.com/glennprays/log"
@@ -228,16 +227,13 @@ func buildImageMediaInfo(
 		"type":      "image",
 		"mime_type": imgMsg.GetMimetype(),
 		"size":      imgMsg.GetFileLength(),
-		"sha256":    fmt.Sprintf("%x", imgMsg.GetFileSHA256()),
 	}
 
 	// Handle URL based on storage result
 	if storageErr == nil && storageURL != "" {
 		mediaInfo["url"] = storageURL
-		mediaInfo["storage_url"] = storageURL
 	} else {
 		mediaInfo["url"] = whatsappURL
-		mediaInfo["whatsapp_url"] = whatsappURL
 	}
 
 	if caption := imgMsg.GetCaption(); caption != "" {
@@ -257,15 +253,12 @@ func buildVideoMediaInfo(
 		"type":      "video",
 		"mime_type": vidMsg.GetMimetype(),
 		"size":      vidMsg.GetFileLength(),
-		"sha256":    fmt.Sprintf("%x", vidMsg.GetFileSHA256()),
 	}
 
 	if storageErr == nil && storageURL != "" {
 		mediaInfo["url"] = storageURL
-		mediaInfo["storage_url"] = storageURL
 	} else {
 		mediaInfo["url"] = whatsappURL
-		mediaInfo["whatsapp_url"] = whatsappURL
 	}
 
 	if caption := vidMsg.GetCaption(); caption != "" {
@@ -285,15 +278,12 @@ func buildAudioMediaInfo(
 		"type":      "audio",
 		"mime_type": audioMsg.GetMimetype(),
 		"size":      audioMsg.GetFileLength(),
-		"sha256":    fmt.Sprintf("%x", audioMsg.GetFileSHA256()),
 	}
 
 	if storageErr == nil && storageURL != "" {
 		mediaInfo["url"] = storageURL
-		mediaInfo["storage_url"] = storageURL
 	} else {
 		mediaInfo["url"] = whatsappURL
-		mediaInfo["whatsapp_url"] = whatsappURL
 	}
 
 	return mediaInfo
@@ -310,15 +300,12 @@ func buildDocumentMediaInfo(
 		"file_name": docMsg.GetFileName(),
 		"mime_type": docMsg.GetMimetype(),
 		"size":      docMsg.GetFileLength(),
-		"sha256":    fmt.Sprintf("%x", docMsg.GetFileSHA256()),
 	}
 
 	if storageErr == nil && storageURL != "" {
 		mediaInfo["url"] = storageURL
-		mediaInfo["storage_url"] = storageURL
 	} else {
 		mediaInfo["url"] = whatsappURL
-		mediaInfo["whatsapp_url"] = whatsappURL
 	}
 
 	return mediaInfo
@@ -340,10 +327,8 @@ func buildStickerMediaInfo(
 
 	if storageErr == nil && storageURL != "" {
 		mediaInfo["url"] = storageURL
-		mediaInfo["storage_url"] = storageURL
 	} else {
 		mediaInfo["url"] = whatsappURL
-		mediaInfo["whatsapp_url"] = whatsappURL
 	}
 
 	return mediaInfo
