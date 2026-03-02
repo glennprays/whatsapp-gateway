@@ -130,12 +130,12 @@ Should be replaced in production.
 
 Datastore backend type.
 
-Type: string  
-Default: sqlite3  
-Options: sqlite3, postgres  
+Type: string
+Default: sqlite
+Options: sqlite, postgres
 
-SQLite is suitable for development.  
-PostgreSQL is recommended for production.
+SQLite (modernc.org/sqlite - pure Go) is suitable for development and production.
+PostgreSQL is recommended for high-scale production deployments.
 
 ### WHATSAPP_DATASTORE_URI
 
@@ -145,7 +145,7 @@ Type: string
 
 SQLite default:
 
-file:dbs/whatsapp.db?_foreign_keys=on  
+file:dbs/whatsapp.db?_pragma=foreign_keys(1)  
 
 PostgreSQL example:
 
