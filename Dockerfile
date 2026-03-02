@@ -17,7 +17,7 @@ COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /app/main ./cmd/api/main.go
 
 # Stage 2: Prepare CA certificates and timezone data
