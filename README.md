@@ -50,7 +50,15 @@ make run
 Or using Docker:
 ```bash
 docker build -t whatsapp-gateway .
+
+# For testing (ephemeral data):
 docker run -p 3000:3000 --env-file .env whatsapp-gateway
+
+# For persistent data (recommended):
+docker run -p 3000:3000 \
+  -v whatsapp-data:/dbs \
+  --env-file .env \
+  whatsapp-gateway
 ```
 
 ### Development Commands

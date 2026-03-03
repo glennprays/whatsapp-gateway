@@ -20,11 +20,14 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /app/main ./cmd/api/main.go
 
-# Stage 2: Prepare CA certificates and timezone data
+# Stage 2: Prepare CA certificates, timezone data, and directories
 FROM debian:bullseye-slim AS certs-and-tzdata
 
 # Install ca-certificates and tzdata
 RUN apt-get update && apt-get install -y ca-certificates tzdata
+
+# Create /dbs directory for SQLite database
+RUN mkdir -p /dbs
 
 # Stage 3: Run the Go application using scratch
 FROM scratch
@@ -41,6 +44,9 @@ COPY --from=certs-and-tzdata /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/c
 COPY --from=certs-and-tzdata /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=certs-and-tzdata /etc/localtime /etc/localtime
 COPY --from=certs-and-tzdata /etc/timezone /etc/timezone
+
+# Copy /dbs directory from the certs-and-tzdata stage
+COPY --from=certs-and-tzdata /dbs /dbs
 
 # Set the working directory
 WORKDIR /

@@ -47,6 +47,62 @@ The service will be accessible at:
 
 http://localhost:9000
 
+## SQLite Database Persistence
+
+### Important: Container Ephemeral Nature
+
+The `/dbs` directory is pre-created in the container image, so SQLite works immediately. However:
+
+- **Without volume mount**: Database exists only while container runs. Removing/recreating the container deletes all data (WhatsApp sessions, message tracking).
+- **With volume mount**: Database persists across container restarts and recreations.
+
+### Development/Testing (No Persistence)
+
+For quick testing without persistence:
+```bash
+docker run -p 3000:3000 --env-file .env whatsapp-gateway
+```
+
+**Warning**: All data is lost when container stops.
+
+### Production/Development with Persistence
+
+For persistent data storage (recommended):
+```bash
+# Using local directory
+docker run -p 3000:3000 \
+  -v $(pwd)/data/whatsapp:/dbs \
+  --env-file .env \
+  whatsapp-gateway
+
+# Using Docker volume
+docker run -p 3000:3000 \
+  -v whatsapp-data:/dbs \
+  --env-file .env \
+  whatsapp-gateway
+```
+
+### Docker Compose Example
+
+```yaml
+services:
+  gateway:
+    image: glennprays/whatsapp-gateway
+    container_name: whatsapp-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data/whatsapp:/dbs  # Persist SQLite database
+    ports:
+      - "9000:3000"
+```
+
+**Why persistence matters**:
+- WhatsApp sessions are stored in the database
+- Re-authentication (QR code scanning) required after data loss
+- Message tracking history affects webhook delivery
+
 ## Docker Compose Deployment (Recommended)
 For production-grade deployments, Docker Compose is recommended to orchestrate:
 	•	Gateway
@@ -142,14 +198,16 @@ Recommended architecture:
 Client → Backend → Gateway → WhatsApp
 The gateway should not be directly exposed to end users.
 
-### Persistent Data 
+### Persistent Data
 Ensure persistence for:
-	•	PostgreSQL volume
-	•	RabbitMQ volume (if required)
+  • SQLite database volume (if using SQLite)
+  • PostgreSQL volume (if using PostgreSQL)
+  • RabbitMQ volume (if required)
 
 Failure to persist database volume may result in:
-	•	Loss of WhatsApp session
-	•	Loss of message tracking history
+  • Loss of WhatsApp session state
+  • Loss of message tracking history
+  • Need to re-scan QR code for WhatsApp reconnection
 
 ### Updating the Gateway 
 To update: 

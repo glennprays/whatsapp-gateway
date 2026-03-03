@@ -29,7 +29,7 @@ type Config struct {
 	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
 	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
 	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
-	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"debug"`
+	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"info"`
 	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
@@ -63,29 +63,29 @@ type Config struct {
 
 	// Storage Configuration
 	// Both providers are production-ready - choose based on infrastructure needs
-	StorageProvider                  string `mapstructure:"STORAGE_PROVIDER" default:"local"` // options: s3, local
-	StorageS3Endpoint                string `mapstructure:"STORAGE_S3_ENDPOINT" default:"s3.amazonaws.com"`
-	StorageS3AccessKeyID             string `mapstructure:"STORAGE_S3_ACCESS_KEY_ID" default:""`
-	StorageS3SecretAccessKey         string `mapstructure:"STORAGE_S3_SECRET_ACCESS_KEY" default:""`
-	StorageS3Region                  string `mapstructure:"STORAGE_S3_REGION" default:"us-east-1"`
-	StorageS3Bucket                  string `mapstructure:"STORAGE_S3_BUCKET" default:"whatsapp-gateway"`
-	StorageS3UseSSL                  bool   `mapstructure:"STORAGE_S3_USE_SSL" default:"true"`
-	StorageS3PresignedURLExpiry      int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"86400"`
-	StorageLocalPath                 string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
-	StorageBaseURL                   string `mapstructure:"STORAGE_BASE_URL" default:""`
-	StorageAPIPath                   string `mapstructure:"STORAGE_API_PATH" default:"/storage"`
+	StorageProvider             string `mapstructure:"STORAGE_PROVIDER" default:"local"` // options: s3, local
+	StorageS3Endpoint           string `mapstructure:"STORAGE_S3_ENDPOINT" default:"s3.amazonaws.com"`
+	StorageS3AccessKeyID        string `mapstructure:"STORAGE_S3_ACCESS_KEY_ID" default:""`
+	StorageS3SecretAccessKey    string `mapstructure:"STORAGE_S3_SECRET_ACCESS_KEY" default:""`
+	StorageS3Region             string `mapstructure:"STORAGE_S3_REGION" default:"us-east-1"`
+	StorageS3Bucket             string `mapstructure:"STORAGE_S3_BUCKET" default:"whatsapp-gateway"`
+	StorageS3UseSSL             bool   `mapstructure:"STORAGE_S3_USE_SSL" default:"true"`
+	StorageS3PresignedURLExpiry int64  `mapstructure:"STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS" default:"86400"`
+	StorageLocalPath            string `mapstructure:"STORAGE_LOCAL_PATH" default:"./storage"`
+	StorageBaseURL              string `mapstructure:"STORAGE_BASE_URL" default:""`
+	StorageAPIPath              string `mapstructure:"STORAGE_API_PATH" default:"/storage"`
 
 	// Webhook Media Configuration
-	WebhookMediaDownloadEnabled       bool   `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_ENABLED" default:"false"`
-	WebhookMediaStoragePrefix         string `mapstructure:"WEBHOOK_MEDIA_STORAGE_PREFIX" default:"webhook/media"`
+	WebhookMediaDownloadEnabled        bool   `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_ENABLED" default:"false"`
+	WebhookMediaStoragePrefix          string `mapstructure:"WEBHOOK_MEDIA_STORAGE_PREFIX" default:"webhook/media"`
 	WebhookMediaDownloadTimeoutSeconds int64  `mapstructure:"WEBHOOK_MEDIA_DOWNLOAD_TIMEOUT_SECONDS" default:"30"`
-	WebhookMediaFallbackToWhatsAppURL bool   `mapstructure:"WEBHOOK_MEDIA_FALLBACK_TO_WHATSAPP_URL" default:"true"`
-	WebhookMediaRetentionDays         int    `mapstructure:"WEBHOOK_MEDIA_RETENTION_DAYS" default:"30"`
-	WebhookMediaMaxFileSizeBytes     int64  `mapstructure:"WEBHOOK_MEDIA_MAX_FILE_SIZE_BYTES" default:"10485760"` // 10MB default
+	WebhookMediaFallbackToWhatsAppURL  bool   `mapstructure:"WEBHOOK_MEDIA_FALLBACK_TO_WHATSAPP_URL" default:"true"`
+	WebhookMediaRetentionDays          int    `mapstructure:"WEBHOOK_MEDIA_RETENTION_DAYS" default:"30"`
+	WebhookMediaMaxFileSizeBytes       int64  `mapstructure:"WEBHOOK_MEDIA_MAX_FILE_SIZE_BYTES" default:"10485760"` // 10MB default
 
 	// Storage Lifecycle Configuration
-	StorageAutoDeleteEnabled         bool   `mapstructure:"STORAGE_AUTO_DELETE_ENABLED" default:"false"`
-	StorageAutoDeleteIntervalHours    int    `mapstructure:"STORAGE_AUTO_DELETE_INTERVAL_HOURS" default:"24"`
+	StorageAutoDeleteEnabled       bool `mapstructure:"STORAGE_AUTO_DELETE_ENABLED" default:"false"`
+	StorageAutoDeleteIntervalHours int  `mapstructure:"STORAGE_AUTO_DELETE_INTERVAL_HOURS" default:"24"`
 }
 
 type Environment string
