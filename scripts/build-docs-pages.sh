@@ -197,6 +197,15 @@ function handleSidebarClick(e) {
   const docName = this.dataset.doc;
   window.history.pushState(null, '', buildHash(docName, null));
   loadMarkdownDocs(docName);
+
+  // Close sidebar on mobile
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
 }
 
 // Initialize marked.js
@@ -321,6 +330,20 @@ async function loadMarkdownDocs(docName) {
 // INITIALIZATION
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+  // Mobile sidebar toggle
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  const sidebar = document.getElementById('sidebar');
+
+  function toggleSidebar() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('active');
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+  }
+
+  mobileMenuBtn?.addEventListener('click', toggleSidebar);
+  sidebarOverlay?.addEventListener('click', toggleSidebar);
+
   const logoLink = document.getElementById('logo-link');
   logoLink.href = window.location.pathname;
 
@@ -410,6 +433,11 @@ cat > "$SITE_DIR/index.html" << HTML_EOF
   <div class="header">
     <div class="header-content">
       <div class="header-left">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+        </button>
         <a href="#" class="logo" id="logo-link">
           <span class="logo-text">Whatsapp Gateway</span>
         </a>
@@ -431,6 +459,7 @@ cat > "$SITE_DIR/index.html" << HTML_EOF
         <nav class="docs-sidebar" id="sidebar">
           <!-- Sidebar will be populated by JavaScript -->
         </nav>
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
         <!-- Main Content -->
         <main class="docs-content">
