@@ -152,6 +152,18 @@ function generateSidebar() {
   const sidebar = document.getElementById('sidebar');
   let sidebarHTML = '';
 
+  // Add desktop-only notice for mobile users
+  sidebarHTML += `
+    <div class="mobile-desktop-notice">
+      <div class="note-box">
+        <strong>Mobile View</strong>
+        <p style="margin-top: 0.5rem; margin-bottom: 0;">
+          API Reference is available on desktop. Open this page on a larger screen for full features.
+        </p>
+      </div>
+    </div>
+  `;
+
   DOCS_CONFIG.sections.forEach(section => {
     sidebarHTML += `
       <div class="sidebar-section">
@@ -161,8 +173,8 @@ function generateSidebar() {
       const isFirst = section === DOCS_CONFIG.sections[0] && index === 0;
       return `
               <li>
-                <a href="${buildHash('docs', link.file, null)}" 
-                   class="sidebar-link ${isFirst ? 'active' : ''}" 
+                <a href="${buildHash('docs', link.file, null)}"
+                   class="sidebar-link ${isFirst ? 'active' : ''}"
                    data-doc="${link.file}">
                   ${link.title}
                 </a>
@@ -204,6 +216,15 @@ function handleSidebarClick(e) {
   }
 
   loadMarkdownDocs(docName);
+
+  // Close sidebar on mobile
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
 }
 
 // Initialize marked.js
@@ -220,6 +241,10 @@ function switchToView(viewName) {
 
   const navTabs = document.querySelectorAll('.nav-tab');
   const contentViews = document.querySelectorAll('.content-view');
+
+  // Update body class for view-specific styling
+  document.body.classList.remove('docs-view', 'api-view');
+  document.body.classList.add(`${viewName}-view`);
 
   // Update active tab
   navTabs.forEach(t => {
@@ -389,6 +414,20 @@ async function loadMarkdownDocs(docName) {
 // INITIALIZATION
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+  // Mobile sidebar toggle
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  const sidebar = document.getElementById('sidebar');
+
+  function toggleSidebar() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('active');
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+  }
+
+  mobileMenuBtn?.addEventListener('click', toggleSidebar);
+  sidebarOverlay?.addEventListener('click', toggleSidebar);
+
   // Set up logo link to refresh/go to home
   const logoLink = document.getElementById('logo-link');
   logoLink.href = window.location.pathname;
@@ -411,6 +450,12 @@ window.addEventListener('DOMContentLoaded', () => {
   // Determine initial view and doc
   let initialView = hashData.view || 'docs';
   let initialDoc = DOCS_CONFIG.defaultDoc;
+
+  // Redirect API to docs on mobile
+  if (window.innerWidth <= 768 && initialView === 'api') {
+    window.history.replaceState(null, '', buildHash('docs', DOCS_CONFIG.defaultDoc, null));
+    initialView = 'docs';
+  }
 
   if (initialView === 'docs') {
     if (hashData.doc) {
@@ -446,6 +491,12 @@ window.addEventListener('DOMContentLoaded', () => {
 // Handle hash changes (when user clicks anchor links or uses back/forward)
 window.addEventListener('hashchange', () => {
   const hashData = parseHash();
+
+  // Redirect API to docs on mobile
+  if (window.innerWidth <= 768 && hashData.view === 'api') {
+    window.history.replaceState(null, '', buildHash('docs', DOCS_CONFIG.defaultDoc, null));
+    return;
+  }
 
   // Switch view if needed
   if (hashData.view !== currentView) {
