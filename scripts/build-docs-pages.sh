@@ -30,11 +30,9 @@ cat > "$SITE_DIR/assets/app.js" << 'APPJS_EOF'
 function getBasePath() {
   const pathname = window.location.pathname;
 
-  // Remove /whatsapp-gateway prefix for GitHub Pages, then clean up
-  let basePath = pathname.replace(/\/whatsapp-gateway/, '');
-
-  // Remove the HTML filename from the path
-  basePath = basePath.replace(/\/?[^\/]*\.html$/, '');
+  // Remove the HTML filename from the path to get the base directory
+  // For GitHub Pages, this keeps /whatsapp-gateway in the path
+  let basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
 
   return basePath === '' ? '' : basePath;
 }
