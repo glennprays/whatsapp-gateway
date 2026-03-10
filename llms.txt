@@ -1,0 +1,405 @@
+# WhatsApp Gateway
+
+> A Go-based REST API gateway that abstracts WhatsApp Web complexity for stateless backend integration.
+
+## What this does
+
+This gateway handles all WhatsApp connection state, session management, and message handling. Your backend stays stateless and only needs to make HTTP calls and handle webhooks.
+
+Key capabilities:
+- Send and receive WhatsApp messages via REST API
+- Multi-device support (one gateway instance handles multiple WhatsApp accounts)
+- QR code and pairing code login methods
+- Webhook-based incoming message notifications
+- Message reactions, editing, and deletion
+
+## Who this is for
+
+Backend developers who want to:
+- Integrate WhatsApp messaging without managing WhatsApp sessions
+- Keep their backend stateless and horizontally scalable
+- Use any programming language (language-agnostic HTTP API)
+
+## Base URL
+
+All API endpoints are prefixed with `/api/v1`.
+
+Example: `http://localhost:3000/api/v1/message/text`
+
+## Authentication
+
+The gateway uses JWT tokens scoped to phone numbers.
+
+### Step 1: Register and get JWT
+
+```bash
+curl -X POST http://localhost:3000/api/v1/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone_number": "6281234567890",
+    "secret_key": "your_basic_auth_secret"
+  }'
+```
+
+Response:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### Step 2: Use JWT in all subsequent requests
+
+```bash
+curl -X POST http://localhost:3000/api/v1/message/text \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"msisdn": "6289876543210", "message": "Hello!"}'
+```
+
+### Step 3: Login to WhatsApp
+
+Use either QR code or pairing code:
+
+**QR Code (JSON format):**
+```bash
+curl -X POST http://localhost:3000/api/v1/login/qr_code/json \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+**Pairing Code:**
+```bash
+curl -X POST http://localhost:3000/api/v1/login/pair_code \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Step 4: Check connection status
+
+```bash
+curl http://localhost:3000/api/v1/login/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## API Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/register` | Register phone number, get JWT token |
+| POST | `/login/qr_code/{format}` | Get QR code for WhatsApp login (formats: `json`, `html`) |
+| POST | `/login/pair_code` | Get pairing code for WhatsApp login |
+| GET | `/login/status` | Check WhatsApp connection status |
+| POST | `/logout` | Disconnect WhatsApp session |
+| POST | `/session/reconnect` | Reconnect existing session |
+
+### Webhooks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/webhook` | Get registered webhook URL |
+| POST | `/webhook` | Register webhook URL |
+| DELETE | `/webhook` | Unregister webhook URL |
+
+### Messaging
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/message/text` | Send text message |
+| POST | `/message/image` | Send image (multipart/form-data) |
+| POST | `/message/react` | Add reaction to message |
+| PUT | `/message` | Edit a message |
+| DELETE | `/message` | Delete a message |
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Service health check |
+
+## Request/Response Examples
+
+### Send Text Message
+
+```bash
+curl -X POST http://localhost:3000/api/v1/message/text \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "msisdn": "6289876543210@s.whatsapp.net",
+    "message": "Hello from the API!"
+  }'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message_id": "3EB0xxxxx"
+}
+```
+
+### Register Webhook
+
+```bash
+curl -X POST http://localhost:3000/api/v1/webhook \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-backend.com/webhook",
+    "hmac_secret": "your_webhook_secret"
+  }'
+```
+
+## Webhook Events
+
+The gateway sends webhooks to your registered URL for message events.
+
+### Outgoing Message Events
+
+Payload structure:
+```json
+{
+  "event": "message.sent",
+  "job_id": "job_1234567890",
+  "to": "6289876543210@s.whatsapp.net",
+  "phone_number": "6281234567890",
+  "timestamp": 1625247600,
+  "message_id": "3EB0xxxxx",
+  "metadata": {}
+}
+```
+
+Event types:
+- `message.queued` - Message queued for sending
+- `message.sent` - Message successfully sent
+- `message.failed` - Message failed to send
+
+### Incoming Message Events
+
+Payload structure:
+```json
+{
+  "event": "message.incoming",
+  "chat": "6289876543210@s.whatsapp.net",
+  "from": "6289876543210@s.whatsapp.net",
+  "is_group": false,
+  "message_id": "3EB0xxxxx",
+  "push_name": "John Doe",
+  "timestamp": 1625247600,
+  "text": "Hello!",
+  "type": "text"
+}
+```
+
+For media messages (image, video, audio, document):
+```json
+{
+  "event": "message.incoming",
+  "chat": "6289876543210@s.whatsapp.net",
+  "from": "6289876543210@s.whatsapp.net",
+  "message_id": "3EB0xxxxx",
+  "timestamp": 1625247600,
+  "type": "image",
+  "media": {
+    "type": "image",
+    "url": "https://example.com/media/3EB0xxxxx",
+    "mime_type": "image/jpeg",
+    "filename": "photo.jpg",
+    "caption": "Check this out!",
+    "size": 204800
+  }
+}
+```
+
+Message types: `text`, `image`, `video`, `audio`, `document`
+
+## Recipient Address Format
+
+- **Individual chat**: `{phone}@s.whatsapp.net` (e.g., `6281234567890@s.whatsapp.net`)
+- **Group chat**: `{group_id}@g.us` (e.g., `120363xxxxx@g.us`)
+
+## Security Warnings
+
+### CRITICAL: Gateway Must Be Wrapped by Your Backend
+
+**DO NOT expose this gateway directly to end users.** Always place it behind your backend service that:
+- Authenticates users
+- Verifies phone number ownership
+- Prevents unauthorized registrations
+- Implements rate limiting
+- Enforces business rules
+
+### JWT Token Sharing Issue
+
+If two JWT tokens are generated for the same phone number, **both can access the WhatsApp session** once either logs in.
+
+Example vulnerability:
+1. User A registers phone "123" -> Token 1
+2. User B registers same phone "123" -> Token 2
+3. User A logs into WhatsApp
+4. **User B can now access the session with Token 2**
+
+**Mitigation**: Your backend must prevent duplicate registrations and verify phone number ownership.
+
+### Production Requirements
+
+- Use PostgreSQL with SSL (not SQLite)
+- Strong secrets (32+ characters, cryptographically random)
+- Disable Swagger documentation (`ENABLE_SWAGGER=false`)
+- HTTPS via reverse proxy
+- Deploy in private network/VPC
+- Verify webhook HMAC signatures
+
+## Integration Patterns
+
+### Pattern 1: User Registration Flow
+
+```javascript
+// Your backend handles user authentication
+app.post('/connect-whatsapp', authenticateUser, async (req, res) => {
+  // Call gateway to get JWT for this user's phone
+  const response = await fetch('http://gateway:3000/api/v1/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone_number: req.user.phone,
+      secret_key: process.env.GATEWAY_SECRET
+    })
+  });
+
+  const { token } = await response.json();
+
+  // Store token securely associated with user
+  // Return QR code endpoint to frontend
+  res.json({
+    qr_url: `http://gateway:3000/api/v1/login/qr_code/html`,
+    token: token // Or keep server-side and proxy requests
+  });
+});
+```
+
+### Pattern 2: Sending Messages
+
+```python
+import requests
+
+def send_whatsapp_message(user_phone, recipient, message):
+    # Get stored JWT for this user
+    jwt_token = get_user_jwt(user_phone)
+
+    response = requests.post(
+        'http://gateway:3000/api/v1/message/text',
+        headers={
+            'Authorization': f'Bearer {jwt_token}',
+            'Content-Type': 'application/json'
+        },
+        json={
+            'msisdn': recipient,
+            'message': message
+        }
+    )
+
+    return response.json()
+```
+
+### Pattern 3: Handling Webhooks
+
+```javascript
+app.post('/webhook', (req, res) => {
+  // Verify HMAC signature (recommended)
+  const signature = req.headers['x-webhook-signature'];
+  if (!verifyHmac(req.body, signature)) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const { event, phone_number, message_id, to, text } = req.body;
+
+  switch (event) {
+    case 'message.sent':
+      console.log(`Message ${message_id} sent to ${to}`);
+      break;
+    case 'message.failed':
+      console.log(`Message ${message_id} failed`);
+      break;
+    case 'message.incoming':
+      console.log(`Incoming message from ${req.body.from}: ${text}`);
+      break;
+  }
+
+  res.json({ success: true });
+});
+```
+
+## Error Responses
+
+All errors follow this format:
+```json
+{
+  "error": "Invalid request syntax or parameters.",
+  "code": 400
+}
+```
+
+Common status codes:
+- `400` - Bad Request (invalid parameters)
+- `401` - Unauthorized (missing/invalid JWT)
+- `403` - Forbidden (authenticated but not allowed)
+- `404` - Not Found
+- `409` - Conflict (e.g., already exists)
+- `500` - Internal Server Error
+
+## Request Tracing
+
+Include `X-Trace-ID` header with a UUID for request tracking:
+```bash
+curl -H "X-Trace-ID: 123e4567-e89b-12d3-a456-426614174000" \
+     -H "Authorization: Bearer TOKEN" \
+     http://localhost:3000/api/v1/login/status
+```
+
+The trace ID is returned in the response header and included in logs.
+
+## OpenAPI Specification
+
+For detailed request/response schemas, field types, and complete API definitions, refer to the OpenAPI specification:
+
+**From running gateway:** `GET /docs/openapi.yaml` (if documentation is enabled)
+
+**From GitHub:** https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/docs/openapi.yaml
+
+AI assistants can fetch this file to get:
+- Complete schema definitions for all request/response bodies
+- Exact field names, types, and validation rules
+- All possible enum values (e.g., webhook event types, message types)
+- HTTP status codes and error response structures
+
+## Documentation
+
+- **OpenAPI Spec**: `/docs/openapi.yaml` in repository
+- **Interactive Docs**: `/docs` endpoint when running
+- **Wiki**: `wiki/` directory in repository
+- **GitHub**: https://github.com/glennprays/whatsapp-gateway
+
+## Environment Variables
+
+Key configuration (see `.env.example` for full list):
+
+| Variable | Description |
+|----------|-------------|
+| `PORT` | Server port (default: 3000) |
+| `JWT_SECRET` | Secret for JWT signing |
+| `BASIC_AUTH_SECRET_KEY` | Secret for registration endpoint |
+| `WHATSAPP_DATASTORE_TYPE` | Database: `sqlite` or `postgres` |
+| `WHATSAPP_DATASTORE_URI` | Database connection string |
+| `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` | Key for encrypting webhook secrets |
+| `ENABLE_SWAGGER` | Set to `false` in production |
+
+## Tech Stack
+
+- Go 1.25
+- whatsmeow (WhatsApp Web protocol library)
+- Fiber (HTTP framework)
+- SQLite / PostgreSQL
+- JWT authentication
+- Google Wire (dependency injection)

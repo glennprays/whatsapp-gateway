@@ -147,6 +147,19 @@ Key configuration options in `.env`:
 
 See `.env.example` for all available options.
 
+## AI-Assisted Integration
+
+Using an AI assistant (Claude, ChatGPT, etc.) to help integrate with this API?
+
+**From running gateway:** `GET /llms.txt`
+
+**From GitHub:**
+```
+https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/llms.txt
+```
+
+This file provides AI-friendly documentation optimized for generating accurate integration code.
+
 ## Documentation
 
 For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki)
