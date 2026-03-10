@@ -30,6 +30,13 @@ cp docs/ui/assets/styles.css "$SITE_DIR/assets/"
 echo "Copying marked.js..."
 cp docs/ui/assets/marked.min.js "$SITE_DIR/assets/"
 
+# Copy llms.txt and openapi.yaml for public access
+echo "Copying llms.txt..."
+cp llms.txt "$SITE_DIR/"
+
+echo "Copying openapi.yaml..."
+cp docs/openapi.yaml "$SITE_DIR/"
+
 # Generate docs-only app.js
 echo "Generating simplified app.js..."
 cat > "$SITE_DIR/assets/app.js" << 'APPJS_EOF'

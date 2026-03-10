@@ -151,14 +151,19 @@ See `.env.example` for all available options.
 
 Using an AI assistant (Claude, ChatGPT, etc.) to help integrate with this API?
 
-**From running gateway:** `GET /llms.txt`
+**Public URLs (always available):**
+- `https://waga.glennprays.com/llms.txt` - AI-optimized documentation
+- `https://waga.glennprays.com/openapi.yaml` - Complete API specification
+
+**From running gateway (default BASE_PATH="/"):**
+- `GET /llms.txt` - AI-optimized documentation
+- `GET /docs/openapi.yaml` - Complete API specification (if docs enabled)
 
 **From GitHub:**
-```
-https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/llms.txt
-```
+- https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/llms.txt
+- https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/docs/openapi.yaml
 
-This file provides AI-friendly documentation optimized for generating accurate integration code.
+These files provide AI-friendly documentation optimized for generating accurate integration code.
 
 ## Documentation
 

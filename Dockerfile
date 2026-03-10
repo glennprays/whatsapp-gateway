@@ -36,6 +36,7 @@ FROM scratch
 COPY --from=builder /app/main /main
 COPY --from=builder /app/docs/openapi.yaml /docs/openapi.yaml
 COPY --from=builder /app/docs/ui /docs/ui
+COPY --from=builder /app/llms.txt /llms.txt
 
 # Copy CA certificates from the certs stage
 COPY --from=certs-and-tzdata /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

@@ -7,6 +7,8 @@ on:
       - 'docs/ui/**'
       - '.github/workflows/docs-pages.yml'
       - 'scripts/build-docs-pages.sh'
+      - 'llms.txt'
+      - 'docs/openapi.yaml'
   workflow_dispatch:
 
 permissions:
@@ -37,6 +39,8 @@ jobs:
             'docs/ui/**' \
             '.github/workflows/docs-pages.yml' \
             'scripts/build-docs-pages.sh' \
+            'llms.txt' \
+            'docs/openapi.yaml' \
             2>/dev/null || echo "")
 
           if [ -z "$CHANGED_FILES" ]; then
