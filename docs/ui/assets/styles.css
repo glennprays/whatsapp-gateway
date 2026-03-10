@@ -600,6 +600,12 @@ rapi-doc {
     display: block;
   }
 
+  /* Fix scrolling on mobile - content needs explicit height */
+  .docs-content {
+    height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+
   /* Adjust content for mobile */
   .docs-inner {
     padding: 1.5rem 1rem;
