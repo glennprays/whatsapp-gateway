@@ -162,6 +162,8 @@ This file provides AI-friendly documentation optimized for generating accurate i
 
 ## Documentation
 
+**Public Documentation:** [https://glennprays.github.io/whatsapp-gateway/](https://glennprays.github.io/whatsapp-gateway/)
+
 For detailed guides, API documentation, architecture explanations, and more, check out our [**Wiki**](https://github.com/glennprays/whatsapp-gateway/wiki)
 
 ### 📚 Wiki Pages
