@@ -80,145 +80,6 @@ curl http://localhost:3000/api/v1/login/status \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-## API Endpoints
-
-### Authentication
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/register` | Register phone number, get JWT token |
-| POST | `/login/qr_code/{format}` | Get QR code for WhatsApp login (formats: `json`, `html`) |
-| POST | `/login/pair_code` | Get pairing code for WhatsApp login |
-| GET | `/login/status` | Check WhatsApp connection status |
-| POST | `/logout` | Disconnect WhatsApp session |
-| POST | `/session/reconnect` | Reconnect existing session |
-
-### Webhooks
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/webhook` | Get registered webhook URL |
-| POST | `/webhook` | Register webhook URL |
-| DELETE | `/webhook` | Unregister webhook URL |
-
-### Messaging
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/message/text` | Send text message |
-| POST | `/message/image` | Send image (multipart/form-data) |
-| POST | `/message/react` | Add reaction to message |
-| PUT | `/message` | Edit a message |
-| DELETE | `/message` | Delete a message |
-
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Service health check |
-
-## Request/Response Examples
-
-### Send Text Message
-
-```bash
-curl -X POST http://localhost:3000/api/v1/message/text \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "msisdn": "6289876543210@s.whatsapp.net",
-    "message": "Hello from the API!"
-  }'
-```
-
-Response:
-```json
-{
-  "success": true,
-  "message_id": "3EB0xxxxx"
-}
-```
-
-### Register Webhook
-
-```bash
-curl -X POST http://localhost:3000/api/v1/webhook \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://your-backend.com/webhook",
-    "hmac_secret": "your_webhook_secret"
-  }'
-```
-
-## Webhook Events
-
-The gateway sends webhooks to your registered URL for message events.
-
-### Outgoing Message Events
-
-Payload structure:
-```json
-{
-  "event": "message.sent",
-  "job_id": "job_1234567890",
-  "to": "6289876543210@s.whatsapp.net",
-  "phone_number": "6281234567890",
-  "timestamp": 1625247600,
-  "message_id": "3EB0xxxxx",
-  "metadata": {}
-}
-```
-
-Event types:
-- `message.queued` - Message queued for sending
-- `message.sent` - Message successfully sent
-- `message.failed` - Message failed to send
-
-### Incoming Message Events
-
-Payload structure:
-```json
-{
-  "event": "message.incoming",
-  "chat": "6289876543210@s.whatsapp.net",
-  "from": "6289876543210@s.whatsapp.net",
-  "is_group": false,
-  "message_id": "3EB0xxxxx",
-  "push_name": "John Doe",
-  "timestamp": 1625247600,
-  "text": "Hello!",
-  "type": "text"
-}
-```
-
-For media messages (image, video, audio, document):
-```json
-{
-  "event": "message.incoming",
-  "chat": "6289876543210@s.whatsapp.net",
-  "from": "6289876543210@s.whatsapp.net",
-  "message_id": "3EB0xxxxx",
-  "timestamp": 1625247600,
-  "type": "image",
-  "media": {
-    "type": "image",
-    "url": "https://example.com/media/3EB0xxxxx",
-    "mime_type": "image/jpeg",
-    "filename": "photo.jpg",
-    "caption": "Check this out!",
-    "size": 204800
-  }
-}
-```
-
-Message types: `text`, `image`, `video`, `audio`, `document`
-
-## Recipient Address Format
-
-- **Individual chat**: `{phone}@s.whatsapp.net` (e.g., `6281234567890@s.whatsapp.net`)
-- **Group chat**: `{group_id}@g.us` (e.g., `120363xxxxx@g.us`)
-
 ## Security Warnings
 
 ### CRITICAL: Gateway Must Be Wrapped by Your Backend
@@ -331,6 +192,40 @@ app.post('/webhook', (req, res) => {
 });
 ```
 
+## Webhook Events
+
+The gateway sends webhooks to your registered URL for message events.
+
+Event types:
+- `message.queued` - Message queued for sending
+- `message.sent` - Message successfully sent
+- `message.failed` - Message failed to send
+- `message.incoming` - Incoming message received
+
+## Recipient Address Format
+
+- **Individual chat**: `{phone}@s.whatsapp.net` (e.g., `6281234567890@s.whatsapp.net`)
+- **Group chat**: `{group_id}@g.us` (e.g., `120363xxxxx@g.us`)
+
+## API Reference
+
+For complete API documentation, including all endpoints, request/response schemas, field types, and validation rules, refer to the OpenAPI specification:
+
+**Public URL:** https://waga.glennprays.com/openapi.yaml
+
+**From running gateway:** `GET /docs/openapi.yaml` (if documentation is enabled)
+
+**From GitHub:** https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/docs/openapi.yaml
+
+### Quick Reference
+
+| Category | Endpoints |
+|----------|-----------|
+| Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
+| Webhooks | `GET /webhook`, `POST /webhook`, `DELETE /webhook` |
+| Messaging | `POST /message/text`, `POST /message/image`, `POST /message/react`, `PUT /message`, `DELETE /message` |
+| Health | `GET /health` |
+
 ## Error Responses
 
 All errors follow this format:
@@ -341,13 +236,7 @@ All errors follow this format:
 }
 ```
 
-Common status codes:
-- `400` - Bad Request (invalid parameters)
-- `401` - Unauthorized (missing/invalid JWT)
-- `403` - Forbidden (authenticated but not allowed)
-- `404` - Not Found
-- `409` - Conflict (e.g., already exists)
-- `500` - Internal Server Error
+Common status codes: `400` (Bad Request), `401` (Unauthorized), `403` (Forbidden), `404` (Not Found), `409` (Conflict), `500` (Internal Server Error)
 
 ## Request Tracing
 
@@ -357,29 +246,6 @@ curl -H "X-Trace-ID: 123e4567-e89b-12d3-a456-426614174000" \
      -H "Authorization: Bearer TOKEN" \
      http://localhost:3000/api/v1/login/status
 ```
-
-The trace ID is returned in the response header and included in logs.
-
-## OpenAPI Specification
-
-For detailed request/response schemas, field types, and complete API definitions, refer to the OpenAPI specification:
-
-**From running gateway:** `GET /docs/openapi.yaml` (if documentation is enabled)
-
-**From GitHub:** https://raw.githubusercontent.com/glennprays/whatsapp-gateway/main/docs/openapi.yaml
-
-AI assistants can fetch this file to get:
-- Complete schema definitions for all request/response bodies
-- Exact field names, types, and validation rules
-- All possible enum values (e.g., webhook event types, message types)
-- HTTP status codes and error response structures
-
-## Documentation
-
-- **OpenAPI Spec**: `/docs/openapi.yaml` in repository
-- **Interactive Docs**: `/docs` endpoint when running
-- **Wiki**: `wiki/` directory in repository
-- **GitHub**: https://github.com/glennprays/whatsapp-gateway
 
 ## Environment Variables
 
@@ -394,6 +260,45 @@ Key configuration (see `.env.example` for full list):
 | `WHATSAPP_DATASTORE_URI` | Database connection string |
 | `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` | Key for encrypting webhook secrets |
 | `ENABLE_SWAGGER` | Set to `false` in production |
+
+## Documentation
+
+### Full Documentation Index
+
+All documentation files are available at https://waga.glennprays.com/assets/docs/
+
+#### Getting Started
+- [Introduction](https://waga.glennprays.com/assets/docs/introduction.md) - Project overview and scope
+- [System Boundary](https://waga.glennprays.com/assets/docs/system-boundary.md) - System boundaries and responsibilities
+- [Design Principles](https://waga.glennprays.com/assets/docs/design-principles.md) - Core design principles
+- [Feature Matrix](https://waga.glennprays.com/assets/docs/feature-matrix.md) - Feature comparison matrix
+
+#### Architecture
+- [High-Level Architecture](https://waga.glennprays.com/assets/docs/high-level-architecture.md) - System architecture overview
+- [Component Overview](https://waga.glennprays.com/assets/docs/component-overview.md) - Detailed component breakdown
+- [Message Flow](https://waga.glennprays.com/assets/docs/message-flow.md) - Outbound/inbound message flow
+- [Webhook Flow](https://waga.glennprays.com/assets/docs/webhook-flow.md) - Webhook processing flow
+- [Queue Processing](https://waga.glennprays.com/assets/docs/queue-processing.md) - Queue processing details
+
+#### Installation
+- [Prerequisites](https://waga.glennprays.com/assets/docs/prerequisites.md) - System requirements
+- [Docker Deployment](https://waga.glennprays.com/assets/docs/docker-deployment.md) - Docker setup
+- [Binary Build](https://waga.glennprays.com/assets/docs/binary-build.md) - Binary compilation
+- [Production Deployment](https://waga.glennprays.com/assets/docs/production-deployment.md) - Production guide
+- [Reverse Proxy Setup](https://waga.glennprays.com/assets/docs/reverse-proxy-setup.md) - Reverse proxy configuration
+
+#### Configuration
+- [Environment Variables](https://waga.glennprays.com/assets/docs/environment-variables.md) - Environment configuration
+- [Storage Configuration](https://waga.glennprays.com/assets/docs/storage-configuration.md) - Database/storage setup
+
+#### Security
+- [Authentication and Security](https://waga.glennprays.com/assets/docs/authentication-and-security.md) - Authentication mechanisms
+- [Important Security Considerations](https://waga.glennprays.com/assets/docs/important-security-consideration.md) - Critical security warnings
+
+### Other Resources
+- **OpenAPI Spec**: https://waga.glennprays.com/openapi.yaml
+- **Interactive Docs**: https://glennprays.github.io/whatsapp-gateway/
+- **GitHub**: https://github.com/glennprays/whatsapp-gateway
 
 ## Tech Stack
 

@@ -8,4 +8,5 @@ dbs/*
 *.DS_Store
 !*.gitkeep
 *.db
+_site/
 
