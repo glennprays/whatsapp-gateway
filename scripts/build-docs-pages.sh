@@ -6,7 +6,16 @@ set -e
 
 SITE_DIR="${1:-_site}"
 
-echo "Building GitHub Pages documentation to $SITE_DIR..."
+# Base URL for assets - empty string means root (/)
+# Set BASE_PATH env var only if you need a custom prefix (e.g., /docs)
+BASE_URL="${BASE_PATH:-}"
+
+echo "Building documentation to $SITE_DIR..."
+if [ -n "$BASE_URL" ]; then
+  echo "Base URL: $BASE_URL"
+else
+  echo "Base URL: / (root)"
+fi
 
 # Create directory structure
 mkdir -p "$SITE_DIR/assets/docs"
@@ -30,11 +39,8 @@ cat > "$SITE_DIR/assets/app.js" << 'APPJS_EOF'
 function getBasePath() {
   const pathname = window.location.pathname;
 
-  // Remove /whatsapp-gateway prefix for GitHub Pages, then clean up
-  let basePath = pathname.replace(/\/whatsapp-gateway/, '');
-
-  // Remove the HTML filename from the path
-  basePath = basePath.replace(/\/?[^\/]*\.html$/, '');
+  // Remove the HTML filename from the path to get the base directory
+  let basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
 
   return basePath === '' ? '' : basePath;
 }
@@ -367,7 +373,7 @@ APPJS_EOF
 
 # Generate docs-only index.html
 echo "Generating simplified index.html..."
-cat > "$SITE_DIR/index.html" << 'HTML_EOF'
+cat > "$SITE_DIR/index.html" << HTML_EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -376,10 +382,10 @@ cat > "$SITE_DIR/index.html" << 'HTML_EOF'
   <title>Whatsapp Gateway Documentation</title>
 
   <!-- External CSS -->
-  <link rel="stylesheet" href="/whatsapp-gateway/assets/styles.css">
+  <link rel="stylesheet" href="${BASE_URL}/assets/styles.css">
 
   <!-- Marked.js for Markdown rendering -->
-  <script src="/whatsapp-gateway/assets/marked.min.js"></script>
+  <script src="${BASE_URL}/assets/marked.min.js"></script>
 
   <!-- Load fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -428,7 +434,7 @@ cat > "$SITE_DIR/index.html" << 'HTML_EOF'
   </div>
 
   <!-- External JavaScript -->
-  <script src="/whatsapp-gateway/assets/app.js"></script>
+  <script src="${BASE_URL}/assets/app.js"></script>
 </body>
 </html>
 HTML_EOF
