@@ -77,6 +77,12 @@ func SetupRouter(
 		return c.Status(http.StatusOK).JSON(response)
 	})
 
+	// Serve llms.txt for AI assistant context
+	api.Get("/llms.txt", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		return c.SendFile("./llms.txt")
+	})
+
 	if cfg.EnableDocumentation {
 		traceID := fmt.Sprintf("DOCS-INIT:%s", uuid.New().String())
 		logger.Info(traceID, "Documentation is enabled, initializing Documentation routes", nil)
