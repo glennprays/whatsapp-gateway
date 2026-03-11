@@ -1,0 +1,342 @@
+// ==========================================
+// BASE PATH DETECTION
+// ==========================================
+function getBasePath() {
+  const pathname = window.location.pathname;
+
+  // Remove the HTML filename from the path to get the base directory
+  let basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
+
+  // Normalize: "/" or "" should return "" (empty string)
+  // This prevents protocol-relative URLs like "//assets/..."
+  if (basePath === '/' || basePath === '') {
+    return '';
+  }
+
+  return basePath;
+}
+
+// Helper function to build relative URLs
+function buildUrl(path) {
+  const basePath = getBasePath();
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+
+  if (basePath === '') {
+    return '/' + cleanPath;
+  }
+
+  return basePath + "/" + cleanPath;
+}
+
+// ==========================================
+// CONFIGURATION: Edit this to customize your sidebar
+// ==========================================
+const DOCS_CONFIG = {
+  sections: [
+    {
+      title: "Getting Started",
+      links: [
+        { title: "Introduction", file: "getting-started/introduction" },
+        { title: "System Boundary", file: "getting-started/system-boundary" },
+        { title: "Design Principles", file: "getting-started/design-principles" },
+        { title: "Feature Matrix", file: "getting-started/feature-matrix" }
+      ]
+    },
+    {
+      title: "Architecture",
+      links: [
+        { title: "High Level Architecture", file: "architechture/high-level-architecture" },
+        { title: "Component Overview", file: "architechture/component-overview" },
+        { title: "Message Flow", file: "architechture/message-flow" },
+        { title: "Webhook Flow", file: "architechture/webhook-flow" },
+        { title: "Queue Processing", file: "architechture/queue-processing" }
+      ]
+    },
+    {
+      title: "Installation",
+      links: [
+        { title: "Prerequisites", file: "installation/prerequisites" },
+        { title: "Docker Deployment", file: "installation/docker-deployment" },
+        { title: "Binary Build", file: "installation/binary-build" },
+        { title: "Production Deployment", file: "installation/production-deployment" },
+        { title: "Reverse Proxy Setup", file: "installation/reverse-proxy-setup" }
+      ]
+    },
+    {
+      title: "Configuration",
+      links: [
+        { title: "Environment Variables", file: "configuration/environment-variables" },
+        { title: "Storage Configuration", file: "configuration/storage-configuration" },
+      ]
+    },
+    {
+      title: "Security",
+      links: [
+        { title: "Authentication and Security", file: "security/authentication-and-security" },
+        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
+      ]
+    }
+  ],
+  defaultDoc: "getting-started/introduction"
+};
+
+// ==========================================
+// HASH ROUTING UTILITIES
+// ==========================================
+function parseHash() {
+  const hash = window.location.hash.substring(1);
+
+  if (!hash) {
+    return { doc: null, section: null };
+  }
+
+  const parts = hash.split(':');
+  return {
+    doc: parts[0] || null,
+    section: parts[1] || null
+  };
+}
+
+function buildHash(doc, section) {
+  if (section) {
+    return `#${doc}:${section}`;
+  }
+  if (doc) {
+    return `#${doc}`;
+  }
+  return '';
+}
+
+// ==========================================
+// SIDEBAR GENERATION
+// ==========================================
+function generateSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  let sidebarHTML = '';
+
+  DOCS_CONFIG.sections.forEach(section => {
+    sidebarHTML += `
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">${section.title}</h3>
+        <ul class="sidebar-links">
+          ${section.links.map((link, index) => {
+      const isFirst = section === DOCS_CONFIG.sections[0] && index === 0;
+      return `
+              <li>
+                <a href="${buildHash(link.file, null)}"
+                   class="sidebar-link ${isFirst ? 'active' : ''}"
+                   data-doc="${link.file}">
+                  ${link.title}
+                </a>
+              </li>
+            `;
+    }).join('')}
+        </ul>
+      </div>
+    `;
+  });
+
+  sidebar.innerHTML = sidebarHTML;
+
+  document.querySelectorAll('.sidebar-link').forEach(link => {
+    link.addEventListener('click', handleSidebarClick);
+  });
+}
+
+// ==========================================
+// EVENT HANDLERS
+// ==========================================
+function handleSidebarClick(e) {
+  e.preventDefault();
+
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  this.classList.add('active');
+
+  const docName = this.dataset.doc;
+  window.history.pushState(null, '', buildHash(docName, null));
+  loadMarkdownDocs(docName);
+}
+
+// Initialize marked.js
+if (typeof marked !== 'undefined') {
+  marked.setOptions({
+    breaks: true,
+    gfm: true
+  });
+}
+
+// ==========================================
+// MARKDOWN LOADING
+// ==========================================
+
+function generateSlug(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+}
+
+function addHeadingAnchors(htmlContent, docName) {
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlContent;
+
+  const headings = tempDiv.querySelectorAll('h1, h2');
+  headings.forEach(heading => {
+    const text = heading.textContent;
+    const slug = generateSlug(text);
+
+    heading.id = slug;
+
+    const anchor = document.createElement('a');
+    anchor.href = buildHash(docName, slug);
+    anchor.className = 'heading-anchor';
+    anchor.textContent = '#';
+    anchor.setAttribute('aria-label', `Link to ${text}`);
+
+    anchor.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.history.pushState(null, '', buildHash(docName, slug));
+      heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    heading.appendChild(anchor);
+  });
+
+  return tempDiv.innerHTML;
+}
+
+async function loadMarkdownDocs(docName) {
+  const contentDiv = document.getElementById('markdown-content');
+
+  contentDiv.innerHTML = '<div class="loading-spinner"><div class="spinner"></div></div>';
+
+  try {
+    const markdownUrl = buildUrl(`assets/docs/${docName}.md`);
+
+    const response = await fetch(markdownUrl);
+
+    if (!response.ok) {
+      throw new Error(`File ${docName}.md not found`);
+    }
+
+    const markdown = await response.text();
+    let html = marked.parse(markdown);
+
+    html = addHeadingAnchors(html, docName);
+
+    contentDiv.innerHTML = html;
+
+    const hashData = parseHash();
+    if (hashData.section) {
+      setTimeout(() => {
+        const targetElement = document.getElementById(hashData.section);
+        if (targetElement) {
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else {
+      document.querySelector('.docs-content').scrollTop = 0;
+    }
+
+  } catch (error) {
+    contentDiv.innerHTML = `
+  <div style="text-align: center; padding: 4rem 2rem;">
+    <h2 style="color: #ef4444; margin-bottom: 1rem; font-size: 1.5rem;">
+      Documentation Not Available
+    </h2>
+
+    <p style="color: #a1a1a1; margin-bottom: 1.5rem; font-size: 1rem;">
+      The page you are looking for could not be displayed at the moment.
+    </p>
+
+    <div class="info-box" style="max-width: 600px; margin: 2rem auto; text-align: left;">
+      <p style="margin-bottom: 1rem;"><strong>What you can do:</strong></p>
+      <ul style="margin-left: 1.5rem; color: #a1a1a1;">
+        <li style="margin-bottom: 0.5rem;">Check the sidebar and select another section</li>
+        <li style="margin-bottom: 0.5rem;">Refresh the page and try again</li>
+        <li style="margin-bottom: 0.5rem;">Contact support if the issue continues</li>
+      </ul>
+
+      <p style="margin-top: 1rem; color: #a1a1a1;">
+        If this content should be available, please reach out to the documentation owner or system administrator.
+      </p>
+    </div>
+
+    <div class="info-box" style="max-width: 600px; margin: 0 auto; text-align: left;">
+      <p style="margin-bottom: 1rem;">
+        <strong>Need help?</strong> Use the navigation menu to explore available documentation sections.
+      </p>
+    </div>
+  </div>
+`;
+    console.error('Error loading markdown:', error);
+  }
+}
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+window.addEventListener('DOMContentLoaded', () => {
+  const logoLink = document.getElementById('logo-link');
+  logoLink.href = window.location.pathname;
+
+  generateSidebar();
+
+  const hashData = parseHash();
+  let initialDoc = DOCS_CONFIG.defaultDoc;
+
+  if (hashData.doc) {
+    let docFound = false;
+    DOCS_CONFIG.sections.forEach(section => {
+      section.links.forEach(link => {
+        if (link.file === hashData.doc) {
+          initialDoc = hashData.doc;
+          docFound = true;
+
+          document.querySelectorAll('.sidebar-link').forEach(l => {
+            l.classList.remove('active');
+            if (l.dataset.doc === hashData.doc) {
+              l.classList.add('active');
+            }
+          });
+        }
+      });
+    });
+  }
+
+  loadMarkdownDocs(initialDoc);
+});
+
+// Handle hash changes
+window.addEventListener('hashchange', () => {
+  const hashData = parseHash();
+
+  if (hashData.doc) {
+    let isDocumentHash = false;
+    DOCS_CONFIG.sections.forEach(section => {
+      section.links.forEach(link => {
+        if (link.file === hashData.doc) {
+          isDocumentHash = true;
+
+          document.querySelectorAll('.sidebar-link').forEach(l => {
+            l.classList.remove('active');
+            if (l.dataset.doc === hashData.doc) {
+              l.classList.add('active');
+            }
+          });
+
+          loadMarkdownDocs(hashData.doc);
+        }
+      });
+    });
+
+    if (!isDocumentHash && hashData.section) {
+      const targetElement = document.getElementById(hashData.section);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }
+});
