@@ -30,6 +30,12 @@ cp docs/ui/assets/styles.css "$SITE_DIR/assets/"
 echo "Copying marked.js..."
 cp docs/ui/assets/marked.min.js "$SITE_DIR/assets/"
 
+echo "Copying favicon files..."
+cp docs/ui/assets/favicon-32x32.png "$SITE_DIR/assets/"
+cp docs/ui/assets/favicon-16x16.png "$SITE_DIR/assets/"
+cp docs/ui/assets/favicon.ico "$SITE_DIR/assets/"
+cp docs/ui/assets/og-image.png "$SITE_DIR/assets/"
+
 # Copy llms.txt and openapi.yaml for public access
 echo "Copying llms.txt..."
 cp llms.txt "$SITE_DIR/"
@@ -39,7 +45,7 @@ cp docs/openapi.yaml "$SITE_DIR/"
 
 # Generate docs-only app.js
 echo "Generating simplified app.js..."
-cat > "$SITE_DIR/assets/app.js" << 'APPJS_EOF'
+cat >"$SITE_DIR/assets/app.js" <<'APPJS_EOF'
 // ==========================================
 // BASE PATH DETECTION
 // ==========================================
@@ -409,13 +415,56 @@ APPJS_EOF
 
 # Generate docs-only index.html
 echo "Generating simplified index.html..."
-cat > "$SITE_DIR/index.html" << HTML_EOF
+cat >"$SITE_DIR/index.html" <<HTML_EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Whatsapp Gateway Documentation</title>
+  <title>WhatsApp Gateway - Open Source Go REST API</title>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
+  <meta name="keywords" content="WhatsApp, WhatsApp API, Go, Golang, gateway, open source, messaging, integration">
+  <meta name="author" content="Glenn Prays">
+  <link rel="canonical" href="https://waga.glennprays.com/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="${BASE_URL}/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="${BASE_URL}/assets/favicon-16x16.png">
+  <link rel="shortcut icon" href="${BASE_URL}/assets/favicon.ico">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://waga.glennprays.com/">
+  <meta property="og:title" content="WhatsApp Gateway - Open Source Go REST API">
+  <meta property="og:description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
+  <meta property="og:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://waga.glennprays.com/">
+  <meta name="twitter:title" content="WhatsApp Gateway - Open Source Go REST API">
+  <meta name="twitter:description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
+  <meta name="twitter:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "WhatsApp Gateway",
+    "description": "Open-source WhatsApp Gateway written in Go. REST API gateway that abstracts WhatsApp Web complexity.",
+    "author": {
+      "@type": "Person",
+      "name": "Glenn Prays"
+    },
+    "programmingLanguage": "Go",
+    "license": "https://opensource.org/licenses/MIT",
+    "codeRepository": "https://github.com/glennprays/whatsapp-gateway",
+    "url": "https://waga.glennprays.com/"
+  }
+  </script>
 
   <!-- External CSS -->
   <link rel="stylesheet" href="${BASE_URL}/assets/styles.css">
@@ -439,7 +488,7 @@ cat > "$SITE_DIR/index.html" << HTML_EOF
           <span class="hamburger-line"></span>
         </button>
         <a href="#" class="logo" id="logo-link">
-          <span class="logo-text">Whatsapp Gateway</span>
+          <span class="logo-text">WhatsApp Gateway</span>
         </a>
         <div class="nav-tabs">
           <button class="nav-tab active">Docs</button>
@@ -459,7 +508,7 @@ cat > "$SITE_DIR/index.html" << HTML_EOF
         <nav class="docs-sidebar" id="sidebar">
           <!-- Sidebar will be populated by JavaScript -->
         </nav>
-        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <div id="sidebar-overlay"></div>
 
         <!-- Main Content -->
         <main class="docs-content">
