@@ -155,6 +155,15 @@ function handleSidebarClick(e) {
   const docName = this.dataset.doc;
   window.history.pushState(null, '', buildHash(docName, null));
   loadMarkdownDocs(docName);
+
+  // Close sidebar on mobile
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
 }
 
 // Initialize marked.js
@@ -279,6 +288,20 @@ async function loadMarkdownDocs(docName) {
 // INITIALIZATION
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+  // Mobile sidebar toggle
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+  const sidebar = document.getElementById('sidebar');
+
+  function toggleSidebar() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('active');
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+  }
+
+  mobileMenuBtn?.addEventListener('click', toggleSidebar);
+  sidebarOverlay?.addEventListener('click', toggleSidebar);
+
   const logoLink = document.getElementById('logo-link');
   logoLink.href = window.location.pathname;
 

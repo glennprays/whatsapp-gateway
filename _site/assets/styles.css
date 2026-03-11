@@ -600,6 +600,22 @@ rapi-doc {
     display: block;
   }
 
+  /* Make content fixed on mobile for reliable scrolling */
+  .docs-layout {
+    display: block;
+    height: auto;
+  }
+
+  .docs-content {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+    width: 100%;
+  }
+
   /* Adjust content for mobile */
   .docs-inner {
     padding: 1.5rem 1rem;
