@@ -83,6 +83,12 @@ const DOCS_CONFIG = {
         { title: "Authentication and Security", file: "security/authentication-and-security" },
         { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
       ]
+    },
+    {
+      title: "SDK",
+      links: [
+        { title: "Go", file: "sdk/go" }
+      ]
     }
   ],
   defaultDoc: "getting-started/introduction" // First doc to load
