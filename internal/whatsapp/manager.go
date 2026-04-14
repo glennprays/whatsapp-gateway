@@ -43,6 +43,7 @@ type (
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
+		GetClients() map[string]*whatsmeow.Client
 	}
 )
 
@@ -335,4 +336,8 @@ func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
 	}
 
 	return client.Store.ID.String(), nil
+}
+
+func (m *manager) GetClients() map[string]*whatsmeow.Client {
+	return Clients
 }

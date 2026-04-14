@@ -9,6 +9,7 @@ import (
 
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 )
 
 func WhatsappDecomposeJID(jid string) string {
@@ -89,4 +90,36 @@ func WhatsappGenerateQRCode(ctx context.Context, qrChan <-chan whatsmeow.QRChann
 			return "", 0, errors.New("context cancelled while waiting for QR code")
 		}
 	}
+}
+
+// ConvertJIDToNonADLID converts @lid JIDs to @s.whatsapp.net format
+// Uses the client's LID store to resolve the JID
+// Falls back to the chat JID if the sender JID cannot be resolved
+func ConvertJIDToNonADLID(senderJID types.JID, chatJID types.JID, client *whatsmeow.Client) string {
+	senderStr := senderJID.String()
+
+	// If already @s.whatsapp.net, return as-is
+	if strings.HasSuffix(senderStr, "@s.whatsapp.net") {
+		return StripDeviceIDFromJID(senderStr)
+	}
+
+	// If @lid format, try to resolve using LID store
+	if strings.HasSuffix(senderStr, "@lid") {
+		// Try to get phone number for LID from the store
+		if client != nil && client.Store != nil && client.Store.LIDs != nil {
+			resolvedJID, err := client.Store.LIDs.GetPNForLID(context.Background(), senderJID)
+			if err == nil && !resolvedJID.IsEmpty() && strings.HasSuffix(resolvedJID.String(), "@s.whatsapp.net") {
+				return StripDeviceIDFromJID(resolvedJID.String())
+			}
+		}
+
+		// Fallback to chat JID (which should have phone number for 1-on-1 chats)
+		chatStr := chatJID.String()
+		if strings.HasSuffix(chatStr, "@s.whatsapp.net") {
+			return StripDeviceIDFromJID(chatStr)
+		}
+	}
+
+	// Default: return stripped sender JID
+	return StripDeviceIDFromJID(senderStr)
 }
