@@ -92,9 +92,14 @@ func WhatsappGenerateQRCode(ctx context.Context, qrChan <-chan whatsmeow.QRChann
 	}
 }
 
-// ConvertJIDToNonADLID converts @lid JIDs to @s.whatsapp.net format
-// Uses the client's LID store to resolve the JID
-// Falls back to the chat JID if the sender JID cannot be resolved
+// ConvertJIDToNonADLID converts @lid JIDs to @s.whatsapp.net format.
+// This is useful for webhook payloads where the sender JID needs to be
+// a phone number rather than an internal @lid identifier.
+//
+// Resolution strategy:
+// 1. If already @s.whatsapp.net, return as-is
+// 2. For @lid format, resolve using client's LID store
+// 3. Fallback to chat JID for 1-on-1 chats if resolution fails
 func ConvertJIDToNonADLID(senderJID types.JID, chatJID types.JID, client *whatsmeow.Client) string {
 	senderStr := senderJID.String()
 
