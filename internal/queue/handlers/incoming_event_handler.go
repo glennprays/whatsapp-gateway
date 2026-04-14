@@ -7,6 +7,7 @@ import (
 
 	customLog "github.com/glennprays/log"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -20,6 +21,7 @@ type IncomingEventHandler struct {
 	Publisher      *queue.RabbitMQQueue
 	Logger         *customLog.Logger
 	MediaDownloader whatsapp.MediaDownloader
+	Clients        map[string]*whatsmeow.Client
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -39,8 +41,14 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 	// Check for duplicate message
 	// TODO: Implement duplicate detection if needed
 
-	// Build webhook payload
-	payload := buildWebhookPayload(&waEvent, h.MediaDownloader, traceID, eventMsg.PhoneNumber)
+	// Get client for JID resolution
+	var client *whatsmeow.Client
+	if h.Clients != nil {
+		client = h.Clients[eventMsg.PhoneNumber]
+	}
+
+	// Build webhook payload with client
+	payload := buildWebhookPayload(&waEvent, h.MediaDownloader, traceID, eventMsg.PhoneNumber, client)
 
 	// Fetch webhook config from database using JID
 	webhook, err := h.Repository.GetWebhook(ctx, eventMsg.JID)
@@ -69,12 +77,12 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 	return nil
 }
 
-func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDownloader, traceID string, phoneNumber string) map[string]interface{} {
+func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDownloader, traceID string, phoneNumber string, client *whatsmeow.Client) map[string]interface{} {
 	payload := map[string]interface{}{
 		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
-		"from":       whatsapp.StripDeviceIDFromJID(msg.Info.Sender.String()),
+		"from":       whatsapp.ConvertJIDToNonADLID(msg.Info.Sender, msg.Info.Chat, client),
 		"chat":       msg.Info.Chat.String(),
 		"is_group":   msg.Info.IsGroup,
 		"push_name":  msg.Info.PushName,
