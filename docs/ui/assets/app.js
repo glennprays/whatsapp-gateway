@@ -78,16 +78,26 @@ const DOCS_CONFIG = {
       ]
     },
     {
-      title: "Security",
+      title: "MCP",
       links: [
-        { title: "Authentication and Security", file: "security/authentication-and-security" },
-        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
+        { title: "Introduction", file: "mcp/introduction" },
+        { title: "Quick Start", file: "mcp/quick-start" },
+        { title: "Configuration", file: "mcp/configuration" },
+        { title: "Tools Reference", file: "mcp/tools-reference" },
+        { title: "Client Setup", file: "mcp/client-setup" }
       ]
     },
     {
       title: "SDK",
       links: [
         { title: "Go", file: "sdk/go" }
+      ]
+    },
+    {
+      title: "Security",
+      links: [
+        { title: "Authentication and Security", file: "security/authentication-and-security" },
+        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
       ]
     }
   ],
