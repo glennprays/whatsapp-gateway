@@ -125,6 +125,16 @@ const DOCS_CONFIG = {
       ]
     },
     {
+      title: "MCP",
+      links: [
+        { title: "Introduction", file: "mcp/introduction" },
+        { title: "Quick Start", file: "mcp/quick-start" },
+        { title: "Configuration", file: "mcp/configuration" },
+        { title: "Tools Reference", file: "mcp/tools-reference" },
+        { title: "Client Setup", file: "mcp/client-setup" }
+      ]
+    },
+    {
       title: "SDK",
       links: [
         { title: "Go", file: "sdk/go" }
@@ -144,6 +154,16 @@ function parseHash() {
     return { doc: null, section: null };
   }
 
+  // Check if hash starts with docs: prefix
+  if (hash.startsWith('docs:')) {
+    const parts = hash.substring(5).split(':');
+    return {
+      doc: parts[0] || null,
+      section: parts[1] || null
+    };
+  }
+
+  // Backward compatibility: if no prefix, assume doc
   const parts = hash.split(':');
   return {
     doc: parts[0] || null,
@@ -153,10 +173,10 @@ function parseHash() {
 
 function buildHash(doc, section) {
   if (section) {
-    return `#${doc}:${section}`;
+    return `#docs:${doc}:${section}`;
   }
   if (doc) {
-    return `#${doc}`;
+    return `#docs:${doc}`;
   }
   return '';
 }
@@ -207,7 +227,7 @@ function handleSidebarClick(e) {
   this.classList.add('active');
 
   const docName = this.dataset.doc;
-  window.history.pushState(null, '', buildHash(docName, null));
+  window.history.pushState(null, '', `#docs:${docName}`);
   loadMarkdownDocs(docName);
 
   // Close sidebar on mobile
