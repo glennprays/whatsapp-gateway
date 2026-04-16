@@ -78,6 +78,13 @@ const DOCS_CONFIG = {
       ]
     },
     {
+      title: "Security",
+      links: [
+        { title: "Authentication and Security", file: "security/authentication-and-security" },
+        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
+      ]
+    },
+    {
       title: "MCP",
       links: [
         { title: "Introduction", file: "mcp/introduction" },
@@ -91,13 +98,6 @@ const DOCS_CONFIG = {
       title: "SDK",
       links: [
         { title: "Go", file: "sdk/go" }
-      ]
-    },
-    {
-      title: "Security",
-      links: [
-        { title: "Authentication and Security", file: "security/authentication-and-security" },
-        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
       ]
     }
   ],
