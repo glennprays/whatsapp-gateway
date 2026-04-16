@@ -449,6 +449,6 @@ Send "Hello from Claude Code CLI!" to 6282114759228@s.whatsapp.net
 
 ## Next Steps
 
-- [**Tools Reference**](/tools-reference) - Learn about available MCP tools
-- [**Configuration**](/configuration) - Advanced server configuration
-- [**Quick Start**](/quick-start) - Get started quickly
+- [**Tools Reference**](#docs:mcp/tools-reference) - Learn about available MCP tools
+- [**Configuration**](#docs:mcp/configuration) - Advanced server configuration
+- [**Quick Start**](#docs:mcp/quick-start) - Get started quickly

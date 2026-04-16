@@ -384,5 +384,5 @@ All tools return structured error messages when operations fail.
 
 ## Next Steps
 
-- [**Client Setup**](/client-setup) - Configure your MCP client
-- [**Configuration**](/configuration) - Server configuration options
+- [**Client Setup**](#docs:mcp/client-setup) - Configure your MCP client
+- [**Configuration**](#docs:mcp/configuration) - Server configuration options

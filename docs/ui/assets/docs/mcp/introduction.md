@@ -101,7 +101,6 @@ Best for: **Web-based MCP clients, Open Code (VS Code)**
 Before using the MCP WhatsApp Gateway, you need:
 
 1. **Running WhatsApp Gateway instance**
-   - Follow the [WhatsApp Gateway setup guide](https://waga.glennprays.com)
    - Deploy the gateway service (Docker, binary, or cloud)
    - Ensure it's accessible via HTTP/HTTPS
 
@@ -117,7 +116,7 @@ Before using the MCP WhatsApp Gateway, you need:
 
 ## Next Steps
 
-- [**Quick Start**](/quick-start) - Get up and running with Docker in minutes
-- [**Configuration**](/configuration) - Detailed configuration options and environment variables
-- [**Tools Reference**](/tools-reference) - Complete list of available MCP tools
-- [**Client Setup**](/client-setup) - Configure your MCP client (Claude, Cursor, Open Code, etc.)
+- [**Quick Start**](#docs:mcp/quick-start) - Get up and running with Docker in minutes
+- [**Configuration**](#docs:mcp/configuration) - Detailed configuration options and environment variables
+- [**Tools Reference**](#docs:mcp/tools-reference) - Complete list of available MCP tools
+- [**Client Setup**](#docs:mcp/client-setup) - Configure your MCP client (Claude, Cursor, Open Code, etc.)

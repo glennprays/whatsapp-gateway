@@ -316,5 +316,5 @@ docker run -d --name whatsapp-gateway-mcp \
 
 ## Next Steps
 
-- [**Tools Reference**](/tools-reference) - Complete list of available MCP tools
-- [**Client Setup**](/client-setup) - Configure your MCP client
+- [**Tools Reference**](#docs:mcp/tools-reference) - Complete list of available MCP tools
+- [**Client Setup**](#docs:mcp/client-setup) - Configure your MCP client

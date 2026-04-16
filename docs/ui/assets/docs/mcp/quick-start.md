@@ -71,19 +71,19 @@ Once the MCP server is running, configure your AI client:
 
 ### Claude Desktop
 
-See [Client Setup - Claude Desktop](/client-setup#claude-desktop)
+See [Client Setup - Claude Desktop](#docs:mcp/client-setup)
 
 ### Cursor IDE
 
-See [Client Setup - Cursor IDE](/client-setup#cursor-ide)
+See [Client Setup - Cursor IDE](#docs:mcp/client-setup)
 
 ### Open Code (VS Code)
 
-See [Client Setup - Open Code](/client-setup#open-code-vs-code)
+See [Client Setup - Open Code](#docs:mcp/client-setup)
 
 ### Claude Code CLI
 
-See [Client Setup - Claude Code CLI](/client-setup#claude-code-cli)
+See [Client Setup - Claude Code CLI](#docs:mcp/client-setup)
 
 ## Step 4: Test the Connection
 
@@ -159,6 +159,6 @@ docker run -i --rm \
 
 ## Next Steps
 
-- [**Configuration**](/configuration) - Detailed configuration options and environment variables
-- [**Tools Reference**](/tools-reference) - Complete list of available MCP tools
-- [**Client Setup**](/client-setup) - Configure your MCP client in detail
+- [**Configuration**](#docs:mcp/configuration) - Detailed configuration options and environment variables
+- [**Tools Reference**](#docs:mcp/tools-reference) - Complete list of available MCP tools
+- [**Client Setup**](#docs:mcp/client-setup) - Configure your MCP client in detail
