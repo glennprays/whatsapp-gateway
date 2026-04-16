@@ -73,7 +73,7 @@ Best for: **Claude Desktop, Cursor, Claude Code CLI**
 
 ### HTTP+SSE Transport
 
-Best for: **Web-based MCP clients, Open Code (VS Code)**
+Best for: **Web-based MCP clients, Open Code**
 
 - Runs as a standalone HTTP server
 - Uses Server-Sent Events (SSE) for real-time updates

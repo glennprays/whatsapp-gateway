@@ -71,7 +71,7 @@ WAGA_JWT_TOKEN="your_jwt_token" \
 
 ### HTTP+SSE Transport
 
-Best for: **Web-based MCP clients, Open Code (VS Code)**
+Best for: **Web-based MCP clients, Open Code**
 
 **Characteristics:**
 - Runs as a standalone HTTP server
@@ -288,7 +288,7 @@ docker run -i --rm \
   glennprays/mcp-whatsapp-gateway:latest
 ```
 
-### Open Code / VS Code (HTTP+SSE)
+### Open Code (HTTP+SSE)
 
 ```bash
 docker run -d --name whatsapp-gateway-mcp \

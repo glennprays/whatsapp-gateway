@@ -7,8 +7,8 @@ Get the MCP WhatsApp Gateway server running in minutes using Docker.
 Before you begin, ensure you have:
 
 - **Docker installed** on your system ([Download Docker](https://www.docker.com/products/docker-desktop))
-- **Running WhatsApp Gateway** instance ([Setup Guide](https://waga.glennprays.com))
-- **JWT Token** from your gateway registration ([Get Token](/getting-started/introduction))
+- **Running WhatsApp Gateway** instance 
+- **JWT Token** from your gateway registration 
 
 ## Step 1: Pull the Docker Image
 
@@ -77,7 +77,7 @@ See [Client Setup - Claude Desktop](#docs:mcp/client-setup)
 
 See [Client Setup - Cursor IDE](#docs:mcp/client-setup)
 
-### Open Code (VS Code)
+### Open Code
 
 See [Client Setup - Open Code](#docs:mcp/client-setup)
 

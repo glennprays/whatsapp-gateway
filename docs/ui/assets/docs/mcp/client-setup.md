@@ -8,7 +8,7 @@ The MCP WhatsApp Gateway supports multiple AI clients:
 
 - **Claude Desktop** - Native desktop application
 - **Cursor IDE** - AI-powered code editor
-- **Open Code (VS Code)** - Microsoft's open-source code editor
+- **Open Code** - AI-powered code editor at https://opencode.ai/
 - **Claude Code CLI** - Command-line interface for Claude
 
 ## Claude Desktop
@@ -145,13 +145,13 @@ Test the connection in Cursor:
 Send "Hello from Cursor!" to 6282114759228@s.whatsapp.net
 ```
 
-## Open Code (VS Code)
+## Open Code
 
 ### Prerequisites
 
-- Visual Studio Code installed ([Download](https://code.visualstudio.com/))
+- Open Code account ([https://opencode.ai/](https://opencode.ai/))
 - Docker installed and running
-- MCP server running in HTTP+SSE mode (see [Quick Start](/quick-start))
+- MCP server running in HTTP+SSE mode (see [Quick Start](#docs:mcp/quick-start))
 
 ### MCP Server Setup
 
@@ -166,21 +166,13 @@ docker run -d --name whatsapp-gateway-mcp \
   glennprays/mcp-whatsapp-gateway:latest
 ```
 
-### Configuration File Location
-
-| Platform | Configuration File Path |
-|----------|------------------------|
-| macOS | `~/Library/Application Support/Code/User/settings.json` |
-| Windows | `%APPDATA%/Code/User/settings.json` |
-| Linux | `~/.config/Code/User/settings.json` |
-
 ### Configuration
 
-Add the MCP server URL to your VS Code settings:
+Open Code uses HTTP+SSE transport to connect to MCP servers. Configure the MCP server URL in your Open Code workspace settings:
 
 ```json
 {
-  "mcp.servers": {
+  "mcpServers": {
     "whatsapp-gateway": {
       "url": "http://localhost:8080/mcp",
       "transport": "http"
@@ -189,21 +181,32 @@ Add the MCP server URL to your VS Code settings:
 }
 ```
 
-### Using MCP Extension
+### Production Configuration
 
-Install the Model Context Protocol extension for VS Code:
+For production use with authentication:
 
-1. Open VS Code
-2. Go to Extensions (Ctrl+Shift+X)
-3. Search for "Model Context Protocol"
-4. Install the extension
+```json
+{
+  "mcpServers": {
+    "whatsapp-gateway": {
+      "url": "https://your-mcp-server.com/mcp",
+      "transport": "http",
+      "auth": {
+        "type": "basic",
+        "username": "admin",
+        "password": "secure_password"
+      }
+    }
+  }
+}
+```
 
 ### Testing
 
-Test the connection:
+Test the connection in Open Code:
 
 ```
-Send "Hello from VS Code!" to 6282114759228@s.whatsapp.net
+Send "Hello from Open Code!" to 6282114759228@s.whatsapp.net
 ```
 
 ## Claude Code CLI
@@ -315,7 +318,7 @@ Send "Hello from Claude Code CLI!" to 6282114759228@s.whatsapp.net
 
 **Solutions**:
 
-1. **Restart your client application** (Claude Desktop, Cursor, VS Code)
+1. **Restart your client application** (Claude Desktop, Cursor, Open Code)
 2. **Check configuration file syntax** (valid JSON)
 3. **Verify configuration file path** is correct
 4. **Check client logs** for error messages
@@ -420,7 +423,7 @@ Send "Hello from Claude Code CLI!" to 6282114759228@s.whatsapp.net
 
 ```json
 {
-  "mcp.servers": {
+  "mcpServers": {
     "whatsapp-gateway": {
       "url": "http://localhost:8080/mcp",
       "transport": "http"
