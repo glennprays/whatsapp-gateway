@@ -149,13 +149,50 @@ Send "Hello from Cursor!" to 6282114759228@s.whatsapp.net
 
 ### Prerequisites
 
-- Open Code account ([https://opencode.ai/](https://opencode.ai/))
+- OpenCode installed ([https://opencode.ai/](https://opencode.ai/))
 - Docker installed and running
-- MCP server running in HTTP+SSE mode (see [Quick Start](#docs:mcp/quick-start))
+- MCP server running (see [Quick Start](#docs:mcp/quick-start))
 
-### MCP Server Setup
+### Configuration
 
-First, ensure the MCP server is running with HTTP+SSE transport:
+OpenCode uses a configuration file to manage MCP servers. Create or edit your OpenCode configuration file:
+
+**Configuration File Location:**
+- macOS/Linux: `~/.config/opencode/config.json`
+- Windows: `%APPDATA%\opencode\config.json`
+
+### Option 1: Local MCP Server (stdio transport)
+
+For stdio transport, configure OpenCode to run the MCP server locally:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "whatsapp-gateway": {
+      "type": "local",
+      "command": [
+        "docker", "run", "-i", "--rm",
+        "-e", "WAGA_BASE_URL=http://host.docker.internal:3000/api/v1",
+        "-e", "WAGA_JWT_TOKEN="{env:WAGA_JWT_TOKEN}",
+        "glennprays/mcp-whatsapp-gateway:latest"
+      ],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Environment Variables:**
+Set the `WAGA_JWT_TOKEN` environment variable in your shell:
+
+```bash
+export WAGA_JWT_TOKEN="your_jwt_token_here"
+```
+
+### Option 2: Remote MCP Server (HTTP+SSE transport)
+
+For HTTP+SSE transport, first run the MCP server:
 
 ```bash
 docker run -d --name whatsapp-gateway-mcp \
@@ -166,47 +203,74 @@ docker run -d --name whatsapp-gateway-mcp \
   glennprays/mcp-whatsapp-gateway:latest
 ```
 
-### Configuration
-
-Open Code uses HTTP+SSE transport to connect to MCP servers. Configure the MCP server URL in your Open Code workspace settings:
+Then configure OpenCode:
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "whatsapp-gateway": {
+      "type": "remote",
       "url": "http://localhost:8080/mcp",
-      "transport": "http"
+      "enabled": true
     }
   }
 }
 ```
 
-### Production Configuration
+### Production Configuration (with authentication)
 
-For production use with authentication:
+For production use with Basic Authentication:
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "whatsapp-gateway": {
+      "type": "remote",
       "url": "https://your-mcp-server.com/mcp",
-      "transport": "http",
-      "auth": {
-        "type": "basic",
-        "username": "admin",
-        "password": "secure_password"
-      }
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:WAGA_JWT_TOKEN}"
+      },
+      "oauth": false
     }
   }
 }
 ```
 
-### Testing
+### Using the MCP Server
 
-Test the connection in Open Code:
+Once configured, use the WhatsApp Gateway tools in your prompts:
 
 ```
-Send "Hello from Open Code!" to 6282114759228@s.whatsapp.net
+Send "Hello from Open Code!" to 6282114759228@s.whatsapp.net using the whatsapp-gateway tool
+```
+
+### Managing MCP Servers
+
+**List all MCP servers:**
+```bash
+opencode mcp list
+```
+
+**Test MCP server connection:**
+```bash
+opencode mcp debug whatsapp-gateway
+```
+
+**Disable an MCP server temporarily:**
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "whatsapp-gateway": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp",
+      "enabled": false
+    }
+  }
+}
 ```
 
 ## Claude Code CLI
