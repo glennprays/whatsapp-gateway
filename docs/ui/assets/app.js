@@ -85,6 +85,16 @@ const DOCS_CONFIG = {
       ]
     },
     {
+      title: "MCP",
+      links: [
+        { title: "Introduction", file: "mcp/introduction" },
+        { title: "Quick Start", file: "mcp/quick-start" },
+        { title: "Configuration", file: "mcp/configuration" },
+        { title: "Tools Reference", file: "mcp/tools-reference" },
+        { title: "Client Setup", file: "mcp/client-setup" }
+      ]
+    },
+    {
       title: "SDK",
       links: [
         { title: "Go", file: "sdk/go" }
