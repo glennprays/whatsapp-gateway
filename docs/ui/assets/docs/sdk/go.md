@@ -21,6 +21,5 @@ go get github.com/glennprays/whatsapp-gateway-sdk-go
 
 ## Documentation
 
-For full documentation, installation guide, and usage examples, see the GitHub repository:
-
-**[https://github.com/glennprays/whatsapp-gateway-sdk-go](https://github.com/glennprays/whatsapp-gateway-sdk-go)**
+- **GitHub Repository**: [https://github.com/glennprays/whatsapp-gateway-sdk-go](https://github.com/glennprays/whatsapp-gateway-sdk-go)
+- **API Reference**: [https://pkg.go.dev/github.com/glennprays/whatsapp-gateway-sdk-go](https://pkg.go.dev/github.com/glennprays/whatsapp-gateway-sdk-go)
