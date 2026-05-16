@@ -22,7 +22,7 @@ func initDocumentationRoutes(r *fiber.App) {
 		basePath = basePath[1:]
 	}
 	docsGroup.Get("/", func(c *fiber.Ctx) error {
-		return c.Render("docs/ui/index.html", fiber.Map{
+		return c.Render("index", fiber.Map{
 			"BasePath": basePath,
 		})
 	})
