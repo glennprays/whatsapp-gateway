@@ -250,12 +250,12 @@ components:
           example: 204800
 
     IncomingWebhookPayload:
-      type: object 
+      type: object
       properties:
         event:
           $ref: '#/components/schemas/IncomingEventMessage'
         chat:
-          type: string 
+          type: string
           description: The chat ID where the message was received.
           example: "6281234567890@s.whatsapp.net"
         from:
@@ -277,15 +277,63 @@ components:
         timestamp:
           type: integer
           description: The timestamp of the message in Unix epoch format.
-          example: 1625247600 
+          example: 1625247600
         text:
           type: string
           description: The text content of the message.
           example: "Hello, this is a test message."
         type:
-          $ref: '#/components/schemas/IncomingMessageType' 
+          $ref: '#/components/schemas/IncomingMessageType'
         media:
           $ref: '#/components/schemas/IncomingMessageMediaInfo'
+
+    IncomingMessage:
+      type: object
+      description: A single buffered incoming message. Same vocabulary as IncomingWebhookPayload minus the event envelope. Media URLs are not populated here — see webhooks for fetchable links.
+      properties:
+        message_id:
+          type: string
+          example: "msg_0987654321"
+        chat:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        from:
+          type: string
+          example: "6281234567890:87@s.whatsapp.net"
+        is_group:
+          type: boolean
+          example: false
+        push_name:
+          type: string
+          example: "Google"
+        timestamp:
+          type: integer
+          example: 1625247600
+        type:
+          $ref: '#/components/schemas/IncomingMessageType'
+        text:
+          type: string
+          example: "Your verification code is 123456"
+        media:
+          $ref: '#/components/schemas/IncomingMessageMediaInfo'
+
+    IncomingMessagesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        timestamp:
+          type: integer
+          description: Unix milliseconds when the response was generated.
+          example: 1715900000000
+        count:
+          type: integer
+          example: 2
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncomingMessage'
   securitySchemes:
     accountBearerAuth:
       type: http
@@ -659,6 +707,41 @@ paths:
                   success:
                     type: boolean
                     example: true
+      security:
+        - accountBearerAuth: []
+  /message/incoming:
+    get:
+      tags:
+        - Whatsapp Message
+      summary: Fetch recent incoming messages
+      description: >
+        Returns the most recent incoming WhatsApp messages buffered in memory
+        by the gateway for the authenticated session, newest first. Intended
+        for OTP retrieval and short-window inbox reads.
+
+        The buffer keeps the last 100 incoming messages per session and is
+        lost on gateway restart. Messages sent by the authenticated user are
+        excluded. Media URLs are not populated by this endpoint — subscribe
+        to webhooks if you need fetchable links.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+          description: Maximum number of messages to return. Clamped server-side to [1, 50].
+      responses:
+        '200':
+          description: Messages returned successfully (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncomingMessagesResponse'
+        '409':
+          description: WhatsApp session is not logged in.
       security:
         - accountBearerAuth: []
 
