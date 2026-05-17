@@ -15,5 +15,6 @@ func initMessageRoutes(r fiber.Router, h *handler.Handler) {
 		messageGroup.Delete("/", h.WhatsappMessageHandler.DeleteMessage)
 		messageGroup.Put("/", h.WhatsappMessageHandler.EditMessage)
 		messageGroup.Get("/job/:job_id", h.WhatsappMessageHandler.GetJobStatus)
+		messageGroup.Get("/incoming", h.WhatsappMessageHandler.GetIncomingMessages)
 	}
 }

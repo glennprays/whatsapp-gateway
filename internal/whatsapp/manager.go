@@ -42,6 +42,7 @@ type (
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
+		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
 		GetClients() map[string]*whatsmeow.Client
 	}
@@ -340,4 +341,19 @@ func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
 
 func (m *manager) GetClients() map[string]*whatsmeow.Client {
 	return Clients
+}
+
+func (m *manager) GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error) {
+	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get login status for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	if !loginStatus {
+		m.Logger.Error(traceID, "Cannot read incoming messages for "+MaskedPhoneNumber(phoneNumber)+": client not logged in", nil)
+		return nil, errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
+	}
+
+	return m.EventHandler.GetIncomingMessages(phoneNumber, limit), nil
 }

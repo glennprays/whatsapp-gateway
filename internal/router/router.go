@@ -13,6 +13,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/template/html/v2"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +23,12 @@ var (
 	authMiddleware *middleware.AuthMiddleware
 	logger         *log.Logger
 )
+
+// NewHtmlEngine creates a new HTML template engine for Fiber
+func NewHtmlEngine() *html.Engine {
+	engine := html.New("./docs/ui", ".html")
+	return engine
+}
 
 func SetupRouter(
 	conf *config.Config,
@@ -40,6 +47,7 @@ func SetupRouter(
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		ErrorHandler:          middleware.ErrorHandler(),
+		Views:                 NewHtmlEngine(),
 	})
 
 	// Apply trace ID middleware first (must be before any other middleware)
