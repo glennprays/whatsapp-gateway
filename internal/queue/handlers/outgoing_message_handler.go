@@ -41,15 +41,21 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 	if traceID == "" {
 		// Generate fallback trace ID first, then use it for logging
 		traceID = fmt.Sprintf("job-%s", job.JobID)
-		h.Logger.Warn(traceID, "Job missing trace_id, using fallback", []customLog.Field{
+		h.Logger.Warn(traceID, "Job missing trace_id, using fallback", nil,
 			customLog.String("job_id", job.JobID),
-		})
+		)
 	}
+
+	masked := whatsapp.MaskedPhoneNumber(job.PhoneNumber)
 
 	var res ratelimiter.Result
 	res, err = h.Limiter.Allow(ctx, job.PhoneNumber)
 	if err != nil {
-		h.Logger.Error(traceID, "Rate limiter error", nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Rate limiter error", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return err
 	}
 
@@ -67,7 +73,11 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	// Update job status to processing
 	if err := h.JobRepo.UpdateStatus(ctx, job.JobID, "processing", "", ""); err != nil {
-		h.Logger.Error(traceID, fmt.Sprintf("Failed to update job %s to processing", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to update job status to processing", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 	}
 
 	// Process based on job type using Manager interface
@@ -115,13 +125,23 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	// Update job status to completed
 	if err := h.JobRepo.UpdateStatus(ctx, job.JobID, "completed", messageID, ""); err != nil {
-		h.Logger.Error(traceID, fmt.Sprintf("Failed to update job %s to completed", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to update job status to completed", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.String("message_id", messageID),
+			customLog.Error(err),
+		)
 	}
 
 	// Send success webhook notification
 	h.sendStatusWebhook(ctx, traceID, job, domainQueue.EventMessageSent, messageID, "")
 
-	h.Logger.Debug(traceID, fmt.Sprintf("Successfully processed job %s, message_id: %s", job.JobID, messageID), nil)
+	h.Logger.Debug(traceID, "Successfully processed job", nil,
+		customLog.String("job_id", job.JobID),
+		customLog.String("phone_number", masked),
+		customLog.String("message_id", messageID),
+		customLog.String("type", job.Type),
+	)
 	return nil
 }
 
@@ -149,25 +169,41 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		}
 	}
 	if !eventEnabled {
-		h.Logger.Debug(traceID, fmt.Sprintf("Status webhook event %s not enabled", event), nil)
+		h.Logger.Debug(traceID, "Status webhook event not enabled", nil,
+			customLog.String("event", string(event)),
+			customLog.String("job_id", job.JobID),
+		)
 		return
 	}
 
+	masked := whatsapp.MaskedPhoneNumber(job.PhoneNumber)
+
 	JID, err := h.Manager.GetJIDFromPhoneNumber(job.PhoneNumber)
 	if err != nil {
-		h.Logger.Error(traceID, "Failed to get JID from phone number for status notification", nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to get JID from phone number for status notification", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return
 	}
 
 	// Get webhook configuration for this phone number
 	webhook, err := h.Repository.GetWebhook(ctx, JID)
 	if err != nil {
-		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return
 	}
 
 	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug(traceID, fmt.Sprintf("No webhook URL configured for phone %s", job.PhoneNumber), nil)
+		h.Logger.Debug(traceID, "No webhook URL configured for phone", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+		)
 		return
 	}
 
@@ -208,8 +244,17 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 
 	// Send webhook (with HMAC signing and retry logic)
 	if err := h.Sender.Send(ctx, webhook.Url, webhook.HmacSecret, payloadMap); err != nil {
-		h.Logger.Error(traceID, fmt.Sprintf("Failed to send status webhook for job %s", job.JobID), nil, customLog.Error(err))
+		h.Logger.Error(traceID, "Failed to send status webhook", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.String("event", string(event)),
+			customLog.Error(err),
+		)
 	} else {
-		h.Logger.Debug(traceID, fmt.Sprintf("Successfully sent status webhook %s for job %s", event, job.JobID), nil)
+		h.Logger.Debug(traceID, "Successfully sent status webhook", nil,
+			customLog.String("job_id", job.JobID),
+			customLog.String("phone_number", masked),
+			customLog.String("event", string(event)),
+		)
 	}
 }
