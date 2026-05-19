@@ -182,12 +182,25 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 		client := Clients[phoneNumber]
 		err := client.Logout(ctx)
 		if err != nil {
-			c.logger.Error(traceID, fmt.Sprintf("Failed to logout client %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+			masked := MaskedPhoneNumber(phoneNumber)
+			c.logger.Error(traceID, "Failed to logout client, forcing local cleanup",
+				[]customLog.Field{
+					customLog.String("phone_number", masked),
+				},
+				customLog.Error(err),
+			)
 			client.Disconnect()
-			if err := client.Store.Delete(ctx); err != nil {
-				c.logger.Error(traceID, fmt.Sprintf("Failed to delete client store %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+			if delErr := client.Store.Delete(ctx); delErr != nil {
+				c.logger.Error(traceID, "Failed to delete client store",
+					[]customLog.Field{
+						customLog.String("phone_number", masked),
+					},
+					customLog.Error(delErr),
+				)
 			}
-			return nil
+			// Evict so callers don't keep hitting the deleted in-memory pointer.
+			delete(Clients, phoneNumber)
+			return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 		}
 		return nil
 	}
