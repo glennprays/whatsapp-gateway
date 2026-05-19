@@ -26,6 +26,9 @@ func (uc *WhatsappMessageUsecase) GetIncomingMessages(
 	if limit > maxIncomingLimit {
 		limit = maxIncomingLimit
 	}
-	uc.logger.Info(traceID, "Get incoming messages", []customLog.Field{customLog.Int("limit", limit)})
+	uc.logger.Info(traceID, "Get incoming messages", nil,
+		customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+		customLog.Int("limit", limit),
+	)
 	return uc.whatsappManager.GetIncomingMessages(ctx, traceID, phoneNumber, limit)
 }
