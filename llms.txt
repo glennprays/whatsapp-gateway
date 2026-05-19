@@ -107,7 +107,7 @@ Example vulnerability:
 
 - Use PostgreSQL with SSL (not SQLite)
 - Strong secrets (32+ characters, cryptographically random)
-- Disable Swagger documentation (`ENABLE_SWAGGER=false`)
+- Disable interactive documentation (`ENABLE_DOCUMENTATION=false`)
 - HTTPS via reverse proxy
 - Deploy in private network/VPC
 - Verify webhook HMAC signatures
@@ -255,11 +255,11 @@ Key configuration (see `.env.example` for full list):
 |----------|-------------|
 | `PORT` | Server port (default: 3000) |
 | `JWT_SECRET` | Secret for JWT signing |
-| `BASIC_AUTH_SECRET_KEY` | Secret for registration endpoint |
+| `SECRET_KEY` | Secret for registration endpoint (basic auth) |
 | `WHATSAPP_DATASTORE_TYPE` | Database: `sqlite` or `postgres` |
 | `WHATSAPP_DATASTORE_URI` | Database connection string |
 | `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` | Key for encrypting webhook secrets |
-| `ENABLE_SWAGGER` | Set to `false` in production |
+| `ENABLE_DOCUMENTATION` | Set to `false` in production |
 
 ## Documentation
 
