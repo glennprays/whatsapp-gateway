@@ -101,9 +101,8 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 	}
 	if errors.Is(err, store.ErrDeviceDeleted) {
 		c.logger.Warn(traceID, "WhatsApp session was deleted by server; re-pair required",
-			[]customLog.Field{
-				customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			},
+			nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
 			customLog.Error(err),
 		)
 		delete(Clients, phoneNumber)
@@ -184,17 +183,15 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 		if err != nil {
 			masked := MaskedPhoneNumber(phoneNumber)
 			c.logger.Error(traceID, "Failed to logout client, forcing local cleanup",
-				[]customLog.Field{
-					customLog.String("phone_number", masked),
-				},
+				nil,
+				customLog.String("phone_number", masked),
 				customLog.Error(err),
 			)
 			client.Disconnect()
 			if delErr := client.Store.Delete(ctx); delErr != nil {
 				c.logger.Error(traceID, "Failed to delete client store",
-					[]customLog.Field{
-						customLog.String("phone_number", masked),
-					},
+					nil,
+					customLog.String("phone_number", masked),
 					customLog.Error(delErr),
 				)
 			}
