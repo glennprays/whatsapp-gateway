@@ -373,6 +373,24 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 Canonical reference: [environment-variables.md](https://waga.glennprays.com/assets/docs/environment-variables.md).
 
+## MCP (Model Context Protocol)
+
+A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. The agent invokes MCP tools (send text/image, edit/delete/react to messages, manage webhooks, check connection status); the MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
+
+```
+AI Agent  <--MCP (stdio or HTTP+SSE)-->  MCP WhatsApp Gateway  <--HTTP/JWT-->  WhatsApp Gateway (this service)
+```
+
+The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent.
+
+| Doc | Link |
+|-----|------|
+| Introduction | https://waga.glennprays.com/assets/docs/mcp/introduction.md |
+| Quick Start | https://waga.glennprays.com/assets/docs/mcp/quick-start.md |
+| Client Setup | https://waga.glennprays.com/assets/docs/mcp/client-setup.md |
+| Configuration | https://waga.glennprays.com/assets/docs/mcp/configuration.md |
+| Tools Reference | https://waga.glennprays.com/assets/docs/mcp/tools-reference.md |
+
 ## Documentation
 
 ### Full Documentation Index
@@ -406,6 +424,13 @@ All documentation files are available at https://waga.glennprays.com/assets/docs
 #### Security
 - [Authentication and Security](https://waga.glennprays.com/assets/docs/authentication-and-security.md) - Authentication mechanisms
 - [Important Security Considerations](https://waga.glennprays.com/assets/docs/important-security-consideration.md) - Critical security warnings
+
+#### MCP
+- [Introduction](https://waga.glennprays.com/assets/docs/mcp/introduction.md) - What the MCP server does and how it fits
+- [Quick Start](https://waga.glennprays.com/assets/docs/mcp/quick-start.md) - Stand up the MCP server end-to-end
+- [Client Setup](https://waga.glennprays.com/assets/docs/mcp/client-setup.md) - Wire Claude/Cursor/Claude Code to the server
+- [Configuration](https://waga.glennprays.com/assets/docs/mcp/configuration.md) - Tokens, environment, transports
+- [Tools Reference](https://waga.glennprays.com/assets/docs/mcp/tools-reference.md) - Per-tool inputs, outputs, errors
 
 ### Other Resources
 - **OpenAPI Spec**: https://waga.glennprays.com/openapi.yaml
