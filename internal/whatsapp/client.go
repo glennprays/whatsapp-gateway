@@ -84,9 +84,32 @@ func (c *client) Reconnect(traceID string, phoneNumber string) error {
 	client.Disconnect()
 	err := client.Connect()
 	if err != nil {
-		return err
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
+}
+
+// mapWhatsmeowErr translates a raw whatsmeow error into the gateway's
+// domain error space. The key case is store.ErrDeviceDeleted ("invalid
+// use of deleted device"): once WhatsApp has marked the device deleted,
+// the in-memory client pointer is permanently dead, so we evict it from
+// the Clients map so subsequent calls return ErrClientNotFound (404)
+// rather than looping forever on the same deleted state.
+func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, store.ErrDeviceDeleted) {
+		c.logger.Warn(traceID, "WhatsApp session was deleted by server; re-pair required",
+			[]customLog.Field{
+				customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			},
+			customLog.Error(err),
+		)
+		delete(Clients, phoneNumber)
+		return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
+	}
+	return errDomain.NewError(errDomain.ErrInternalFailure, err)
 }
 
 func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
@@ -98,7 +121,7 @@ func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber st
 			qrChanGenerate, _ := client.GetQRChannel(context.Background())
 			err := client.Connect()
 			if err != nil {
-				return "", 0, err
+				return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 			}
 
 			qrImage, qrTimeout, err := WhatsappGenerateQRCode(ctx, qrChanGenerate)
@@ -128,7 +151,7 @@ func (c *client) LoginPairCode(ctx context.Context, traceID string, phoneNumber 
 	if client.Store.ID == nil {
 		err := client.Connect()
 		if err != nil {
-			return "", 0, err
+			return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
 
 		pairCode, err := client.PairPhone(ctx, phoneNumber, true, whatsmeow.PairClientChrome, fmt.Sprintf("Chrome (%s)", WhatsAppGetUserOS()))
@@ -241,6 +264,9 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 
 	resp, err := client.SendMessage(ctx, toJID, msg)
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send message: %w", err))
 	}
 
@@ -265,6 +291,9 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 	// Upload image to WhatsApp servers
 	uploaded, err := client.Upload(ctx, imageBytes, whatsmeow.MediaImage)
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload image: %w", err))
 	}
 
@@ -301,6 +330,9 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 
 	resp, err := client.SendMessage(ctx, toJID, msg)
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send image message: %w", err))
 	}
 
@@ -337,6 +369,9 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 
 	_, err = client.SendMessage(ctx, toJID, msg)
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send reaction: %w", err))
 	}
 
@@ -361,6 +396,9 @@ func (c *client) DeleteMessage(ctx context.Context, traceID string, phoneNumber 
 	// Build revoke message
 	_, err = client.SendMessage(ctx, toJID, client.BuildRevoke(toJID, types.EmptyJID, messageID))
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to delete message: %w", err))
 	}
 
@@ -389,6 +427,9 @@ func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber st
 
 	_, err = client.SendMessage(ctx, toJID, client.BuildEdit(toJID, messageID, editMsg))
 	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
 		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to edit message: %w", err))
 	}
 
