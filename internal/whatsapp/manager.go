@@ -95,7 +95,13 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		client.InitClient(startupTraceID, phoneNumber, device, evtHandler.HandleEvent)
 
 		if err := client.Reconnect(startupTraceID, phoneNumber); err != nil {
-			logger.Error(startupTraceID, "Failed to reconnect WhatsApp client for "+maskedPhoneNumber, nil, customLog.Error(err))
+			logger.Error(startupTraceID, "Failed to reconnect WhatsApp client",
+				[]customLog.Field{
+					customLog.String("phone_number", maskedPhoneNumber),
+					customLog.String("device_id", device.ID.String()),
+				},
+				customLog.Error(err),
+			)
 		}
 	}
 
