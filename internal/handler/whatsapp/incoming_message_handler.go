@@ -10,6 +10,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/httperror"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
+	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -28,7 +29,10 @@ func (h *WhatsappMessageHandler) GetIncomingMessages(c *fiber.Ctx) error {
 
 	msgs, err := h.whatsappMessageUsecase.GetIncomingMessages(c.Context(), traceID, phoneNumber, limit)
 	if err != nil {
-		h.logger.Error(traceID, "Failed to get incoming messages", []customLog.Field{customLog.Error(err)})
+		h.logger.Error(traceID, "Failed to get incoming messages", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}

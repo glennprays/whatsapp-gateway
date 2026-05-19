@@ -95,7 +95,12 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		client.InitClient(startupTraceID, phoneNumber, device, evtHandler.HandleEvent)
 
 		if err := client.Reconnect(startupTraceID, phoneNumber); err != nil {
-			logger.Error(startupTraceID, "Failed to reconnect WhatsApp client for "+maskedPhoneNumber, nil, customLog.Error(err))
+			logger.Error(startupTraceID, "Failed to reconnect WhatsApp client",
+				nil,
+				customLog.String("phone_number", maskedPhoneNumber),
+				customLog.String("device_id", device.ID.String()),
+				customLog.Error(err),
+			)
 		}
 	}
 
@@ -149,26 +154,38 @@ func (m *manager) GetWebhookURL(ctx context.Context, traceID string, phoneNumber
 }
 
 func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
+	masked := MaskedPhoneNumber(phoneNumber)
 	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to get login status for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to get login status", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
 	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot set webhook URL for "+MaskedPhoneNumber(phoneNumber)+": client not logged in", nil)
+		m.Logger.Error(traceID, "Cannot set webhook URL: client not logged in", nil,
+			customLog.String("phone_number", masked),
+		)
 		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
 	}
 
 	err = utils.ValidateURL(webhook.Url)
 	if err != nil {
-		m.Logger.Error(traceID, "Invalid webhook URL for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Invalid webhook URL", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
 	}
 
 	encryptedHmacSecret, err := m.Cipher.Encrypt(webhook.HmacSecret)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to encrypt HMAC secret for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to encrypt HMAC secret", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return err
 	}
 	webhook.HmacSecret = encryptedHmacSecret
@@ -176,14 +193,20 @@ func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber
 }
 
 func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
+	masked := MaskedPhoneNumber(phoneNumber)
 	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to get login status for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to get login status", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
 	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot delete webhook URL for "+MaskedPhoneNumber(phoneNumber)+": client not logged in", nil)
+		m.Logger.Error(traceID, "Cannot delete webhook URL: client not logged in", nil,
+			customLog.String("phone_number", masked),
+		)
 		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
 	}
 
@@ -191,140 +214,136 @@ func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNum
 }
 
 func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error) {
-	m.Logger.Info(
-		traceID,
-		"Sending text message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("to", to),
-		},
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending text message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
 	)
 
 	messageID, err := m.Client.SendTextMessage(ctx, traceID, phoneNumber, to, message)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to send text message for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to send text message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
 		return "", err
 	}
 
-	m.Logger.Info(
-		traceID,
-		"Successfully sent text message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	m.Logger.Info(traceID, "Successfully sent text message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
 	)
 
 	return messageID, nil
 }
 
 func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error) {
-	m.Logger.Info(
-		traceID,
-		"Sending image message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("to", to),
-		},
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending image message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
 	)
 
 	messageID, err := m.Client.SendImageMessage(ctx, traceID, phoneNumber, to, imageBytes, mimeType, caption, isViewOnce)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to send image message for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to send image message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
 		return "", err
 	}
 
-	m.Logger.Info(
-		traceID,
-		"Successfully sent image message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	m.Logger.Info(traceID, "Successfully sent image message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
 	)
 
 	return messageID, nil
 }
 
 func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
-	m.Logger.Info(
-		traceID,
-		"Reacting to message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Reacting to message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	err := m.Client.ReactToMessage(ctx, traceID, phoneNumber, chatJID, messageID, emoji)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to react to message for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to react to message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("chat_jid", chatJID),
+			customLog.String("message_id", messageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
-	m.Logger.Info(
-		traceID,
-		"Successfully reacted to message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	m.Logger.Info(traceID, "Successfully reacted to message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	return nil
 }
 
 func (m *manager) DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error {
-	m.Logger.Info(
-		traceID,
-		"Deleting message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Deleting message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	err := m.Client.DeleteMessage(ctx, traceID, phoneNumber, chatJID, messageID)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to delete message for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to delete message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("chat_jid", chatJID),
+			customLog.String("message_id", messageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
-	m.Logger.Info(
-		traceID,
-		"Successfully deleted message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	m.Logger.Info(traceID, "Successfully deleted message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	return nil
 }
 
 func (m *manager) EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error {
-	m.Logger.Info(
-		traceID,
-		"Editing message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Editing message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	err := m.Client.EditMessage(ctx, traceID, phoneNumber, chatJID, messageID, newText)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to edit message for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to edit message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("chat_jid", chatJID),
+			customLog.String("message_id", messageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
-	m.Logger.Info(
-		traceID,
-		"Successfully edited message",
-		[]customLog.Field{
-			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
-			customLog.String("message_id", messageID),
-		},
+	m.Logger.Info(traceID, "Successfully edited message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("chat_jid", chatJID),
+		customLog.String("message_id", messageID),
 	)
 
 	return nil
@@ -344,14 +363,20 @@ func (m *manager) GetClients() map[string]*whatsmeow.Client {
 }
 
 func (m *manager) GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
 	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
 	if err != nil {
-		m.Logger.Error(traceID, "Failed to get login status for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		m.Logger.Error(traceID, "Failed to get login status", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
 	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot read incoming messages for "+MaskedPhoneNumber(phoneNumber)+": client not logged in", nil)
+		m.Logger.Error(traceID, "Cannot read incoming messages: client not logged in", nil,
+			customLog.String("phone_number", masked),
+		)
 		return nil, errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
 	}
 
