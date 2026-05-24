@@ -56,9 +56,10 @@ func (uc *WhatsappAuthUsecase) LoginQRCode(ctx context.Context, traceID, phoneNu
 
 	qrCode, timeout, err := uc.whatsappManager.LoginQRCode(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to generate QR code", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to generate QR code", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
@@ -74,9 +75,10 @@ func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phone
 
 	pairCode, timeout, err := uc.whatsappManager.LoginPairCode(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to generate pair code", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to generate pair code", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
@@ -90,9 +92,10 @@ func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phone
 func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phoneNumber string) (bool, error) {
 	status, err := uc.whatsappManager.LoginStatus(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to get login status", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to get login status", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return false, err
 	}
 
@@ -103,9 +106,10 @@ func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phon
 func (uc *WhatsappAuthUsecase) Logout(ctx context.Context, traceID, phoneNumber string) error {
 	err := uc.whatsappManager.Logout(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to logout", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to logout", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return err
 	}
 
@@ -116,9 +120,10 @@ func (uc *WhatsappAuthUsecase) Logout(ctx context.Context, traceID, phoneNumber 
 func (uc *WhatsappAuthUsecase) Reconnect(ctx context.Context, traceID, phoneNumber string) error {
 	err := uc.whatsappManager.Reconnect(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to reconnect", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to reconnect", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return err
 	}
 

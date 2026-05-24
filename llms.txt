@@ -107,7 +107,7 @@ Example vulnerability:
 
 - Use PostgreSQL with SSL (not SQLite)
 - Strong secrets (32+ characters, cryptographically random)
-- Disable Swagger documentation (`ENABLE_SWAGGER=false`)
+- Disable interactive documentation (`ENABLE_DOCUMENTATION=false`)
 - HTTPS via reverse proxy
 - Deploy in private network/VPC
 - Verify webhook HMAC signatures
@@ -249,17 +249,147 @@ curl -H "X-Trace-ID: 123e4567-e89b-12d3-a456-426614174000" \
 
 ## Environment Variables
 
-Key configuration (see `.env.example` for full list):
+Full reference mirroring `config/config.go`. Defaults come from struct tag defaults; required keys in **bold**.
 
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default: 3000) |
-| `JWT_SECRET` | Secret for JWT signing |
-| `BASIC_AUTH_SECRET_KEY` | Secret for registration endpoint |
-| `WHATSAPP_DATASTORE_TYPE` | Database: `sqlite` or `postgres` |
-| `WHATSAPP_DATASTORE_URI` | Database connection string |
-| `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` | Key for encrypting webhook secrets |
-| `ENABLE_SWAGGER` | Set to `false` in production |
+### Server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENV` | `development` | `development` or `production` |
+| `PORT` | `3000` | HTTP listen port |
+| `BASE_PATH` | `/` | URL prefix for all routes |
+| `HTTP_ORIGIN` | `*` | CORS allowed origin |
+
+### Documentation
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_DOCUMENTATION` | `false` | Serve interactive API docs |
+| `DOCUMENTATION_USER` | `user` | Basic auth user for docs |
+| `DOCUMENTATION_PASSWORD` | `password` | Basic auth password for docs |
+| `DOCUMENTATION_BASE_PATH` | `/docs` | Where docs are mounted |
+
+### Auth
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| **`JWT_SECRET`** | `secret` | JWT signing key — must be strong in prod |
+| `JWT_TOKEN_DURATION_MINUTES` | `1440` | JWT lifetime (24h default) |
+| `JWT_ISSUER` | `whatsapp-gateway` | `iss` claim |
+| **`SECRET_KEY`** | `secret` | Basic-auth secret for `POST /api/register` |
+
+### WhatsApp storage
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WHATSAPP_DATASTORE_TYPE` | `sqlite` | `sqlite` (dev) or `postgres` (prod) |
+| `WHATSAPP_DATASTORE_URI` | `file:dbs/whatsapp.db?_pragma=foreign_keys(1)` | DSN |
+| `WHATSAPP_DEVICE_LABEL` | `WhatsApp Gateway` | Device name shown to WhatsApp |
+| **`WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY`** | `0123…cdef` (insecure default) | 32 hex chars; encrypts per-webhook HMAC secrets at rest |
+| `WHATSMEOW_LOG_LEVEL` | `warn` | Verbosity of the whatsmeow client logger |
+
+### Logging
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error` |
+| `LOG_OUTPUT` | `stdout` | `stdout` or `file` |
+| `LOG_FILE_PATH` | `/var/log/whatsapp-gateway.log` | Used when `LOG_OUTPUT=file` |
+| `LOG_ENABLE_CALLER` | `false` | Include caller file:line in each log |
+
+### Rate limiting
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MESSAGE_RATE_LIMIT_PROVIDER` | `memory` | `memory`, `redis`, or `noop` |
+| `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window |
+| `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length |
+
+### RabbitMQ (optional queue mode)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RABBITMQ_ENABLED` | `false` | When `false`, runs in direct mode |
+| `RABBITMQ_URL` | `amqp://user:user@localhost:5672/` | AMQP connection URI |
+| `RABBITMQ_CONNECTION_NAME` | `whatsapp-gateway` | Connection identifier |
+| `RABBITMQ_PREFETCH_COUNT` | `5` | Per-consumer prefetch |
+
+### Redis (rate-limit backend)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_ENABLED` | `false` | Enables Redis-backed providers |
+| `REDIS_URI` | `redis://localhost:6379/0` | Connection URI |
+
+### Worker pools
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKER_INCOMING_EVENTS` | `5` | Consumers for incoming-event queue |
+| `WORKER_WEBHOOK_DELIVERY` | `10` | Consumers for webhook-delivery queue |
+| `WORKER_OUTGOING_MESSAGES` | `3` | Consumers for outgoing-message queue |
+| `QUEUE_MAX_RETRIES` | `3` | Retry budget per job |
+
+### Status webhooks
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Emit message lifecycle webhooks |
+| `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | Comma-separated subset: `message.queued`, `message.sent`, `message.failed` |
+
+### Object storage
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_PROVIDER` | `local` | `local` or `s3` |
+| `STORAGE_S3_ENDPOINT` | `s3.amazonaws.com` | S3 API endpoint |
+| `STORAGE_S3_ACCESS_KEY_ID` | _(empty)_ | S3 access key |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | _(empty)_ | S3 secret key |
+| `STORAGE_S3_REGION` | `us-east-1` | S3 region |
+| `STORAGE_S3_BUCKET` | `whatsapp-gateway` | Target bucket |
+| `STORAGE_S3_USE_SSL` | `true` | TLS to S3 endpoint |
+| `STORAGE_S3_PRESIGNED_URL_EXPIRY_SECONDS` | `86400` | Presigned URL TTL |
+| `STORAGE_LOCAL_PATH` | `./storage` | Local-mode root |
+| `STORAGE_BASE_URL` | _(empty)_ | Public base URL for stored objects |
+| `STORAGE_API_PATH` | `/storage` | Mount path when serving local storage |
+
+### Webhook media download
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBHOOK_MEDIA_DOWNLOAD_ENABLED` | `false` | Download incoming media and re-host |
+| `WEBHOOK_MEDIA_STORAGE_PREFIX` | `webhook/media` | Storage key prefix |
+| `WEBHOOK_MEDIA_DOWNLOAD_TIMEOUT_SECONDS` | `30` | Per-file download timeout |
+| `WEBHOOK_MEDIA_FALLBACK_TO_WHATSAPP_URL` | `true` | If download fails, send raw WhatsApp URL |
+| `WEBHOOK_MEDIA_RETENTION_DAYS` | `30` | Days before lifecycle deletion |
+| `WEBHOOK_MEDIA_MAX_FILE_SIZE_BYTES` | `10485760` | 10 MiB cap |
+
+### Storage lifecycle
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_AUTO_DELETE_ENABLED` | `false` | Run periodic retention sweep |
+| `STORAGE_AUTO_DELETE_INTERVAL_HOURS` | `24` | Sweep cadence |
+
+Canonical reference: [environment-variables.md](https://waga.glennprays.com/assets/docs/environment-variables.md).
+
+## MCP (Model Context Protocol)
+
+A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. The agent invokes MCP tools (send text/image, edit/delete/react to messages, manage webhooks, check connection status); the MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
+
+```
+AI Agent  <--MCP (stdio or HTTP+SSE)-->  MCP WhatsApp Gateway  <--HTTP/JWT-->  WhatsApp Gateway (this service)
+```
+
+The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent.
+
+| Doc | Link |
+|-----|------|
+| Introduction | https://waga.glennprays.com/assets/docs/mcp/introduction.md |
+| Quick Start | https://waga.glennprays.com/assets/docs/mcp/quick-start.md |
+| Client Setup | https://waga.glennprays.com/assets/docs/mcp/client-setup.md |
+| Configuration | https://waga.glennprays.com/assets/docs/mcp/configuration.md |
+| Tools Reference | https://waga.glennprays.com/assets/docs/mcp/tools-reference.md |
 
 ## Documentation
 
@@ -294,6 +424,13 @@ All documentation files are available at https://waga.glennprays.com/assets/docs
 #### Security
 - [Authentication and Security](https://waga.glennprays.com/assets/docs/authentication-and-security.md) - Authentication mechanisms
 - [Important Security Considerations](https://waga.glennprays.com/assets/docs/important-security-consideration.md) - Critical security warnings
+
+#### MCP
+- [Introduction](https://waga.glennprays.com/assets/docs/mcp/introduction.md) - What the MCP server does and how it fits
+- [Quick Start](https://waga.glennprays.com/assets/docs/mcp/quick-start.md) - Stand up the MCP server end-to-end
+- [Client Setup](https://waga.glennprays.com/assets/docs/mcp/client-setup.md) - Wire Claude/Cursor/Claude Code to the server
+- [Configuration](https://waga.glennprays.com/assets/docs/mcp/configuration.md) - Tokens, environment, transports
+- [Tools Reference](https://waga.glennprays.com/assets/docs/mcp/tools-reference.md) - Per-tool inputs, outputs, errors
 
 ### Other Resources
 - **OpenAPI Spec**: https://waga.glennprays.com/openapi.yaml

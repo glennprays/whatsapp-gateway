@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#000000"/>
+      <stop offset="100%" style="stop-color:#1a1a1a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg-gradient)"/>
+
+  <!-- WhatsApp-style icon -->
+  <circle cx="200" cy="315" r="80" fill="#25D366"/>
+  <text x="200" y="340" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="white" text-anchor="middle">WG</text>
+
+  <!-- Title -->
+  <text x="320" y="280" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="white">WhatsApp Gateway</text>
+
+  <!-- Subtitle -->
+  <text x="320" y="360" font-family="Arial, sans-serif" font-size="32" fill="#a1a1a1">Open Source Go REST API</text>
+
+  <!-- Description -->
+  <text x="320" y="420" font-family="Arial, sans-serif" font-size="24" fill="#6b7280">Build messaging integrations with our REST API gateway</text>
+
+  <!-- GitHub badge -->
+  <rect x="320" y="470" width="180" height="40" rx="8" fill="#333"/>
+  <text x="410" y="498" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">Open Source</text>
+</svg>

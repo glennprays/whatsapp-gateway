@@ -80,13 +80,18 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
 			// Queue failed, fall through to direct send
-			uc.logger.Warn(traceID, "Queue publish failed, using direct send", []customLog.Field{
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
 				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-			}, customLog.Error(err))
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
 		} else {
 			// Successfully queued
 			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
-				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.Error(err))
+				uc.logger.Error(traceID, "Failed to create job record", nil,
+					customLog.String("job_id", jobID),
+					customLog.Error(err),
+				)
 			}
 
 			// Send message.queued webhook
@@ -122,9 +127,11 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 
 	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to send text message", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
 
 		// Send message.failed webhook in direct mode
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
@@ -186,13 +193,18 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
 			// Queue failed, fall through to direct send
-			uc.logger.Warn(traceID, "Queue publish failed, using direct send", []customLog.Field{
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
 				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-			}, customLog.Error(err))
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
 		} else {
 			// Successfully queued
 			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
-				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.Error(err))
+				uc.logger.Error(traceID, "Failed to create job record", nil,
+					customLog.String("job_id", jobID),
+					customLog.Error(err),
+				)
 			}
 
 			// Send message.queued webhook
@@ -209,9 +221,11 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	// Direct mode (or fallback): immediate send
 	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to send image message", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to send image message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
 
 		// Send message.failed webhook in direct mode
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
@@ -236,9 +250,11 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 ) error {
 	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to react to message", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to react to message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.String("message_id", req.MessageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
@@ -253,9 +269,11 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 ) error {
 	err := uc.whatsappManager.DeleteMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to delete message", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to delete message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.String("message_id", req.MessageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
@@ -270,9 +288,11 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 ) error {
 	err := uc.whatsappManager.EditMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.NewMessage)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to edit message", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to edit message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
-		}, customLog.Error(err))
+			customLog.String("message_id", req.MessageID),
+			customLog.Error(err),
+		)
 		return err
 	}
 
@@ -291,24 +311,26 @@ func (uc *WhatsappMessageUsecase) GetJobStatus(
 
 	job, err := uc.jobRepo.Get(ctx, jobID)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to get job status", []customLog.Field{
+		uc.logger.Error(traceID, "Failed to get job status", nil,
 			customLog.String("job_id", jobID),
-		}, customLog.Error(err))
+			customLog.Error(err),
+		)
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
 	if job == nil {
-		uc.logger.Error(traceID, "Job not found", []customLog.Field{
+		uc.logger.Error(traceID, "Job not found", nil,
 			customLog.String("job_id", jobID),
-		})
+		)
 		return nil, errDomain.NewError(errDomain.ErrNotFound, nil)
 	}
 
 	// Verify job belongs to this phone number
 	if job.PhoneNumber != phoneNumber {
-		uc.logger.Error(traceID, "Job does not belong to this phone number", []customLog.Field{
+		uc.logger.Error(traceID, "Job does not belong to this phone number", nil,
 			customLog.String("job_id", jobID),
-		})
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+		)
 		return nil, errDomain.NewError(errDomain.ErrForbidden, nil)
 	}
 

@@ -3,37 +3,66 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	customLog "github.com/glennprays/log"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
 type (
 	handler struct {
-		repository     WhatsAppRepository
-		sender         *WebhookSender
-		queue          domainQueue.MessageQueue
-		logger         *customLog.Logger
+		repository      WhatsAppRepository
+		sender          *WebhookSender
+		queue           domainQueue.MessageQueue
+		logger          *customLog.Logger
 		mediaDownloader MediaDownloader
+		buffers         map[string]*incomingBuffer
+		buffersMu       sync.RWMutex
 	}
 	Handler interface {
 		HandleEvent(jid string, evt any)
+		GetIncomingMessages(phoneNumber string, limit int) []*IncomingMessage
 	}
 )
 
 func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader) Handler {
 	return &handler{
-		repository:     repo,
-		sender:         sender,
-		queue:          queue,
-		logger:         logger,
+		repository:      repo,
+		sender:          sender,
+		queue:           queue,
+		logger:          logger,
 		mediaDownloader: mediaDownloader,
+		buffers:         make(map[string]*incomingBuffer),
 	}
+}
+
+// getOrCreateBuffer returns the per-phone ring buffer, creating it on first
+// use. Uses double-checked locking to avoid serializing every read.
+func (h *handler) getOrCreateBuffer(phoneNumber string) *incomingBuffer {
+	h.buffersMu.RLock()
+	b, ok := h.buffers[phoneNumber]
+	h.buffersMu.RUnlock()
+	if ok {
+		return b
+	}
+	h.buffersMu.Lock()
+	defer h.buffersMu.Unlock()
+	if b, ok = h.buffers[phoneNumber]; ok {
+		return b
+	}
+	b = newIncomingBuffer()
+	h.buffers[phoneNumber] = b
+	return b
+}
+
+func (h *handler) GetIncomingMessages(phoneNumber string, limit int) []*IncomingMessage {
+	return h.getOrCreateBuffer(phoneNumber).Latest(limit)
 }
 
 // Handle messages, events, QR
@@ -57,6 +86,12 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		jid := client.Store.ID.String()
+
+		// Capture into per-session in-memory buffer before any further
+		// processing so both queue and direct paths feed the same source.
+		if im := toIncomingMessage(v, client); im != nil {
+			h.getOrCreateBuffer(phoneNumber).Push(im)
+		}
 
 		// Try to publish to queue if enabled
 		if h.queue != nil && h.queue.IsHealthy() {
@@ -109,8 +144,11 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 		return
 	}
 
-	// Build payload
-	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber)
+	// Get client for JID resolution
+	client := Clients[phoneNumber]
+
+	// Build payload with client
+	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber, client)
 
 	// Send webhook
 	err = h.sender.Send(ctx, webhook.Url, webhook.HmacSecret, payload)
@@ -121,12 +159,12 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 	}
 }
 
-func buildWebhookPayload(msg *events.Message, mediaDownloader MediaDownloader, traceID string, phoneNumber string) map[string]interface{} {
+func buildWebhookPayload(msg *events.Message, mediaDownloader MediaDownloader, traceID string, phoneNumber string, client *whatsmeow.Client) map[string]interface{} {
 	payload := map[string]interface{}{
 		"event":      string(domainQueue.EventMessageIncoming),
 		"message_id": msg.Info.ID,
 		"timestamp":  msg.Info.Timestamp.Unix(),
-		"from":       StripDeviceIDFromJID(msg.Info.Sender.String()),
+		"from":       ConvertJIDToNonADLID(msg.Info.Sender, msg.Info.Chat, client),
 		"chat":       msg.Info.Chat.String(),
 		"is_group":   msg.Info.IsGroup,
 		"push_name":  msg.Info.PushName,
