@@ -46,7 +46,7 @@ func validateSSRF(u *url.URL) error {
 	}
 
 	for _, ip := range ips {
-		if isPrivateIP(ip) {
+		if IsPrivateIP(ip) {
 			return fmt.Errorf("blocked SSRF target: %s (%s)", u.String(), ip.String())
 		}
 	}
@@ -54,7 +54,7 @@ func validateSSRF(u *url.URL) error {
 	return nil
 }
 
-func isPrivateIP(ip net.IP) bool {
+func IsPrivateIP(ip net.IP) bool {
 	if ipv4 := ip.To4(); ipv4 != nil {
 		ip = ipv4
 	}

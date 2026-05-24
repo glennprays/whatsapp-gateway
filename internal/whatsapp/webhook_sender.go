@@ -8,9 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
+	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	log "github.com/sirupsen/logrus"
 )
@@ -25,8 +27,35 @@ func NewWebhookSender(cipher *cipherx.Cipher) *WebhookSender {
 		cipher: cipher,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+			Transport: &http.Transport{
+				DialContext: ssrfSafeDialContext,
+			},
 		},
 	}
+}
+
+func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address: %w", err)
+	}
+
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return nil, fmt.Errorf("DNS resolution failed: %w", err)
+	}
+
+	for _, ip := range ips {
+		if utils.IsPrivateIP(ip) {
+			return nil, fmt.Errorf("blocked SSRF: resolved to private IP %s", ip)
+		}
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
 }
 
 func (ws *WebhookSender) Send(ctx context.Context, url string, encryptedHmacSecret string, payload interface{}) error {
