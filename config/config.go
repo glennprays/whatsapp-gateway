@@ -34,6 +34,11 @@ type Config struct {
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 
+	// Database Connection Pool
+	DBMaxOpenConns    int `mapstructure:"DB_MAX_OPEN_CONNS" default:"25"`
+	DBMaxIdleConns    int `mapstructure:"DB_MAX_IDLE_CONNS" default:"5"`
+	DBConnMaxLifeMins int `mapstructure:"DB_CONN_MAX_LIFE_MINS" default:"5"`
+
 	// Rate Limiting Configuration
 	MessageRateLimitProvider        string `mapstructure:"MESSAGE_RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
 	MessageRateLimitRequests        int64  `mapstructure:"MESSAGE_RATE_LIMIT_REQUESTS" default:"100"`
