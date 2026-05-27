@@ -223,7 +223,7 @@ For complete API documentation, including all endpoints, request/response schema
 |----------|-----------|
 | Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
 | Webhooks | `GET /webhook`, `POST /webhook`, `DELETE /webhook` |
-| Messaging | `POST /message/text`, `POST /message/image`, `POST /message/react`, `PUT /message`, `DELETE /message` |
+| Messaging | `POST /message/text`, `POST /message/image`, `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message`, `DELETE /message` |
 | Health | `GET /health` |
 
 ## Error Responses
