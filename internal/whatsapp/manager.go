@@ -14,7 +14,6 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	"github.com/google/uuid"
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
@@ -44,15 +43,11 @@ type (
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
-		GetClients() map[string]*whatsmeow.Client
+		GetClientStore() *ClientStore
 	}
 )
 
-var Clients map[string]*whatsmeow.Client
-
-func init() {
-	Clients = make(map[string]*whatsmeow.Client)
-}
+var clients = NewClientStore()
 
 func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) Manager {
 	ctx := context.Background()
@@ -125,7 +120,7 @@ func (m *manager) LoginQRCode(ctx context.Context, traceID string, phoneNumber s
 }
 
 func (m *manager) RegisterClient(ctx context.Context, traceID string, phoneNumber string) {
-	if Clients[phoneNumber] == nil {
+	if clients.Get(phoneNumber) == nil {
 		m.Logger.Info(traceID, "Registering WhatsApp client for "+MaskedPhoneNumber(phoneNumber), nil)
 		m.Client.InitClient(traceID, phoneNumber, nil, m.EventHandler.HandleEvent)
 	} else {
@@ -350,16 +345,16 @@ func (m *manager) EditMessage(ctx context.Context, traceID string, phoneNumber s
 }
 
 func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
-	client, exists := Clients[phoneNumber]
-	if !exists {
+	client := clients.Get(phoneNumber)
+	if client == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
 	return client.Store.ID.String(), nil
 }
 
-func (m *manager) GetClients() map[string]*whatsmeow.Client {
-	return Clients
+func (m *manager) GetClientStore() *ClientStore {
+	return clients
 }
 
 func (m *manager) GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error) {

@@ -40,7 +40,7 @@ func ProvideMediaDownloader(
 	logger *log.Logger,
 ) MediaDownloader {
 	getClientFunc := func(phoneNumber string) *whatsmeow.Client {
-		return Clients[phoneNumber]
+		return clients.Get(phoneNumber)
 	}
 	return NewMediaDownloader(storage, cfg, logger, getClientFunc)
 }

@@ -17,11 +17,11 @@ import (
 )
 
 type IncomingEventHandler struct {
-	Repository     whatsapp.WhatsAppRepository
-	Publisher      *queue.RabbitMQQueue
-	Logger         *customLog.Logger
+	Repository      whatsapp.WhatsAppRepository
+	Publisher       *queue.RabbitMQQueue
+	Logger          *customLog.Logger
 	MediaDownloader whatsapp.MediaDownloader
-	Clients        map[string]*whatsmeow.Client
+	ClientStore     *whatsapp.ClientStore
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -43,8 +43,8 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 
 	// Get client for JID resolution
 	var client *whatsmeow.Client
-	if h.Clients != nil {
-		client = h.Clients[eventMsg.PhoneNumber]
+	if h.ClientStore != nil {
+		client = h.ClientStore.Get(eventMsg.PhoneNumber)
 	}
 
 	// Build webhook payload with client

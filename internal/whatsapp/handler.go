@@ -79,7 +79,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		// Get client for webhook lookup
-		client := Clients[phoneNumber]
+		client := clients.Get(phoneNumber)
 		if client == nil || client.Store == nil || client.Store.ID == nil {
 			h.logger.Error(traceID, "Client not found for phone "+MaskedPhoneNumber(phoneNumber), nil)
 			return
@@ -145,7 +145,7 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 	}
 
 	// Get client for JID resolution
-	client := Clients[phoneNumber]
+	client := clients.Get(phoneNumber)
 
 	// Build payload with client
 	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber, client)
