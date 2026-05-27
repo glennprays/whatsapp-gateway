@@ -12,6 +12,9 @@ func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Au
 	{
 		messageGroup.Post("/text", h.WhatsappMessageHandler.SendTextMessage)
 		messageGroup.Post("/image", h.WhatsappMessageHandler.SendImageMessage)
+		messageGroup.Post("/location", h.WhatsappMessageHandler.SendLocationMessage)
+		messageGroup.Post("/poll", h.WhatsappMessageHandler.SendPollMessage)
+		messageGroup.Post("/sticker", h.WhatsappMessageHandler.SendStickerMessage)
 		messageGroup.Post("/react", h.WhatsappMessageHandler.ReactToMessage)
 		messageGroup.Delete("/", h.WhatsappMessageHandler.DeleteMessage)
 		messageGroup.Put("/", h.WhatsappMessageHandler.EditMessage)

@@ -196,6 +196,97 @@ func (h *WhatsappMessageHandler) EditMessage(c *fiber.Ctx) error {
 	})
 }
 
+func (h *WhatsappMessageHandler) SendLocationMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendLocationMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse request body", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendLocationMessage(ctx, traceID, phoneNumber, req)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
+func (h *WhatsappMessageHandler) SendPollMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendPollMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse request body", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendPollMessage(ctx, traceID, phoneNumber, req)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
+func (h *WhatsappMessageHandler) SendStickerMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendStickerMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse form data", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	fileHeader, err := c.FormFile("sticker")
+	if err != nil {
+		h.logger.Error(traceID, "Failed to get sticker file", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendStickerMessage(ctx, traceID, phoneNumber, req, fileHeader)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
 func (h *WhatsappMessageHandler) GetJobStatus(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
