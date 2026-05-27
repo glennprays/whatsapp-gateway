@@ -87,12 +87,22 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 	case "text":
 		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text)
 	case "image":
-		// Decode base64 image data
 		imageBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode image data: %w", decodeErr)
 		} else {
 			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
+		}
+	case "location":
+		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
+	case "poll":
+		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount)
+	case "sticker":
+		stickerBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode sticker data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType)
 		}
 	case "react":
 		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID, job.Emoji)

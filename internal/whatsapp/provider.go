@@ -19,7 +19,7 @@ func ProvideWhatsappManager(
 	logger *log.Logger,
 	queue domainQueue.MessageQueue,
 	mediaDownloader MediaDownloader,
-) Manager {
+) (Manager, error) {
 	return NewManager(cfg, cfg.WhatsappDatastoreType, db, cipher, logger, queue, mediaDownloader)
 }
 
@@ -29,8 +29,8 @@ func ProvideWhatsAppRepository(db *sql.DB) WhatsAppRepository {
 }
 
 // ProvideWebhookSender creates webhook sender
-func ProvideWebhookSender(cipher *cipherx.Cipher) *WebhookSender {
-	return NewWebhookSender(cipher)
+func ProvideWebhookSender(cipher *cipherx.Cipher, logger *log.Logger) *WebhookSender {
+	return NewWebhookSender(cipher, logger)
 }
 
 // ProvideMediaDownloader creates media downloader
@@ -40,7 +40,7 @@ func ProvideMediaDownloader(
 	logger *log.Logger,
 ) MediaDownloader {
 	getClientFunc := func(phoneNumber string) *whatsmeow.Client {
-		return Clients[phoneNumber]
+		return clients.Get(phoneNumber)
 	}
 	return NewMediaDownloader(storage, cfg, logger, getClientFunc)
 }

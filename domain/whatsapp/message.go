@@ -33,6 +33,28 @@ type MessageEditRequest struct {
 	NewMessage string `json:"new_message" binding:"required"`
 }
 
+// SendLocationMessageRequest represents a location message send request
+type SendLocationMessageRequest struct {
+	Msisdn    string  `json:"msisdn" binding:"required"`
+	Latitude  float64 `json:"latitude" binding:"required"`
+	Longitude float64 `json:"longitude" binding:"required"`
+	Name      string  `json:"name,omitempty"`
+	Address   string  `json:"address,omitempty"`
+}
+
+// SendPollMessageRequest represents a poll message send request
+type SendPollMessageRequest struct {
+	Msisdn          string   `json:"msisdn" binding:"required"`
+	Question        string   `json:"question" binding:"required"`
+	Options         []string `json:"options" binding:"required"`
+	SelectableCount int      `json:"selectable_count,omitempty"`
+}
+
+// SendStickerMessageRequest represents a sticker message send request
+type SendStickerMessageRequest struct {
+	Msisdn string `form:"msisdn" binding:"required"`
+}
+
 // SendMessageResponse represents a successful message send response
 type SendMessageResponse struct {
 	Success   bool   `json:"success"`

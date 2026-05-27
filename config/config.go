@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 type Config struct {
-	Env                                    Environment `mapstructure:"ENV" default:"development"`
+	Env                                    Environment `mapstructure:"ENV" default:"production"`
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
@@ -29,10 +30,16 @@ type Config struct {
 	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
 	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
 	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
+	IncomingMessageBufferSize              int         `mapstructure:"INCOMING_MESSAGE_BUFFER_SIZE" default:"100"`
 	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"info"`
 	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
 	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
+
+	// Database Connection Pool
+	DBMaxOpenConns    int `mapstructure:"DB_MAX_OPEN_CONNS" default:"25"`
+	DBMaxIdleConns    int `mapstructure:"DB_MAX_IDLE_CONNS" default:"5"`
+	DBConnMaxLifeMins int `mapstructure:"DB_CONN_MAX_LIFE_MINS" default:"5"`
 
 	// Rate Limiting Configuration
 	MessageRateLimitProvider        string `mapstructure:"MESSAGE_RATE_LIMIT_PROVIDER" default:"memory"` // options: memory, redis, noop
@@ -142,7 +149,32 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	if cfg.Env == PROD {
+		if err := cfg.validateProductionSecrets(); err != nil {
+			return nil, err
+		}
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validateProductionSecrets() error {
+	defaults := map[string]string{
+		"JWT_SECRET":                              "secret",
+		"SECRET_KEY":                              "secret",
+		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": "0123456789abcdef0123456789abcdef",
+	}
+	values := map[string]string{
+		"JWT_SECRET":                              c.JwtSecret,
+		"SECRET_KEY":                              c.BasicAuthSecretKey,
+		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": c.WhatsappWebhookHmacEncryptionMasterKey,
+	}
+	for key, val := range values {
+		if val == defaults[key] {
+			return fmt.Errorf("refusing to start in production: %s is set to its default value", key)
+		}
+	}
+	return nil
 }
 
 func (c *Config) GetJwtDuration() *time.Duration {

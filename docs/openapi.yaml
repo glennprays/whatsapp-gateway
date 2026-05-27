@@ -135,6 +135,85 @@ components:
       required:
         - msisdn
         - image
+    SendMessageQueuedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Indicates if the message was queued successfully.
+          example: true
+        job_id:
+          type: string
+          description: The ID of the queued job.
+          example: "job_1234567890"
+    SendMessageLocationRequest:
+      type: object
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        latitude:
+          type: number
+          description: Latitude of the location.
+          example: -6.200000
+        longitude:
+          type: number
+          description: Longitude of the location.
+          example: 106.816666
+        name:
+          type: string
+          description: Optional name of the location.
+          example: "Jakarta"
+        address:
+          type: string
+          description: Optional address of the location.
+          example: "Jakarta, Indonesia"
+      required:
+        - msisdn
+        - latitude
+        - longitude
+    SendMessagePollRequest:
+      type: object
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        question:
+          type: string
+          description: The poll question.
+          example: "What is your favorite color?"
+        options:
+          type: array
+          items:
+            type: string
+          description: The poll options (minimum 2).
+          minItems: 2
+          example: ["Red", "Blue", "Green"]
+        selectable_count:
+          type: integer
+          description: Number of options a user can select (default 1).
+          default: 1
+          example: 1
+      required:
+        - msisdn
+        - question
+        - options
+    SendMessageStickerRequest:
+      type: multipart/form-data
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        sticker:
+          type: string
+          format: binary
+          description: The sticker file to send.
+      required:
+        - msisdn
+        - sticker
     MessageDeleteRequest:
       type: object
       properties:
@@ -630,6 +709,90 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageResponse'
+      security:
+        - accountBearerAuth: []
+  /message/location:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a location message
+      description: >
+        Sends a location message to a specified recipient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageLocationRequest'
+      responses:
+        '200':
+          description: Location message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Location message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
+      security:
+        - accountBearerAuth: []
+  /message/poll:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a poll message
+      description: >
+        Sends a poll message to a specified recipient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessagePollRequest'
+      responses:
+        '200':
+          description: Poll message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Poll message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
+      security:
+        - accountBearerAuth: []
+  /message/sticker:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a sticker message
+      description: >
+        Sends a sticker message to a specified recipient.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageStickerRequest'
+      responses:
+        '200':
+          description: Sticker message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Sticker message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
       security:
         - accountBearerAuth: []
   /message/react:

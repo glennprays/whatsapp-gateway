@@ -22,8 +22,10 @@ type (
 		queue           domainQueue.MessageQueue
 		logger          *customLog.Logger
 		mediaDownloader MediaDownloader
+		bufferSize      int
 		buffers         map[string]*incomingBuffer
 		buffersMu       sync.RWMutex
+		webhookSem      chan struct{}
 	}
 	Handler interface {
 		HandleEvent(jid string, evt any)
@@ -31,14 +33,18 @@ type (
 	}
 )
 
-func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader) Handler {
+const maxConcurrentWebhooks = 50
+
+func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader, bufferSize int) Handler {
 	return &handler{
 		repository:      repo,
 		sender:          sender,
 		queue:           queue,
 		logger:          logger,
 		mediaDownloader: mediaDownloader,
+		bufferSize:      bufferSize,
 		buffers:         make(map[string]*incomingBuffer),
+		webhookSem:      make(chan struct{}, maxConcurrentWebhooks),
 	}
 }
 
@@ -56,7 +62,7 @@ func (h *handler) getOrCreateBuffer(phoneNumber string) *incomingBuffer {
 	if b, ok = h.buffers[phoneNumber]; ok {
 		return b
 	}
-	b = newIncomingBuffer()
+	b = newIncomingBuffer(h.bufferSize)
 	h.buffers[phoneNumber] = b
 	return b
 }
@@ -79,7 +85,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		// Get client for webhook lookup
-		client := Clients[phoneNumber]
+		client := clients.Get(phoneNumber)
 		if client == nil || client.Store == nil || client.Store.ID == nil {
 			h.logger.Error(traceID, "Client not found for phone "+MaskedPhoneNumber(phoneNumber), nil)
 			return
@@ -99,7 +105,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			if err != nil {
 				h.logger.Error(traceID, "Failed to marshal event for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(traceID, phoneNumber, jid, v)
+				h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
@@ -114,7 +120,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			if err != nil {
 				h.logger.Error(traceID, "Queue publish failed for "+MaskedPhoneNumber(phoneNumber)+", using direct delivery", nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(traceID, phoneNumber, jid, v)
+				h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
@@ -123,7 +129,19 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		// Direct mode (or fallback): deliver webhook asynchronously
-		go h.deliverWebhook(traceID, phoneNumber, jid, v)
+		h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
+	}
+}
+
+func (h *handler) asyncDeliverWebhook(traceID string, phoneNumber string, jid string, msg *events.Message) {
+	select {
+	case h.webhookSem <- struct{}{}:
+		go func() {
+			defer func() { <-h.webhookSem }()
+			h.deliverWebhook(traceID, phoneNumber, jid, msg)
+		}()
+	default:
+		h.logger.Warn(traceID, "Webhook delivery semaphore full, dropping event for "+MaskedPhoneNumber(phoneNumber), nil)
 	}
 }
 
@@ -145,7 +163,7 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 	}
 
 	// Get client for JID resolution
-	client := Clients[phoneNumber]
+	client := clients.Get(phoneNumber)
 
 	// Build payload with client
 	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber, client)
@@ -231,6 +249,22 @@ func buildWebhookPayload(msg *events.Message, mediaDownloader MediaDownloader, t
 		if msg.Message.LocationMessage.DegreesLongitude != nil {
 			payload["longitude"] = *msg.Message.LocationMessage.DegreesLongitude
 		}
+		if name := msg.Message.LocationMessage.GetName(); name != "" {
+			payload["name"] = name
+		}
+		if addr := msg.Message.LocationMessage.GetAddress(); addr != "" {
+			payload["address"] = addr
+		}
+
+	case msg.Message.PollCreationMessage != nil:
+		payload["type"] = "poll"
+		payload["question"] = msg.Message.PollCreationMessage.GetName()
+		var opts []string
+		for _, o := range msg.Message.PollCreationMessage.GetOptions() {
+			opts = append(opts, o.GetOptionName())
+		}
+		payload["options"] = opts
+		payload["selectable_count"] = msg.Message.PollCreationMessage.GetSelectableOptionsCount()
 
 	default:
 		payload["type"] = "unknown"
@@ -253,8 +287,10 @@ func downloadMedia(
 	if mediaDownloader == nil {
 		return "", nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	return mediaDownloader.DownloadAndStoreMedia(
-		context.Background(),
+		ctx,
 		traceID,
 		phoneNumber,
 		mediaMessage,

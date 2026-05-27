@@ -40,6 +40,9 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
@@ -57,7 +60,7 @@ func NewClient(container *sqlstore.Container, cfg *config.Config, repo WhatsAppR
 
 func (c *client) InitClient(traceID string, phoneNumber string, device *store.Device, eventHandler func(string, any)) {
 	binary.IndentXML = true
-	if Clients[phoneNumber] == nil {
+	if clients.Get(phoneNumber) == nil {
 		if device == nil {
 			c.logger.Info(traceID, fmt.Sprintf("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber)), nil)
 			device = c.container.NewDevice()
@@ -65,24 +68,24 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 		store.DeviceProps.Os = proto.String(c.cfg.WhatsappDeviceLabel)
 		store.DeviceProps.RequireFullSync = proto.Bool(false)
 
-		client := whatsmeow.NewClient(device, waLog.Stdout("Client-login", c.cfg.WhatsmeowLogLevel, true))
-		client.AddEventHandler(func(evt any) {
+		cli := whatsmeow.NewClient(device, waLog.Stdout("Client-login", c.cfg.WhatsmeowLogLevel, true))
+		cli.AddEventHandler(func(evt any) {
 			eventHandler(phoneNumber, evt)
 		})
-		client.EnableAutoReconnect = true
-		client.AutoTrustIdentity = true
+		cli.EnableAutoReconnect = true
+		cli.AutoTrustIdentity = true
 
-		Clients[phoneNumber] = client
+		clients.Set(phoneNumber, cli)
 	}
 }
 
 func (c *client) Reconnect(traceID string, phoneNumber string) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errors.New(constant.ErrClientNotFound)
 	}
-	client.Disconnect()
-	err := client.Connect()
+	cli.Disconnect()
+	err := cli.Connect()
 	if err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -105,20 +108,19 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
 			customLog.Error(err),
 		)
-		delete(Clients, phoneNumber)
+		clients.Delete(phoneNumber)
 		return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 	}
 	return errDomain.NewError(errDomain.ErrInternalFailure, err)
 }
 
 func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
-	if Clients[phoneNumber] != nil {
-		client := Clients[phoneNumber]
-
-		client.Disconnect()
-		if client.Store.ID == nil {
-			qrChanGenerate, _ := client.GetQRChannel(context.Background())
-			err := client.Connect()
+	cli := clients.Get(phoneNumber)
+	if cli != nil {
+		cli.Disconnect()
+		if cli.Store.ID == nil {
+			qrChanGenerate, _ := cli.GetQRChannel(ctx)
+			err := cli.Connect()
 			if err != nil {
 				return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 			}
@@ -142,18 +144,18 @@ func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber st
 }
 
 func (c *client) LoginPairCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
-	client.Disconnect()
-	if client.Store.ID == nil {
-		err := client.Connect()
+	cli.Disconnect()
+	if cli.Store.ID == nil {
+		err := cli.Connect()
 		if err != nil {
 			return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
 
-		pairCode, err := client.PairPhone(ctx, phoneNumber, true, whatsmeow.PairClientChrome, fmt.Sprintf("Chrome (%s)", WhatsAppGetUserOS()))
+		pairCode, err := cli.PairPhone(ctx, phoneNumber, true, whatsmeow.PairClientChrome, fmt.Sprintf("Chrome (%s)", WhatsAppGetUserOS()))
 		if err != nil {
 			return "", 0, err
 		}
@@ -169,17 +171,17 @@ func (c *client) LoginPairCode(ctx context.Context, traceID string, phoneNumber 
 }
 
 func (c *client) LoginStatus(traceID string, phoneNumber string) (bool, error) {
-	if Clients[phoneNumber] != nil {
-		client := Clients[phoneNumber]
-		return client.IsLoggedIn(), nil
+	cli := clients.Get(phoneNumber)
+	if cli != nil {
+		return cli.IsLoggedIn(), nil
 	}
 	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
 }
 
 func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string) error {
-	if Clients[phoneNumber] != nil {
-		client := Clients[phoneNumber]
-		err := client.Logout(ctx)
+	cli := clients.Get(phoneNumber)
+	if cli != nil {
+		err := cli.Logout(ctx)
 		if err != nil {
 			masked := MaskedPhoneNumber(phoneNumber)
 			c.logger.Error(traceID, "Failed to logout client, forcing local cleanup",
@@ -187,16 +189,15 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 				customLog.String("phone_number", masked),
 				customLog.Error(err),
 			)
-			client.Disconnect()
-			if delErr := client.Store.Delete(ctx); delErr != nil {
+			cli.Disconnect()
+			if delErr := cli.Store.Delete(ctx); delErr != nil {
 				c.logger.Error(traceID, "Failed to delete client store",
 					nil,
 					customLog.String("phone_number", masked),
 					customLog.Error(delErr),
 				)
 			}
-			// Evict so callers don't keep hitting the deleted in-memory pointer.
-			delete(Clients, phoneNumber)
+			clients.Delete(phoneNumber)
 			return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 		}
 		return nil
@@ -205,12 +206,12 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 }
 
 func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	webhookURL, err := c.repository.GetWebhook(ctx, client.Store.ID.String())
+	webhookURL, err := c.repository.GetWebhook(ctx, cli.Store.ID.String())
 	if err != nil {
 		c.logger.Error(traceID, fmt.Sprintf("Failed to get webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
@@ -224,12 +225,12 @@ func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber 
 }
 
 func (c *client) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	err := c.repository.SetWebhook(ctx, client.Store.ID.String(), webhook.Url, webhook.HmacSecret)
+	err := c.repository.SetWebhook(ctx, cli.Store.ID.String(), webhook.Url, webhook.HmacSecret)
 	if err != nil {
 		c.logger.Error(traceID, fmt.Sprintf("Failed to set webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
@@ -239,12 +240,12 @@ func (c *client) SetWebhookURL(ctx context.Context, traceID string, phoneNumber 
 }
 
 func (c *client) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	err := c.repository.DeleteWebhook(ctx, client.Store.ID.String())
+	err := c.repository.DeleteWebhook(ctx, cli.Store.ID.String())
 	if err != nil {
 		c.logger.Error(traceID, fmt.Sprintf("Failed to delete webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
@@ -254,12 +255,12 @@ func (c *client) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumb
 }
 
 func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error) {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	if !client.IsLoggedIn() {
+	if !cli.IsLoggedIn() {
 		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
@@ -272,7 +273,7 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 		Conversation: proto.String(message),
 	}
 
-	resp, err := client.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -284,12 +285,12 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 }
 
 func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error) {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	if !client.IsLoggedIn() {
+	if !cli.IsLoggedIn() {
 		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
@@ -299,7 +300,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 	}
 
 	// Upload image to WhatsApp servers
-	uploaded, err := client.Upload(ctx, imageBytes, whatsmeow.MediaImage)
+	uploaded, err := cli.Upload(ctx, imageBytes, whatsmeow.MediaImage)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -338,7 +339,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		}
 	}
 
-	resp, err := client.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -350,12 +351,12 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 }
 
 func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	if !client.IsLoggedIn() {
+	if !cli.IsLoggedIn() {
 		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
@@ -377,7 +378,7 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 		},
 	}
 
-	_, err = client.SendMessage(ctx, toJID, msg)
+	_, err = cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -389,12 +390,12 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 }
 
 func (c *client) DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	if !client.IsLoggedIn() {
+	if !cli.IsLoggedIn() {
 		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
@@ -404,7 +405,7 @@ func (c *client) DeleteMessage(ctx context.Context, traceID string, phoneNumber 
 	}
 
 	// Build revoke message
-	_, err = client.SendMessage(ctx, toJID, client.BuildRevoke(toJID, types.EmptyJID, messageID))
+	_, err = cli.SendMessage(ctx, toJID, cli.BuildRevoke(toJID, types.EmptyJID, messageID))
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -416,12 +417,12 @@ func (c *client) DeleteMessage(ctx context.Context, traceID string, phoneNumber 
 }
 
 func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error {
-	client := Clients[phoneNumber]
-	if client == nil {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	if !client.IsLoggedIn() {
+	if !cli.IsLoggedIn() {
 		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
@@ -435,7 +436,7 @@ func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber st
 		Conversation: proto.String(newText),
 	}
 
-	_, err = client.SendMessage(ctx, toJID, client.BuildEdit(toJID, messageID, editMsg))
+	_, err = cli.SendMessage(ctx, toJID, cli.BuildEdit(toJID, messageID, editMsg))
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -444,4 +445,123 @@ func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber st
 	}
 
 	return nil
+}
+
+func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	locationMsg := &waE2E.LocationMessage{
+		DegreesLatitude:  &latitude,
+		DegreesLongitude: &longitude,
+	}
+	if name != "" {
+		locationMsg.Name = &name
+	}
+	if address != "" {
+		locationMsg.Address = &address
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{LocationMessage: locationMsg})
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send location message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	pollOptions := make([]*waE2E.PollCreationMessage_Option, len(options))
+	for i, opt := range options {
+		optCopy := opt
+		pollOptions[i] = &waE2E.PollCreationMessage_Option{OptionName: &optCopy}
+	}
+
+	if selectableCount <= 0 {
+		selectableCount = 1
+	}
+	sc := uint32(selectableCount)
+
+	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{
+		PollCreationMessage: &waE2E.PollCreationMessage{
+			Name:                   &question,
+			Options:                pollOptions,
+			SelectableOptionsCount: &sc,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send poll message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	uploaded, err := cli.Upload(ctx, stickerBytes, whatsmeow.MediaImage)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload sticker: %w", err))
+	}
+
+	fileLen := uint64(len(stickerBytes))
+	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{
+		StickerMessage: &waE2E.StickerMessage{
+			URL:           &uploaded.URL,
+			DirectPath:    &uploaded.DirectPath,
+			MediaKey:      uploaded.MediaKey,
+			Mimetype:      &mimeType,
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    &fileLen,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send sticker message: %w", err))
+	}
+	return resp.ID, nil
 }

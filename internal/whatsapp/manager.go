@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -14,7 +15,6 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	"github.com/google/uuid"
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
@@ -39,22 +39,21 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
-		GetClients() map[string]*whatsmeow.Client
+		GetClientStore() *ClientStore
 	}
 )
 
-var Clients map[string]*whatsmeow.Client
+var clients = NewClientStore()
 
-func init() {
-	Clients = make(map[string]*whatsmeow.Client)
-}
-
-func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) (Manager, error) {
 	ctx := context.Background()
 	startupTraceID := uuid.New().String()
 
@@ -62,28 +61,28 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	container := sqlstore.NewWithDB(db, dbType, dbLog)
 	if err := container.Upgrade(ctx); err != nil {
 		logger.Error(startupTraceID, "Failed to upgrade database schema", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("database schema upgrade: %w", err)
 	}
 	repository := NewWhatsappRepository(db)
 
 	// Create webhook sender
-	webhookSender := NewWebhookSender(cp)
+	webhookSender := NewWebhookSender(cp, logger)
 
 	// Create event handler with repository, sender, queue, and media downloader
-	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader)
+	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader, config.IncomingMessageBufferSize)
 
 	client := NewClient(container, config, repository, logger)
 
 	err := runMigrations(db)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to run database migrations", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("database migrations: %w", err)
 	}
 
 	devices, err := container.GetAllDevices(ctx)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to get devices from database", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("get all devices: %w", err)
 	}
 
 	for _, device := range devices {
@@ -110,7 +109,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		Cipher:       cp,
 		Logger:       logger,
 		Queue:        queue,
-	}
+	}, nil
 }
 
 func (m *manager) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
@@ -125,7 +124,7 @@ func (m *manager) LoginQRCode(ctx context.Context, traceID string, phoneNumber s
 }
 
 func (m *manager) RegisterClient(ctx context.Context, traceID string, phoneNumber string) {
-	if Clients[phoneNumber] == nil {
+	if clients.Get(phoneNumber) == nil {
 		m.Logger.Info(traceID, "Registering WhatsApp client for "+MaskedPhoneNumber(phoneNumber), nil)
 		m.Client.InitClient(traceID, phoneNumber, nil, m.EventHandler.HandleEvent)
 	} else {
@@ -265,6 +264,81 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
+func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending location message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendLocationMessage(ctx, traceID, phoneNumber, to, latitude, longitude, name, address)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send location message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent location message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+	return messageID, nil
+}
+
+func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending poll message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send poll message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent poll message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+	return messageID, nil
+}
+
+func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending sticker message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send sticker message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent sticker message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+	return messageID, nil
+}
+
 func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Reacting to message", nil,
@@ -350,16 +424,16 @@ func (m *manager) EditMessage(ctx context.Context, traceID string, phoneNumber s
 }
 
 func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
-	client, exists := Clients[phoneNumber]
-	if !exists {
+	client := clients.Get(phoneNumber)
+	if client == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
 	return client.Store.ID.String(), nil
 }
 
-func (m *manager) GetClients() map[string]*whatsmeow.Client {
-	return Clients
+func (m *manager) GetClientStore() *ClientStore {
+	return clients
 }
 
 func (m *manager) GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error) {

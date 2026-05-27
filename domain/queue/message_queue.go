@@ -32,17 +32,29 @@ type OutgoingMessageJob struct {
 	TraceID     string
 	JobID       string
 	PhoneNumber string
-	Type        string // "text", "image", "react", "delete", "edit"
+	Type        string // "text", "image", "location", "poll", "sticker", "react", "delete", "edit"
 	To          string
 	Text        string
-	ImageData   string // base64
+	ImageData   string // base64 (image/sticker)
 	MimeType    string
 	Caption     string
 	IsViewOnce  bool
 	MessageID   string // For react/delete/edit
 	Emoji       string // For react
 	NewText     string // For edit
-	CreatedAt   int64
+
+	// Location
+	Latitude        float64
+	Longitude       float64
+	LocationName    string
+	LocationAddress string
+
+	// Poll
+	Question        string
+	Options         []string
+	SelectableCount int
+
+	CreatedAt int64
 }
 
 // WebhookDeliveryMessage represents a webhook delivery task

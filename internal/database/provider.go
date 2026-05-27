@@ -9,5 +9,5 @@ import (
 
 // ProvideDatabase initializes database connection
 func ProvideDatabase(cfg *config.Config, logger *log.Logger) (*sql.DB, error) {
-	return NewConnection(logger, cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
+	return NewConnection(logger, cfg, cfg.WhatsappDatastoreType, cfg.WhatsappDatastoreUri)
 }

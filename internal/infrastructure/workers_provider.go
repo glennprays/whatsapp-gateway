@@ -38,7 +38,7 @@ func ProvideQueueWorkers(
 		Publisher:      rabbitMQ,
 		Logger:         logger,
 		MediaDownloader: mediaDownloader,
-		Clients:        manager.GetClients(),
+		ClientStore:     manager.GetClientStore(),
 	}
 
 	webhookHandler := &queueHandlers.WebhookDeliveryHandler{

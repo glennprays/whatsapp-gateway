@@ -121,7 +121,8 @@ func (wg *WorkerGroup) worker(id int, msgs <-chan amqp.Delivery) {
 }
 
 func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 	retryCount := getRetryCount(msg.Headers)
 	traceID := GetTraceIDWorkerProcess(msg.Headers)
 

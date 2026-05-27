@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -17,11 +18,11 @@ import (
 )
 
 type IncomingEventHandler struct {
-	Repository     whatsapp.WhatsAppRepository
-	Publisher      *queue.RabbitMQQueue
-	Logger         *customLog.Logger
+	Repository      whatsapp.WhatsAppRepository
+	Publisher       *queue.RabbitMQQueue
+	Logger          *customLog.Logger
 	MediaDownloader whatsapp.MediaDownloader
-	Clients        map[string]*whatsmeow.Client
+	ClientStore     *whatsapp.ClientStore
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -43,8 +44,8 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 
 	// Get client for JID resolution
 	var client *whatsmeow.Client
-	if h.Clients != nil {
-		client = h.Clients[eventMsg.PhoneNumber]
+	if h.ClientStore != nil {
+		client = h.ClientStore.Get(eventMsg.PhoneNumber)
 	}
 
 	// Build webhook payload with client
@@ -133,6 +134,31 @@ func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDown
 	case msg.Message.ExtendedTextMessage != nil:
 		payload["type"] = "text"
 		payload["text"] = *msg.Message.ExtendedTextMessage.Text
+
+	case msg.Message.LocationMessage != nil:
+		payload["type"] = "location"
+		if msg.Message.LocationMessage.DegreesLatitude != nil {
+			payload["latitude"] = *msg.Message.LocationMessage.DegreesLatitude
+		}
+		if msg.Message.LocationMessage.DegreesLongitude != nil {
+			payload["longitude"] = *msg.Message.LocationMessage.DegreesLongitude
+		}
+		if name := msg.Message.LocationMessage.GetName(); name != "" {
+			payload["name"] = name
+		}
+		if addr := msg.Message.LocationMessage.GetAddress(); addr != "" {
+			payload["address"] = addr
+		}
+
+	case msg.Message.PollCreationMessage != nil:
+		payload["type"] = "poll"
+		payload["question"] = msg.Message.PollCreationMessage.GetName()
+		var opts []string
+		for _, o := range msg.Message.PollCreationMessage.GetOptions() {
+			opts = append(opts, o.GetOptionName())
+		}
+		payload["options"] = opts
+		payload["selectable_count"] = msg.Message.PollCreationMessage.GetSelectableOptionsCount()
 	}
 
 	if mediaInfo != nil {
@@ -152,8 +178,10 @@ func downloadMedia(
 	if mediaDownloader == nil {
 		return "", nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	return mediaDownloader.DownloadAndStoreMedia(
-		context.Background(),
+		ctx,
 		traceID,
 		phoneNumber,
 		mediaMessage,

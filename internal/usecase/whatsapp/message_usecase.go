@@ -22,6 +22,25 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	maxTextMessageLen  = 65536
+	maxCaptionLen      = 4096
+	maxEmojiLen        = 64
+	maxLocationName    = 256
+	maxLocationAddress = 512
+	maxPollQuestion    = 256
+	maxPollOptionLen   = 100
+	maxPollOptions     = 12
+)
+
+func validateLength(field, name string, max int) error {
+	if len(field) > max {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("%s exceeds maximum length of %d characters", name, max))
+	}
+	return nil
+}
+
 // WhatsappMessageUsecase handles message operations business logic
 type WhatsappMessageUsecase struct {
 	whatsappManager whatsapp.Manager
@@ -63,6 +82,10 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendTextMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Message, "message", maxTextMessageLen); err != nil {
+		return nil, nil, err
+	}
+
 	// Check if queue is enabled and healthy
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
@@ -156,6 +179,10 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	fileHeader *multipart.FileHeader,
 	isViewOnce bool,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
 	// Open and read image file
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -242,12 +269,208 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}, nil, nil
 }
 
+// SendLocationMessage sends a location message (queued or direct)
+func (uc *WhatsappMessageUsecase) SendLocationMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendLocationMessageRequest,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Name, "name", maxLocationName); err != nil {
+		return nil, nil, err
+	}
+	if err := validateLength(req.Address, "address", maxLocationAddress); err != nil {
+		return nil, nil, err
+	}
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:         traceID,
+			JobID:           jobID,
+			PhoneNumber:     phoneNumber,
+			Type:            "location",
+			To:              req.Msisdn,
+			Latitude:        req.Latitude,
+			Longitude:       req.Longitude,
+			LocationName:    req.Name,
+			LocationAddress: req.Address,
+			CreatedAt:       time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	res, err := uc.limiter.Allow(ctx, phoneNumber)
+	if err != nil {
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	if !res.Allowed {
+		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	}
+
+	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address)
+	if err != nil {
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
+// SendPollMessage sends a poll message (queued or direct)
+func (uc *WhatsappMessageUsecase) SendPollMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendPollMessageRequest,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Question, "question", maxPollQuestion); err != nil {
+		return nil, nil, err
+	}
+	if len(req.Options) < 2 {
+		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("poll requires at least 2 options"))
+	}
+	if len(req.Options) > maxPollOptions {
+		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("poll cannot have more than %d options", maxPollOptions))
+	}
+	for _, opt := range req.Options {
+		if err := validateLength(opt, "option", maxPollOptionLen); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:         traceID,
+			JobID:           jobID,
+			PhoneNumber:     phoneNumber,
+			Type:            "poll",
+			To:              req.Msisdn,
+			Question:        req.Question,
+			Options:         req.Options,
+			SelectableCount: req.SelectableCount,
+			CreatedAt:       time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	res, err := uc.limiter.Allow(ctx, phoneNumber)
+	if err != nil {
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	if !res.Allowed {
+		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	}
+
+	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount)
+	if err != nil {
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
+// SendStickerMessage sends a sticker message (queued or direct)
+func (uc *WhatsappMessageUsecase) SendStickerMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendStickerMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("failed to open sticker file: %w", err))
+	}
+	defer file.Close()
+
+	stickerBytes, err := io.ReadAll(file)
+	if err != nil {
+		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("failed to read sticker file: %w", err))
+	}
+
+	mimeType := http.DetectContentType(stickerBytes)
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "sticker",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(stickerBytes),
+			MimeType:    mimeType,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	res, err := uc.limiter.Allow(ctx, phoneNumber)
+	if err != nil {
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	if !res.Allowed {
+		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	}
+
+	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType)
+	if err != nil {
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
 // ReactToMessage reacts to a message
 func (uc *WhatsappMessageUsecase) ReactToMessage(
 	ctx context.Context,
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
+	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", nil,
@@ -286,6 +509,10 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
+	if err := validateLength(req.NewMessage, "new_message", maxTextMessageLen); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.EditMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.NewMessage)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to edit message", nil,
