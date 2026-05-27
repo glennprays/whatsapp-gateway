@@ -1,23 +1,24 @@
 package storage
 
 import (
-	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/glennprays/whatsapp-gateway/domain/storage"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
-	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
+	"github.com/gofiber/fiber/v2"
 )
 
 // StorageHandler handles file serving operations
 type StorageHandler struct {
-	storage domainStorage.Storage
+	storage storage.Storage
 }
 
 // NewStorageHandler creates a new storage handler
-func NewStorageHandler(storage domainStorage.Storage) *StorageHandler {
+func NewStorageHandler(storage storage.Storage) *StorageHandler {
 	return &StorageHandler{
 		storage: storage,
 	}
@@ -66,7 +67,8 @@ func (h *StorageHandler) GetFile(c *fiber.Ctx) error {
 	return nil
 }
 
-// formatContentDisposition returns Content-Disposition header
+// formatContentDisposition returns a safe Content-Disposition header value.
 func formatContentDisposition(filename string) string {
-	return fmt.Sprintf("inline; filename=\"%s\"", filename)
+	base := filepath.Base(filename)
+	return mime.FormatMediaType("inline", map[string]string{"filename": base})
 }
