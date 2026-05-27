@@ -18,13 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	cfg            *config.Config
-	basePath       string
-	authMiddleware *middleware.AuthMiddleware
-	logger         *log.Logger
-)
-
 // NewHtmlEngine creates a new HTML template engine for Fiber
 func NewHtmlEngine() *html.Engine {
 	engine := html.New("./docs/ui", ".html")
@@ -32,7 +25,7 @@ func NewHtmlEngine() *html.Engine {
 }
 
 func SetupRouter(
-	conf *config.Config,
+	cfg *config.Config,
 	traceIDMw fiber.Handler,
 	authMw *middleware.AuthMiddleware,
 	h *handler.Handler,
@@ -41,11 +34,6 @@ func SetupRouter(
 	storage domainStorage.Storage,
 	db *sql.DB,
 ) *fiber.App {
-	cfg = conf
-	basePath = cfg.BasePath
-	authMiddleware = authMw
-	logger = lgr
-
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		ErrorHandler:          middleware.ErrorHandler(),
@@ -58,13 +46,13 @@ func SetupRouter(
 	// Apply recovery and default middleware
 	app.Use(recover.New())
 
-	app.Use(middleware.NewHTTPLogger(logger))
+	app.Use(middleware.NewHTTPLogger(lgr))
 
-	api := app.Group(basePath)
+	api := app.Group(cfg.BasePath)
 
 	api.Get("/health", func(c *fiber.Ctx) error {
 		traceID := middleware.GetTraceID(c)
-		logger.Info(traceID, "Health check endpoint accessed", nil)
+		lgr.Info(traceID, "Health check endpoint accessed", nil)
 
 		status := "ok"
 		response := fiber.Map{
@@ -109,15 +97,15 @@ func SetupRouter(
 
 	if cfg.EnableDocumentation {
 		traceID := fmt.Sprintf("DOCS-INIT:%s", uuid.New().String())
-		logger.Info(traceID, "Documentation is enabled, initializing Documentation routes", nil)
-		initDocumentationRoutes(app)
+		lgr.Info(traceID, "Documentation is enabled, initializing Documentation routes", nil)
+		initDocumentationRoutes(app, cfg)
 	}
 
 	api.Post("/register", h.AuthHandler.Register)
 
-	initWhatsappRoutes(api, h)
-	initWebhookRoutes(api, h)
-	initMessageRoutes(api, h)
+	initWhatsappRoutes(api, h, authMw)
+	initWebhookRoutes(api, h, authMw)
+	initMessageRoutes(api, h, authMw)
 
 	// Register storage routes
 	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)

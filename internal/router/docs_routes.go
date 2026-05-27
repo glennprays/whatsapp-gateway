@@ -1,12 +1,13 @@
 package router
 
 import (
+	"github.com/glennprays/whatsapp-gateway/config"
 	"github.com/glennprays/whatsapp-gateway/docs"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
-func initDocumentationRoutes(r *fiber.App) {
+func initDocumentationRoutes(r *fiber.App, cfg *config.Config) {
 	sessionAuth := middleware.NewDocsSessionAuth(
 		cfg.DocumentationUser,
 		cfg.DocumentationPassword,

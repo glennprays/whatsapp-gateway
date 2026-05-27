@@ -2,12 +2,13 @@ package router
 
 import (
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
+	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
-func initMessageRoutes(r fiber.Router, h *handler.Handler) {
+func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.AuthMiddleware) {
 	messageGroup := r.Group("/message")
-	messageGroup.Use(authMiddleware.JWTAuthentication())
+	messageGroup.Use(authMw.JWTAuthentication())
 	{
 		messageGroup.Post("/text", h.WhatsappMessageHandler.SendTextMessage)
 		messageGroup.Post("/image", h.WhatsappMessageHandler.SendImageMessage)
