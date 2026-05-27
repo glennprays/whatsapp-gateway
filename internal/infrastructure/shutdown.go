@@ -67,14 +67,10 @@ func (sm *ShutdownManager) shutdownWorkers() error {
 
 // shutdownHTTPServer gracefully shuts down the HTTP server
 func (sm *ShutdownManager) shutdownHTTPServer() error {
-	// Only perform graceful shutdown in production
-	// In development, allow immediate shutdown
-	if sm.config.Env == config.DEV {
-		sm.logger.Info(sm.traceID, "Development mode: skipping graceful HTTP shutdown", nil)
-		return nil
-	}
-
 	timeout := 10 * time.Second
+	if sm.config.Env == config.DEV {
+		timeout = 2 * time.Second
+	}
 	return sm.server.Shutdown(sm.traceID, timeout)
 }
 
