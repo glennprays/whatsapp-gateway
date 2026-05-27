@@ -39,6 +39,9 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
@@ -258,6 +261,81 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 		customLog.String("message_id", messageID),
 	)
 
+	return messageID, nil
+}
+
+func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending location message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendLocationMessage(ctx, traceID, phoneNumber, to, latitude, longitude, name, address)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send location message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent location message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+	return messageID, nil
+}
+
+func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending poll message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send poll message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent poll message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+	return messageID, nil
+}
+
+func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending sticker message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+	)
+
+	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send sticker message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent sticker message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
 	return messageID, nil
 }
 
