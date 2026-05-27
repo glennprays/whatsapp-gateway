@@ -129,7 +129,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		// Direct mode (or fallback): deliver webhook asynchronously
-		go h.deliverWebhook(traceID, phoneNumber, jid, v)
+		h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 	}
 }
 
