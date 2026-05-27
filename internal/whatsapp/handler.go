@@ -24,12 +24,15 @@ type (
 		mediaDownloader MediaDownloader
 		buffers         map[string]*incomingBuffer
 		buffersMu       sync.RWMutex
+		webhookSem      chan struct{}
 	}
 	Handler interface {
 		HandleEvent(jid string, evt any)
 		GetIncomingMessages(phoneNumber string, limit int) []*IncomingMessage
 	}
 )
+
+const maxConcurrentWebhooks = 50
 
 func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader) Handler {
 	return &handler{
@@ -39,6 +42,7 @@ func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueu
 		logger:          logger,
 		mediaDownloader: mediaDownloader,
 		buffers:         make(map[string]*incomingBuffer),
+		webhookSem:      make(chan struct{}, maxConcurrentWebhooks),
 	}
 }
 
@@ -99,7 +103,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			if err != nil {
 				h.logger.Error(traceID, "Failed to marshal event for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(traceID, phoneNumber, jid, v)
+				h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
@@ -114,7 +118,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			if err != nil {
 				h.logger.Error(traceID, "Queue publish failed for "+MaskedPhoneNumber(phoneNumber)+", using direct delivery", nil, customLog.Error(err))
 				// Fallback to direct delivery
-				go h.deliverWebhook(traceID, phoneNumber, jid, v)
+				h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 				return
 			}
 
@@ -124,6 +128,18 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 
 		// Direct mode (or fallback): deliver webhook asynchronously
 		go h.deliverWebhook(traceID, phoneNumber, jid, v)
+	}
+}
+
+func (h *handler) asyncDeliverWebhook(traceID string, phoneNumber string, jid string, msg *events.Message) {
+	select {
+	case h.webhookSem <- struct{}{}:
+		go func() {
+			defer func() { <-h.webhookSem }()
+			h.deliverWebhook(traceID, phoneNumber, jid, msg)
+		}()
+	default:
+		h.logger.Warn(traceID, "Webhook delivery semaphore full, dropping event for "+MaskedPhoneNumber(phoneNumber), nil)
 	}
 }
 
