@@ -1,6 +1,7 @@
 package router
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -38,6 +39,7 @@ func SetupRouter(
 	lgr *log.Logger,
 	queue domainQueue.MessageQueue,
 	storage domainStorage.Storage,
+	db *sql.DB,
 ) *fiber.App {
 	cfg = conf
 	basePath = cfg.BasePath
@@ -64,25 +66,39 @@ func SetupRouter(
 		traceID := middleware.GetTraceID(c)
 		logger.Info(traceID, "Health check endpoint accessed", nil)
 
+		status := "ok"
 		response := fiber.Map{
-			"status":    "ok",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"trace_id":  traceID,
 		}
 
-		// Add queue health check if RabbitMQ is enabled
-		if cfg.RabbitMQEnabled && queue != nil {
-			response["queue"] = fiber.Map{
-				"enabled":   true,
-				"connected": queue.IsHealthy(),
-			}
-
-			if !queue.IsHealthy() {
-				response["status"] = "degraded"
+		// Database health check
+		if db != nil {
+			dbHealthy := db.PingContext(c.Context()) == nil
+			response["database"] = fiber.Map{"connected": dbHealthy}
+			if !dbHealthy {
+				status = "unhealthy"
 			}
 		}
 
-		return c.Status(http.StatusOK).JSON(response)
+		// Queue health check
+		if cfg.RabbitMQEnabled && queue != nil {
+			queueHealthy := queue.IsHealthy()
+			response["queue"] = fiber.Map{
+				"enabled":   true,
+				"connected": queueHealthy,
+			}
+			if !queueHealthy && status == "ok" {
+				status = "degraded"
+			}
+		}
+
+		response["status"] = status
+		httpStatus := http.StatusOK
+		if status == "unhealthy" {
+			httpStatus = http.StatusServiceUnavailable
+		}
+		return c.Status(httpStatus).JSON(response)
 	})
 
 	// Serve llms.txt for AI assistant context
