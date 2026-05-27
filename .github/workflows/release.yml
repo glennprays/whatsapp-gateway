@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get merged PR
+      - name: Get PR labels
         id: pr
         uses: actions/github-script@v7
         with:
@@ -36,24 +36,24 @@ jobs:
             });
 
             if (prs.data.length === 0) {
-              core.info("No PR associated with commit.");
-              return null;
+              core.setOutput('labels', '');
+              return;
             }
 
-            return prs.data[0];
+            const labels = prs.data[0].labels.map(l => l.name).join(' ');
+            core.setOutput('labels', labels);
 
       - name: Determine release type
         id: release
         run: |
-          PR_RESULT='${{ steps.pr.outputs.result }}'
-          if [ -z "$PR_RESULT" ] || [ "$PR_RESULT" = "null" ]; then
-            echo "No PR found. Skipping release."
+          LABELS="${{ steps.pr.outputs.labels }}"
+          echo "PR Labels: $LABELS"
+
+          if [ -z "$LABELS" ]; then
+            echo "No PR or labels found. Skipping."
             echo "SKIP=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-
-          LABELS="${{ join(fromJson(steps.pr.outputs.result).labels.*.name, ' ') }}"
-          echo "PR Labels: $LABELS"
 
           COUNT=0
           for t in major minor patch; do
