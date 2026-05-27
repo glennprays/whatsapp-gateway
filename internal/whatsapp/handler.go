@@ -249,6 +249,22 @@ func buildWebhookPayload(msg *events.Message, mediaDownloader MediaDownloader, t
 		if msg.Message.LocationMessage.DegreesLongitude != nil {
 			payload["longitude"] = *msg.Message.LocationMessage.DegreesLongitude
 		}
+		if name := msg.Message.LocationMessage.GetName(); name != "" {
+			payload["name"] = name
+		}
+		if addr := msg.Message.LocationMessage.GetAddress(); addr != "" {
+			payload["address"] = addr
+		}
+
+	case msg.Message.PollCreationMessage != nil:
+		payload["type"] = "poll"
+		payload["question"] = msg.Message.PollCreationMessage.GetName()
+		var opts []string
+		for _, o := range msg.Message.PollCreationMessage.GetOptions() {
+			opts = append(opts, o.GetOptionName())
+		}
+		payload["options"] = opts
+		payload["selectable_count"] = msg.Message.PollCreationMessage.GetSelectableOptionsCount()
 
 	default:
 		payload["type"] = "unknown"
