@@ -116,7 +116,7 @@ func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber st
 	if cli != nil {
 		cli.Disconnect()
 		if cli.Store.ID == nil {
-			qrChanGenerate, _ := cli.GetQRChannel(context.Background())
+			qrChanGenerate, _ := cli.GetQRChannel(ctx)
 			err := cli.Connect()
 			if err != nil {
 				return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
