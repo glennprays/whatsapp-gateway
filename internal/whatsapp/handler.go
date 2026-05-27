@@ -269,8 +269,10 @@ func downloadMedia(
 	if mediaDownloader == nil {
 		return "", nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	return mediaDownloader.DownloadAndStoreMedia(
-		context.Background(),
+		ctx,
 		traceID,
 		phoneNumber,
 		mediaMessage,
