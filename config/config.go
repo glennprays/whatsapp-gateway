@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 type Config struct {
-	Env                                    Environment `mapstructure:"ENV" default:"development"`
+	Env                                    Environment `mapstructure:"ENV" default:"production"`
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
@@ -147,7 +148,32 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	if cfg.Env == PROD {
+		if err := cfg.validateProductionSecrets(); err != nil {
+			return nil, err
+		}
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validateProductionSecrets() error {
+	defaults := map[string]string{
+		"JWT_SECRET":                              "secret",
+		"SECRET_KEY":                              "secret",
+		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": "0123456789abcdef0123456789abcdef",
+	}
+	values := map[string]string{
+		"JWT_SECRET":                              c.JwtSecret,
+		"SECRET_KEY":                              c.BasicAuthSecretKey,
+		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": c.WhatsappWebhookHmacEncryptionMasterKey,
+	}
+	for key, val := range values {
+		if val == defaults[key] {
+			return fmt.Errorf("refusing to start in production: %s is set to its default value", key)
+		}
+	}
+	return nil
 }
 
 func (c *Config) GetJwtDuration() *time.Duration {
