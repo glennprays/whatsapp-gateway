@@ -7,8 +7,6 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
-const incomingBufferCapacity = 100
-
 // IncomingMessage is an immutable record of a received WhatsApp message
 // retained in the in-memory ring buffer. Field names match the existing
 // webhook payload vocabulary so consumers see one consistent shape across
@@ -40,13 +38,14 @@ type IncomingMedia struct {
 
 type incomingBuffer struct {
 	mu   sync.RWMutex
+	cap  int
 	data []*IncomingMessage
 	head int
 	len  int
 }
 
-func newIncomingBuffer() *incomingBuffer {
-	return &incomingBuffer{data: make([]*IncomingMessage, incomingBufferCapacity)}
+func newIncomingBuffer(size int) *incomingBuffer {
+	return &incomingBuffer{cap: size, data: make([]*IncomingMessage, size)}
 }
 
 func (b *incomingBuffer) Push(m *IncomingMessage) {
@@ -56,8 +55,8 @@ func (b *incomingBuffer) Push(m *IncomingMessage) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.data[b.head] = m
-	b.head = (b.head + 1) % incomingBufferCapacity
-	if b.len < incomingBufferCapacity {
+	b.head = (b.head + 1) % b.cap
+	if b.len < b.cap {
 		b.len++
 	}
 }
@@ -75,10 +74,10 @@ func (b *incomingBuffer) Latest(n int) []*IncomingMessage {
 		return []*IncomingMessage{}
 	}
 	out := make([]*IncomingMessage, n)
-	idx := (b.head - 1 + incomingBufferCapacity) % incomingBufferCapacity
+	idx := (b.head - 1 + b.cap) % b.cap
 	for i := 0; i < n; i++ {
 		out[i] = b.data[idx]
-		idx = (idx - 1 + incomingBufferCapacity) % incomingBufferCapacity
+		idx = (idx - 1 + b.cap) % b.cap
 	}
 	return out
 }

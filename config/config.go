@@ -30,6 +30,7 @@ type Config struct {
 	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
 	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
 	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
+	IncomingMessageBufferSize              int         `mapstructure:"INCOMING_MESSAGE_BUFFER_SIZE" default:"100"`
 	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"info"`
 	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
 	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`

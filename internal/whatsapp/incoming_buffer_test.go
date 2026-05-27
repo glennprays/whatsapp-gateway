@@ -11,7 +11,7 @@ func mkMsg(id string, ts int64) *IncomingMessage {
 }
 
 func TestIncomingBuffer_PushAndLatest(t *testing.T) {
-	b := newIncomingBuffer()
+	b := newIncomingBuffer(100)
 	for i := 0; i < 5; i++ {
 		b.Push(mkMsg(fmt.Sprintf("M%d", i), int64(i)))
 	}
@@ -25,7 +25,7 @@ func TestIncomingBuffer_PushAndLatest(t *testing.T) {
 }
 
 func TestIncomingBuffer_LatestMoreThanLen(t *testing.T) {
-	b := newIncomingBuffer()
+	b := newIncomingBuffer(100)
 	for i := 0; i < 3; i++ {
 		b.Push(mkMsg(fmt.Sprintf("M%d", i), int64(i)))
 	}
@@ -36,22 +36,22 @@ func TestIncomingBuffer_LatestMoreThanLen(t *testing.T) {
 }
 
 func TestIncomingBuffer_Empty(t *testing.T) {
-	b := newIncomingBuffer()
+	b := newIncomingBuffer(100)
 	if got := b.Latest(10); len(got) != 0 {
 		t.Errorf("expected empty slice, got %v", got)
 	}
 }
 
 func TestIncomingBuffer_OverflowWrap(t *testing.T) {
-	b := newIncomingBuffer()
+	b := newIncomingBuffer(100)
 	// Push capacity+5 entries; oldest 5 should be evicted.
-	total := incomingBufferCapacity + 5
+	total := 100 + 5
 	for i := 0; i < total; i++ {
 		b.Push(mkMsg(fmt.Sprintf("M%d", i), int64(i)))
 	}
-	got := b.Latest(incomingBufferCapacity)
-	if len(got) != incomingBufferCapacity {
-		t.Fatalf("expected %d, got %d", incomingBufferCapacity, len(got))
+	got := b.Latest(100)
+	if len(got) != 100 {
+		t.Fatalf("expected %d, got %d", 100, len(got))
 	}
 	if got[0].MessageID != fmt.Sprintf("M%d", total-1) {
 		t.Errorf("expected newest=M%d, got %s", total-1, got[0].MessageID)
@@ -63,7 +63,7 @@ func TestIncomingBuffer_OverflowWrap(t *testing.T) {
 }
 
 func TestIncomingBuffer_ConcurrentPushReadIsRaceFree(t *testing.T) {
-	b := newIncomingBuffer()
+	b := newIncomingBuffer(100)
 	var wg sync.WaitGroup
 	for w := 0; w < 8; w++ {
 		wg.Add(1)

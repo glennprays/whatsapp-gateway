@@ -66,7 +66,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	webhookSender := NewWebhookSender(cp, logger)
 
 	// Create event handler with repository, sender, queue, and media downloader
-	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader)
+	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader, config.IncomingMessageBufferSize)
 
 	client := NewClient(container, config, repository, logger)
 

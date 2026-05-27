@@ -22,6 +22,7 @@ type (
 		queue           domainQueue.MessageQueue
 		logger          *customLog.Logger
 		mediaDownloader MediaDownloader
+		bufferSize      int
 		buffers         map[string]*incomingBuffer
 		buffersMu       sync.RWMutex
 		webhookSem      chan struct{}
@@ -34,13 +35,14 @@ type (
 
 const maxConcurrentWebhooks = 50
 
-func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader) Handler {
+func NewHandler(repo WhatsAppRepository, sender *WebhookSender, queue domainQueue.MessageQueue, logger *customLog.Logger, mediaDownloader MediaDownloader, bufferSize int) Handler {
 	return &handler{
 		repository:      repo,
 		sender:          sender,
 		queue:           queue,
 		logger:          logger,
 		mediaDownloader: mediaDownloader,
+		bufferSize:      bufferSize,
 		buffers:         make(map[string]*incomingBuffer),
 		webhookSem:      make(chan struct{}, maxConcurrentWebhooks),
 	}
@@ -60,7 +62,7 @@ func (h *handler) getOrCreateBuffer(phoneNumber string) *incomingBuffer {
 	if b, ok = h.buffers[phoneNumber]; ok {
 		return b
 	}
-	b = newIncomingBuffer()
+	b = newIncomingBuffer(h.bufferSize)
 	h.buffers[phoneNumber] = b
 	return b
 }
