@@ -19,7 +19,7 @@ func ProvideWhatsappManager(
 	logger *log.Logger,
 	queue domainQueue.MessageQueue,
 	mediaDownloader MediaDownloader,
-) Manager {
+) (Manager, error) {
 	return NewManager(cfg, cfg.WhatsappDatastoreType, db, cipher, logger, queue, mediaDownloader)
 }
 

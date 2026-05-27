@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -49,7 +50,7 @@ type (
 
 var clients = NewClientStore()
 
-func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) Manager {
+func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Cipher, logger *customLog.Logger, queue domainQueue.MessageQueue, mediaDownloader MediaDownloader) (Manager, error) {
 	ctx := context.Background()
 	startupTraceID := uuid.New().String()
 
@@ -57,7 +58,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	container := sqlstore.NewWithDB(db, dbType, dbLog)
 	if err := container.Upgrade(ctx); err != nil {
 		logger.Error(startupTraceID, "Failed to upgrade database schema", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("database schema upgrade: %w", err)
 	}
 	repository := NewWhatsappRepository(db)
 
@@ -72,13 +73,13 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	err := runMigrations(db)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to run database migrations", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("database migrations: %w", err)
 	}
 
 	devices, err := container.GetAllDevices(ctx)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to get devices from database", nil, customLog.Error(err))
-		panic(err)
+		return nil, fmt.Errorf("get all devices: %w", err)
 	}
 
 	for _, device := range devices {
@@ -105,7 +106,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 		Cipher:       cp,
 		Logger:       logger,
 		Queue:        queue,
-	}
+	}, nil
 }
 
 func (m *manager) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {

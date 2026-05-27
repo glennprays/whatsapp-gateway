@@ -57,7 +57,10 @@ func InitializeApp() (*App, func(), error) {
 		return nil, nil, err
 	}
 	mediaDownloader := whatsapp.ProvideMediaDownloader(storageStorage, configConfig, logger)
-	manager := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue, mediaDownloader)
+	manager, err := whatsapp.ProvideWhatsappManager(configConfig, db, cipher, logger, messageQueue, mediaDownloader)
+	if err != nil {
+		return nil, nil, err
+	}
 	authUsecase := auth_usecase.ProvideAuthUsecase(configConfig, jwtManager, manager, logger)
 	authHandler := auth_handler.ProvideAuthHandler(authUsecase, logger)
 	whatsappAuthUsecase := whatsapp_usecase.ProvideWhatsappAuthUsecase(manager, logger)
