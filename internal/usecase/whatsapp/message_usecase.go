@@ -22,6 +22,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	maxTextMessageLen = 65536
+	maxCaptionLen     = 4096
+	maxEmojiLen       = 64
+)
+
+func validateLength(field, name string, max int) error {
+	if len(field) > max {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("%s exceeds maximum length of %d characters", name, max))
+	}
+	return nil
+}
+
 // WhatsappMessageUsecase handles message operations business logic
 type WhatsappMessageUsecase struct {
 	whatsappManager whatsapp.Manager
@@ -63,6 +77,10 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendTextMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Message, "message", maxTextMessageLen); err != nil {
+		return nil, nil, err
+	}
+
 	// Check if queue is enabled and healthy
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
@@ -156,6 +174,10 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	fileHeader *multipart.FileHeader,
 	isViewOnce bool,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
 	// Open and read image file
 	file, err := fileHeader.Open()
 	if err != nil {
@@ -248,6 +270,10 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
+	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", nil,
@@ -286,6 +312,10 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
+	if err := validateLength(req.NewMessage, "new_message", maxTextMessageLen); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.EditMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.NewMessage)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to edit message", nil,
