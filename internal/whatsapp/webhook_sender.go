@@ -12,19 +12,21 @@ import (
 	"net/http"
 	"time"
 
+	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
-	log "github.com/sirupsen/logrus"
 )
 
 type WebhookSender struct {
 	cipher     *cipherx.Cipher
+	logger     *customLog.Logger
 	httpClient *http.Client
 }
 
-func NewWebhookSender(cipher *cipherx.Cipher) *WebhookSender {
+func NewWebhookSender(cipher *cipherx.Cipher, logger *customLog.Logger) *WebhookSender {
 	return &WebhookSender{
 		cipher: cipher,
+		logger: logger,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -68,7 +70,7 @@ func (ws *WebhookSender) Send(ctx context.Context, url string, encryptedHmacSecr
 	// Decrypt HMAC secret
 	hmacSecret, err := ws.cipher.Decrypt(encryptedHmacSecret)
 	if err != nil {
-		log.Errorf("Failed to decrypt HMAC secret: %v", err)
+		ws.logger.Error("", "Failed to decrypt HMAC secret", nil, customLog.Error(err))
 		return fmt.Errorf("failed to decrypt HMAC secret: %w", err)
 	}
 
