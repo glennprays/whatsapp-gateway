@@ -26,7 +26,7 @@ type Config struct {
 	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
 	BasicAuthSecretKey                     string      `mapstructure:"SECRET_KEY" default:"secret"`
 	WhatsappDatastoreType                  string      `mapstructure:"WHATSAPP_DATASTORE_TYPE" default:"sqlite"`
-	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)"`
+	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"`
 	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
 	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
 	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
