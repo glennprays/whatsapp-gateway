@@ -126,6 +126,22 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 	retryCount := getRetryCount(msg.Headers)
 	traceID := GetTraceIDWorkerProcess(msg.Headers)
 
+	// Recover from handler panics so a panicking message kills neither the
+	// worker goroutine nor strands the message unacked. Nack without requeue
+	// routes it to the DLQ via the queue's x-dead-letter-exchange.
+	defer func() {
+		if r := recover(); r != nil {
+			wg.logger.Error(traceID, fmt.Sprintf(
+				"Worker %s: panic while processing message: %v", workerName, r,
+			), nil)
+			if nackErr := msg.Nack(false, false); nackErr != nil {
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message after panic", workerName,
+				), nil, customLog.Error(nackErr))
+			}
+		}
+	}()
+
 	headers := msg.Headers
 	if headers == nil {
 		headers = amqp.Table{}
