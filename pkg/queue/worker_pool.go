@@ -35,8 +35,8 @@ type MessageHandler func(ctx context.Context, body []byte, headers amqp.Table) e
 type WorkerGroup struct {
 	queueName string
 	workers   int
-	publishCh *amqp.Channel
-	consumeCh *amqp.Channel
+	publishCh AMQPPublisher
+	consumeCh AMQPConsumer
 	handler   MessageHandler
 	logger    *customLog.Logger
 	config    *config.Config
@@ -54,8 +54,8 @@ type WorkerPool struct {
 func (wp *WorkerPool) StartWorkerGroup(
 	queueName string,
 	workerCount int,
-	publishCh *amqp.Channel,
-	consumeCh *amqp.Channel,
+	publishCh AMQPPublisher,
+	consumeCh AMQPConsumer,
 	handler MessageHandler,
 ) error {
 	group := &WorkerGroup{
