@@ -52,6 +52,8 @@ type Config struct {
 	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
 	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
 	RabbitMQReconnectDelaySeconds int `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
+	RabbitMQPublishConfirm        bool `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
+	RabbitMQConfirmTimeoutSeconds int  `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
 
 	// Redis Configuration
 	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`

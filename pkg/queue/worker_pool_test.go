@@ -130,6 +130,44 @@ func TestProcessMessage_AckErrorIsHandled(t *testing.T) {
 	}
 }
 
+func TestProcessMessage_ConfirmedRetryAcks(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	pub := &fakePublisher{confirm: fakeConfirmation{acked: true}}
+	wg := newTestWorkerGroup(pub, 3, func(ctx context.Context, body []byte, headers amqp.Table) error {
+		return errors.New("handler failed")
+	})
+	wg.config.RabbitMQPublishConfirm = true
+	wg.config.RabbitMQConfirmTimeoutSeconds = 1
+
+	wg.processMessage("test-worker", newDelivery(ack, nil))
+
+	if len(pub.published) != 1 {
+		t.Fatalf("expected 1 retry publish, got %d", len(pub.published))
+	}
+	if ack.acks != 1 {
+		t.Fatalf("expected original acked after confirmed retry, got %d acks", ack.acks)
+	}
+}
+
+func TestProcessMessage_NackedConfirmRequeuesOriginal(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	pub := &fakePublisher{confirm: fakeConfirmation{acked: false}}
+	wg := newTestWorkerGroup(pub, 3, func(ctx context.Context, body []byte, headers amqp.Table) error {
+		return errors.New("handler failed")
+	})
+	wg.config.RabbitMQPublishConfirm = true
+	wg.config.RabbitMQConfirmTimeoutSeconds = 1
+
+	wg.processMessage("test-worker", newDelivery(ack, nil))
+
+	if ack.acks != 0 {
+		t.Fatalf("expected no ack when retry confirm is nacked, got %d", ack.acks)
+	}
+	if len(ack.nacks) != 1 || !ack.nacks[0] {
+		t.Fatalf("expected nack with requeue when retry confirm is nacked, got %v", ack.nacks)
+	}
+}
+
 func TestRetryBackoff(t *testing.T) {
 	cases := []struct {
 		retry int

@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"sync"
 
 	customLog "github.com/glennprays/log"
@@ -40,12 +41,23 @@ func (f *fakeAcknowledger) Reject(tag uint64, requeue bool) error {
 	return nil
 }
 
+// fakeConfirmation simulates a broker publish acknowledgement.
+type fakeConfirmation struct {
+	acked bool
+	err   error
+}
+
+func (f fakeConfirmation) WaitContext(ctx context.Context) (bool, error) {
+	return f.acked, f.err
+}
+
 // fakePublisher records publishes made by publishRetry.
 type fakePublisher struct {
 	mu         sync.Mutex
 	published  []amqp.Publishing
 	routingKey []string
 	err        error
+	confirm    fakeConfirmation
 }
 
 func (f *fakePublisher) Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
@@ -54,6 +66,13 @@ func (f *fakePublisher) Publish(exchange, key string, mandatory, immediate bool,
 	f.published = append(f.published, msg)
 	f.routingKey = append(f.routingKey, key)
 	return f.err
+}
+
+func (f *fakePublisher) PublishWithConfirm(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) (AMQPConfirmation, error) {
+	if err := f.Publish(exchange, key, mandatory, immediate, msg); err != nil {
+		return nil, err
+	}
+	return f.confirm, nil
 }
 
 func newTestLogger() *customLog.Logger {

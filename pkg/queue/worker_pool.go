@@ -239,18 +239,39 @@ func (wg *WorkerGroup) publishRetry(task retryTask) error {
 		routingKey, expiration, getRetryCount(task.headers),
 	), nil)
 
+	publishing := amqp.Publishing{
+		Headers:      task.headers,
+		Body:         task.body,
+		DeliveryMode: amqp.Persistent,
+		Expiration:   expiration,
+		Timestamp:    time.Now(),
+	}
+
+	if wg.config.RabbitMQPublishConfirm {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(wg.config.RabbitMQConfirmTimeoutSeconds)*time.Second)
+		defer cancel()
+
+		conf, err := wg.publishCh.PublishWithConfirm(ctx, ExchangeName, routingKey, false, false, publishing)
+		if err != nil {
+			return err
+		}
+
+		acked, err := conf.WaitContext(ctx)
+		if err != nil {
+			return fmt.Errorf("waiting for retry publish confirm: %w", err)
+		}
+		if !acked {
+			return fmt.Errorf("retry publish nacked by broker")
+		}
+		return nil
+	}
+
 	return wg.publishCh.Publish(
 		ExchangeName,
 		routingKey,
 		false,
 		false,
-		amqp.Publishing{
-			Headers:      task.headers,
-			Body:         task.body,
-			DeliveryMode: amqp.Persistent,
-			Expiration:   expiration,
-			Timestamp:    time.Now(),
-		},
+		publishing,
 	)
 }
 

@@ -101,6 +101,18 @@ func (mq *RabbitMQQueue) connect() error {
 		return err
 	}
 
+	// Put the publish channel in confirm mode so publishes can be verified
+	// against broker acknowledgements. Re-applied automatically on reconnect
+	// since connect() runs each time.
+	if mq.config.RabbitMQPublishConfirm {
+		if err := publishCh.Confirm(false); err != nil {
+			publishCh.Close()
+			consumeCh.Close()
+			conn.Close()
+			return fmt.Errorf("failed to enable publisher confirms: %w", err)
+		}
+	}
+
 	mq.mu.Lock()
 	mq.conn = conn
 	mq.consumeCh = consumeCh
@@ -325,6 +337,34 @@ func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	publishing := amqp.Publishing{
+		ContentType:  "application/json",
+		Body:         body,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now(),
+	}
+
+	if mq.config.RabbitMQPublishConfirm {
+		confirmCtx, cancel := context.WithTimeout(ctx, time.Duration(mq.config.RabbitMQConfirmTimeoutSeconds)*time.Second)
+		defer cancel()
+
+		conf, err := ch.PublishWithDeferredConfirmWithContext(
+			confirmCtx, ExchangeName, routingKey, false, false, publishing,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to publish message: %w", err)
+		}
+
+		acked, err := conf.WaitContext(confirmCtx)
+		if err != nil {
+			return fmt.Errorf("waiting for publish confirm: %w", err)
+		}
+		if !acked {
+			return fmt.Errorf("publish nacked by broker")
+		}
+		return nil
+	}
+
 	publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -334,12 +374,7 @@ func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload
 		routingKey,
 		false, // mandatory
 		false, // immediate
-		amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         body,
-			DeliveryMode: amqp.Persistent,
-			Timestamp:    time.Now(),
-		},
+		publishing,
 	)
 }
 
@@ -355,7 +390,7 @@ func (mq *RabbitMQQueue) StartWorkers(
 	outgoingHandler MessageHandler,
 ) error {
 	mq.mu.RLock()
-	publishCh := mq.publishCh
+	publishCh := NewChannelPublisher(mq.publishCh)
 	consumeCh := mq.consumeCh
 	mq.mu.RUnlock()
 
