@@ -51,6 +51,7 @@ type Config struct {
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
 	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
 	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+	RabbitMQReconnectDelaySeconds int `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
 
 	// Redis Configuration
 	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`

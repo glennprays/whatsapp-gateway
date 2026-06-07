@@ -36,6 +36,8 @@ type RabbitMQQueue struct {
 	consumeCh  *amqp.Channel
 	mu         sync.RWMutex
 	healthy    bool
+	closing    bool
+	stopCh     chan struct{}
 	workerPool *WorkerPool
 }
 
@@ -44,6 +46,7 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 		config:  cfg,
 		logger:  logger,
 		healthy: false,
+		stopCh:  make(chan struct{}),
 	}
 
 	if err := mq.connect(); err != nil {
@@ -236,39 +239,62 @@ func (mq *RabbitMQQueue) monitorConnection() {
 		conn := mq.conn
 		mq.mu.RUnlock()
 
-		if conn != nil {
-			closeChan := make(chan *amqp.Error)
-			conn.NotifyClose(closeChan)
+		if conn == nil {
+			return
+		}
 
-			err := <-closeChan
-			if err != nil {
-				mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
-				mq.mu.Lock()
-				mq.healthy = false
-				mq.mu.Unlock()
+		closeChan := conn.NotifyClose(make(chan *amqp.Error, 1))
 
-				// Attempt reconnection
-				mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
-				for {
-					time.Sleep(5 * time.Second)
-					if err := mq.connect(); err != nil {
-						mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
-						continue
-					}
+		select {
+		case <-mq.stopCh:
+			return
+		case err := <-closeChan:
+			// A nil error means the connection was closed gracefully (e.g.
+			// via Shutdown); do not attempt to reconnect, just stop.
+			if err == nil {
+				return
+			}
 
-					if err := mq.setupTopology(); err != nil {
-						mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
-						continue
-					}
+			mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
+			mq.mu.Lock()
+			mq.healthy = false
+			mq.mu.Unlock()
 
-					mq.mu.Lock()
-					mq.healthy = true
-					mq.mu.Unlock()
-					mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
-					break
-				}
+			if !mq.reconnectLoop() {
+				return
 			}
 		}
+	}
+}
+
+// reconnectLoop retries until the connection and topology are restored.
+// It returns false if shutdown was requested while reconnecting.
+func (mq *RabbitMQQueue) reconnectLoop() bool {
+	mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
+	delay := time.Duration(mq.config.RabbitMQReconnectDelaySeconds) * time.Second
+
+	for {
+		select {
+		case <-mq.stopCh:
+			return false
+		case <-time.After(delay):
+		}
+
+		if err := mq.connect(); err != nil {
+			mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
+			continue
+		}
+
+		if err := mq.setupTopology(); err != nil {
+			mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
+			continue
+		}
+
+		mq.mu.Lock()
+		mq.healthy = true
+		mq.mu.Unlock()
+		mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
+		return true
 	}
 }
 
@@ -378,6 +404,15 @@ func (mq *RabbitMQQueue) StartWorkers(
 
 func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
 	mq.logger.Info(traceIDRabbitMQClose, "Shutting down RabbitMQ queue...", nil)
+
+	// Signal the connection monitor to stop before closing the connection so
+	// a graceful close is never mistaken for a connection failure.
+	mq.mu.Lock()
+	if !mq.closing {
+		mq.closing = true
+		close(mq.stopCh)
+	}
+	mq.mu.Unlock()
 
 	if mq.workerPool != nil {
 		mq.workerPool.Shutdown(timeout)
