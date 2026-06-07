@@ -150,7 +150,11 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 				"Worker %s: max retries (%d) exceeded, sending to DLQ",
 				workerName, wg.config.QueueMaxRetries,
 			), nil, customLog.Error(err))
-			_ = msg.Nack(false, false)
+			if nackErr := msg.Nack(false, false); nackErr != nil {
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message to DLQ", workerName,
+				), nil, customLog.Error(nackErr))
+			}
 			return
 		}
 
@@ -182,7 +186,11 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 
 		if err := wg.publishRetry(task); err != nil {
 			wg.logger.Error(traceID, "failed to publish retry", nil, customLog.Error(err))
-			_ = msg.Nack(false, true) // Requeue on publish failure
+			if nackErr := msg.Nack(false, true); nackErr != nil { // Requeue on publish failure
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message for requeue", workerName,
+				), nil, customLog.Error(nackErr))
+			}
 			return
 		}
 
@@ -191,11 +199,19 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 			workerName, wg.queueName, delay,
 		), nil)
 
-		_ = msg.Ack(false) // Ack original message (retry is scheduled)
+		if ackErr := msg.Ack(false); ackErr != nil { // Ack original message (retry is scheduled)
+			wg.logger.Error(traceID, fmt.Sprintf(
+				"Worker %s: failed to ack message after scheduling retry", workerName,
+			), nil, customLog.Error(ackErr))
+		}
 		return
 	}
 
-	_ = msg.Ack(false)
+	if ackErr := msg.Ack(false); ackErr != nil {
+		wg.logger.Error(traceID, fmt.Sprintf(
+			"Worker %s: failed to ack message", workerName,
+		), nil, customLog.Error(ackErr))
+	}
 }
 
 func (wg *WorkerGroup) publishRetry(task retryTask) error {
