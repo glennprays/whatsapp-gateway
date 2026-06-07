@@ -69,11 +69,20 @@ func ProvideQueueWorkers(
 		Dedup:      dedup,
 	}
 
+	dlqHandler := &queueHandlers.DLQHandler{
+		Manager:    manager,
+		Repository: repo,
+		Sender:     sender,
+		Logger:     logger,
+		Config:     cfg,
+	}
+
 	// Start workers
 	if err := rabbitMQ.StartWorkers(
 		incomingHandler.Handle,
 		webhookHandler.Handle,
 		outgoingHandler.Handle,
+		dlqHandler.Handle,
 	); err != nil {
 		return nil, err
 	}

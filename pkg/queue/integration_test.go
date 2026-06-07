@@ -41,18 +41,26 @@ func startRabbitMQ(t *testing.T) *rabbitContainer {
 	return &rabbitContainer{container: container, url: url}
 }
 
-// stop stops the broker without removing the container (port mapping is
-// preserved), simulating a broker outage.
+// stop shuts down the broker inside the running container via rabbitmqctl,
+// simulating a broker outage. The container (and its host port mapping)
+// stays up — stopping the container instead would let Docker reassign the
+// random host port on restart, which never happens to a real broker.
 func (rc *rabbitContainer) stop(t *testing.T) {
 	t.Helper()
-	timeout := 10 * time.Second
-	require.NoError(t, rc.container.Stop(context.Background(), &timeout))
+	rc.exec(t, "rabbitmqctl", "stop_app")
 }
 
-// start restarts a previously stopped broker on the same mapped port.
+// start brings the broker back up on the same address.
 func (rc *rabbitContainer) start(t *testing.T) {
 	t.Helper()
-	require.NoError(t, rc.container.Start(context.Background()))
+	rc.exec(t, "rabbitmqctl", "start_app")
+}
+
+func (rc *rabbitContainer) exec(t *testing.T, cmd ...string) {
+	t.Helper()
+	code, _, err := rc.container.Exec(context.Background(), cmd)
+	require.NoError(t, err)
+	require.Zero(t, code, "command %v must succeed", cmd)
 }
 
 func newTestConfig(url string) *config.Config {
@@ -108,7 +116,7 @@ func TestIntegration_PublishConsumeRoundTrip(t *testing.T) {
 	mq := newTestQueue(t, rc.url)
 
 	received := make(chan []byte, 1)
-	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, signalHandler(received)))
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, signalHandler(received), nil))
 
 	err := mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"hello": "world"})
 	require.NoError(t, err)
@@ -122,7 +130,7 @@ func TestIntegration_ConsumersRestartAfterBrokerRestart(t *testing.T) {
 	mq := newTestQueue(t, rc.url)
 
 	received := make(chan []byte, 4)
-	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, signalHandler(received)))
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, signalHandler(received), nil))
 
 	// Sanity: round trip works before the outage.
 	require.NoError(t, mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"phase": "before"}))
@@ -169,7 +177,7 @@ func TestIntegration_FailedMessageRetriesViaTierQueue(t *testing.T) {
 		received <- body
 		return nil
 	}
-	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, handler))
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, handler, nil))
 
 	start := time.Now()
 	require.NoError(t, mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"n": "1"}))
@@ -182,6 +190,35 @@ func TestIntegration_FailedMessageRetriesViaTierQueue(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	require.Equal(t, 2, attempts)
+}
+
+func TestIntegration_ExhaustedRetriesReachDLQConsumer(t *testing.T) {
+	rc := startRabbitMQ(t)
+
+	cfg := newTestConfig(rc.url)
+	cfg.QueueMaxRetries = 1 // keep total retry time short
+	mq, err := NewRabbitMQQueue(cfg, newTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = mq.Shutdown(5 * time.Second)
+	})
+
+	alwaysFail := func(ctx context.Context, body []byte, headers amqp.Table) error {
+		return errors.New("permanent failure")
+	}
+	dlqReceived := make(chan []byte, 1)
+	dlqHandler := func(ctx context.Context, body []byte, headers amqp.Table) error {
+		dlqReceived <- body
+		return nil
+	}
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, alwaysFail, dlqHandler))
+
+	require.NoError(t, mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"doomed": "yes"}))
+
+	// Original attempt fails -> 1s tier retry -> fails again at max retries
+	// -> nacked to DLQ -> DLQ consumer picks it up.
+	body := waitForBody(t, dlqReceived, 30*time.Second)
+	require.Contains(t, string(body), "doomed")
 }
 
 func TestIntegration_GracefulShutdownStopsMonitor(t *testing.T) {

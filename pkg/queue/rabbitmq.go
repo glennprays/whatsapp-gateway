@@ -449,6 +449,7 @@ func (mq *RabbitMQQueue) StartWorkers(
 	incomingHandler MessageHandler,
 	webhookHandler MessageHandler,
 	outgoingHandler MessageHandler,
+	dlqHandler MessageHandler,
 ) error {
 	// Remember registrations so consumers can be restarted with fresh
 	// channels after a reconnect.
@@ -457,6 +458,13 @@ func (mq *RabbitMQQueue) StartWorkers(
 		QueueIncomingEvents:   {workers: mq.config.WorkerIncomingEvents, handler: incomingHandler},
 		QueueWebhookDelivery:  {workers: mq.config.WorkerWebhookDelivery, handler: webhookHandler},
 		QueueOutgoingMessages: {workers: mq.config.WorkerOutgoingMessages, handler: outgoingHandler},
+	}
+	if dlqHandler != nil {
+		// One worker per DLQ keeps dead-letter handling observable without
+		// competing with the main queues.
+		mq.handlers[DLQIncomingEvents] = handlerRegistration{workers: 1, handler: dlqHandler}
+		mq.handlers[DLQWebhookDelivery] = handlerRegistration{workers: 1, handler: dlqHandler}
+		mq.handlers[DLQOutgoingMessages] = handlerRegistration{workers: 1, handler: dlqHandler}
 	}
 	mq.mu.Unlock()
 
