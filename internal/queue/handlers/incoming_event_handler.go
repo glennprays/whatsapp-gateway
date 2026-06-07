@@ -23,6 +23,7 @@ type IncomingEventHandler struct {
 	Logger          *customLog.Logger
 	MediaDownloader whatsapp.MediaDownloader
 	ClientStore     *whatsapp.ClientStore
+	Dedup           *queue.DedupCache
 }
 
 func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -39,8 +40,12 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 		return fmt.Errorf("failed to unmarshal WhatsApp event: %w", err)
 	}
 
-	// Check for duplicate message
-	// TODO: Implement duplicate detection if needed
+	// Skip messages already processed within the dedup TTL (the queue is
+	// at-least-once, so redeliveries after crashes/requeues are expected)
+	if h.Dedup.IsDuplicate(queue.QueueIncomingEvents, eventMsg.MessageID) {
+		h.Logger.Info(traceID, fmt.Sprintf("Skipping duplicate incoming event %s", eventMsg.MessageID), nil)
+		return nil
+	}
 
 	// Get client for JID resolution
 	var client *whatsmeow.Client
@@ -59,6 +64,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 
 	if webhook == nil || webhook.Url == "" {
 		h.Logger.Debug("", fmt.Sprintf("No webhook URL configured for phone %s", eventMsg.PhoneNumber), nil)
+		h.Dedup.MarkProcessed(queue.QueueIncomingEvents, eventMsg.MessageID)
 		return nil // Not an error, just skip
 	}
 
@@ -74,6 +80,7 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 		return fmt.Errorf("failed to publish webhook delivery: %w", err)
 	}
 
+	h.Dedup.MarkProcessed(queue.QueueIncomingEvents, eventMsg.MessageID)
 	h.Logger.Debug(traceID, fmt.Sprintf("Queued webhook delivery for message %s", eventMsg.MessageID), nil)
 	return nil
 }

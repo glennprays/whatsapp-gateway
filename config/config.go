@@ -67,6 +67,10 @@ type Config struct {
 	// Queue Retry Settings
 	QueueMaxRetries int `mapstructure:"QUEUE_MAX_RETRIES" default:"3"`
 
+	// Queue Duplicate Detection (in-memory, single instance only)
+	QueueDedupEnabled    bool `mapstructure:"QUEUE_DEDUP_ENABLED" default:"true"`
+	QueueDedupTTLSeconds int  `mapstructure:"QUEUE_DEDUP_TTL_SECONDS" default:"600"`
+
 	// Status Webhook Configuration
 	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
 	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
