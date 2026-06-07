@@ -115,6 +115,40 @@ func TestIntegration_PublishConsumeRoundTrip(t *testing.T) {
 	require.Contains(t, string(body), "hello")
 }
 
+func TestIntegration_ConsumersRestartAfterBrokerRestart(t *testing.T) {
+	rc := startRabbitMQ(t)
+	mq := newTestQueue(t, rc.url)
+
+	received := make(chan []byte, 4)
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, signalHandler(received)))
+
+	// Sanity: round trip works before the outage.
+	require.NoError(t, mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"phase": "before"}))
+	waitForBody(t, received, 10*time.Second)
+
+	// Simulate a broker outage and recovery.
+	rc.stop(t)
+	require.Eventually(t, func() bool { return !mq.IsHealthy() }, 15*time.Second, 200*time.Millisecond,
+		"queue must report unhealthy while broker is down")
+
+	rc.start(t)
+	require.Eventually(t, func() bool { return mq.IsHealthy() }, 60*time.Second, 500*time.Millisecond,
+		"queue must reconnect after broker comes back")
+
+	// The critical assertion: consuming must resume after reconnect.
+	require.Eventually(t, func() bool {
+		if err := mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"phase": "after"}); err != nil {
+			return false
+		}
+		select {
+		case <-received:
+			return true
+		case <-time.After(2 * time.Second):
+			return false
+		}
+	}, 30*time.Second, time.Second, "messages published after broker restart must be consumed")
+}
+
 func TestIntegration_GracefulShutdownStopsMonitor(t *testing.T) {
 	rc := startRabbitMQ(t)
 	mq, err := NewRabbitMQQueue(newTestConfig(rc.url), newTestLogger())

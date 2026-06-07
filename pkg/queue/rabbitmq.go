@@ -28,6 +28,13 @@ func init() {
 	traceIDRabbitMQClose = fmt.Sprintf("RABBITMQ-CLOSE:%s", uuid.New().String())
 }
 
+// handlerRegistration remembers a queue's worker count and handler so
+// consumers can be restarted with fresh channels after a reconnect.
+type handlerRegistration struct {
+	workers int
+	handler MessageHandler
+}
+
 type RabbitMQQueue struct {
 	config     *config.Config
 	logger     *customLog.Logger
@@ -39,6 +46,7 @@ type RabbitMQQueue struct {
 	closing    bool
 	stopCh     chan struct{}
 	workerPool *WorkerPool
+	handlers   map[string]handlerRegistration
 }
 
 func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQueue, error) {
@@ -67,6 +75,15 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 }
 
 func (mq *RabbitMQQueue) connect() error {
+	// Close any stale previous connection so repeated reconnect attempts
+	// never leak sockets.
+	mq.mu.RLock()
+	oldConn := mq.conn
+	mq.mu.RUnlock()
+	if oldConn != nil && !oldConn.IsClosed() {
+		_ = oldConn.Close()
+	}
+
 	conn, err := amqp.DialConfig(mq.config.RabbitMQURL, amqp.Config{
 		Properties: amqp.Table{
 			"connection_name": mq.config.RabbitMQConnectionName,
@@ -272,8 +289,21 @@ func (mq *RabbitMQQueue) monitorConnection() {
 			mq.healthy = false
 			mq.mu.Unlock()
 
-			if !mq.reconnectLoop() {
-				return
+			// Reconnect, then restart consumers on the fresh channels. If
+			// restarting consumers fails the connection is likely broken
+			// again, so go back to reconnecting.
+			for {
+				if !mq.reconnectLoop() {
+					return
+				}
+				if err := mq.restartConsumers(); err != nil {
+					mq.logger.Error(traceIDRabbitMQHealth, "Failed to restart consumers after reconnect", nil, customLog.Error(err))
+					mq.mu.Lock()
+					mq.healthy = false
+					mq.mu.Unlock()
+					continue
+				}
+				break
 			}
 		}
 	}
@@ -389,9 +419,26 @@ func (mq *RabbitMQQueue) StartWorkers(
 	webhookHandler MessageHandler,
 	outgoingHandler MessageHandler,
 ) error {
+	// Remember registrations so consumers can be restarted with fresh
+	// channels after a reconnect.
+	mq.mu.Lock()
+	mq.handlers = map[string]handlerRegistration{
+		QueueIncomingEvents:   {workers: mq.config.WorkerIncomingEvents, handler: incomingHandler},
+		QueueWebhookDelivery:  {workers: mq.config.WorkerWebhookDelivery, handler: webhookHandler},
+		QueueOutgoingMessages: {workers: mq.config.WorkerOutgoingMessages, handler: outgoingHandler},
+	}
+	mq.mu.Unlock()
+
+	return mq.startConsumers()
+}
+
+// startConsumers builds a fresh worker pool consuming on the current
+// channels for every registered handler.
+func (mq *RabbitMQQueue) startConsumers() error {
 	mq.mu.RLock()
 	publishCh := NewChannelPublisher(mq.publishCh)
 	consumeCh := mq.consumeCh
+	handlers := mq.handlers
 	mq.mu.RUnlock()
 
 	workerPool := &WorkerPool{
@@ -400,40 +447,49 @@ func (mq *RabbitMQQueue) StartWorkers(
 		pools:  make(map[string]*WorkerGroup),
 	}
 
-	// Start incoming events workers
-	if err := workerPool.StartWorkerGroup(
-		QueueIncomingEvents,
-		mq.config.WorkerIncomingEvents,
-		publishCh,
-		consumeCh,
-		incomingHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start incoming events workers: %w", err)
+	for queueName, reg := range handlers {
+		if err := workerPool.StartWorkerGroup(
+			queueName,
+			reg.workers,
+			publishCh,
+			consumeCh,
+			reg.handler,
+		); err != nil {
+			return fmt.Errorf("failed to start workers for %s: %w", queueName, err)
+		}
 	}
 
-	// Start webhook delivery workers
-	if err := workerPool.StartWorkerGroup(
-		QueueWebhookDelivery,
-		mq.config.WorkerWebhookDelivery,
-		publishCh,
-		consumeCh,
-		webhookHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start webhook delivery workers: %w", err)
-	}
-
-	// Start outgoing messages workers
-	if err := workerPool.StartWorkerGroup(
-		QueueOutgoingMessages,
-		mq.config.WorkerOutgoingMessages,
-		publishCh,
-		consumeCh,
-		outgoingHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start outgoing messages workers: %w", err)
-	}
-
+	mq.mu.Lock()
 	mq.workerPool = workerPool
+	mq.mu.Unlock()
+	return nil
+}
+
+// restartConsumers tears down the old worker pool (whose delivery channels
+// died with the previous connection) and starts consumers on the fresh
+// channels. Called by the connection monitor after a successful reconnect.
+func (mq *RabbitMQQueue) restartConsumers() error {
+	mq.mu.RLock()
+	closing := mq.closing
+	oldPool := mq.workerPool
+	registered := len(mq.handlers) > 0
+	mq.mu.RUnlock()
+
+	if closing || !registered {
+		return nil
+	}
+
+	if oldPool != nil {
+		// Workers exit promptly: their delivery channels closed with the
+		// old connection.
+		oldPool.Shutdown(5 * time.Second)
+	}
+
+	if err := mq.startConsumers(); err != nil {
+		return err
+	}
+
+	mq.logger.Info(traceIDRabbitMQHealth, "Consumers restarted after reconnect", nil)
 	return nil
 }
 
