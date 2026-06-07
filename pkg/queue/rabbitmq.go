@@ -175,11 +175,10 @@ func (mq *RabbitMQQueue) setupTopology() error {
 		name       string
 		routingKey string
 		dlq        string
-		retry      string
 	}{
-		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents, RetryIncomingEvents},
-		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery, RetryWebhookDelivery},
-		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages, RetryOutgoingMessages},
+		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents},
+		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery},
+		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages},
 	}
 
 	for _, q := range queues {
@@ -221,9 +220,42 @@ func (mq *RabbitMQQueue) setupTopology() error {
 			return fmt.Errorf("failed to declare queue %s: %w", q.name, err)
 		}
 
-		// Declare retry queue
+		// Declare tiered retry queues. Each tier has a queue-level TTL and
+		// dead-letters back to the main queue, so a long delay can never
+		// block shorter ones (head-of-line blocking).
+		for _, tier := range RetryTiers {
+			retryQueue := retryTierQueueName(q.name, tier)
+			if _, err := ch.QueueDeclare(
+				retryQueue,
+				true,
+				false,
+				false,
+				false,
+				amqp.Table{
+					"x-dead-letter-exchange":    ExchangeName,
+					"x-dead-letter-routing-key": q.routingKey,
+					"x-message-ttl":             tier.Milliseconds(),
+				},
+			); err != nil {
+				return fmt.Errorf("failed to declare retry queue %s: %w", retryQueue, err)
+			}
+
+			if err := ch.QueueBind(
+				retryQueue,
+				retryQueue,
+				ExchangeName,
+				false,
+				nil,
+			); err != nil {
+				return fmt.Errorf("failed to bind retry queue %s: %w", retryQueue, err)
+			}
+		}
+
+		// Declare the long-delay retry queue (per-message expiration, for
+		// delays beyond the largest tier — e.g. rate-limit Retry-After).
+		longQueue := retryLongQueueName(q.name)
 		if _, err := ch.QueueDeclare(
-			q.retry,
+			longQueue,
 			true,
 			false,
 			false,
@@ -233,18 +265,17 @@ func (mq *RabbitMQQueue) setupTopology() error {
 				"x-dead-letter-routing-key": q.routingKey,
 			},
 		); err != nil {
-			return fmt.Errorf("failed to declare retry queue %s: %w", q.retry, err)
+			return fmt.Errorf("failed to declare retry queue %s: %w", longQueue, err)
 		}
 
-		// Bind retry queue to exchange with retry routing key
 		if err := ch.QueueBind(
-			q.retry,
-			fmt.Sprintf("%s.retry", q.name),
+			longQueue,
+			longQueue,
 			ExchangeName,
 			false,
 			nil,
 		); err != nil {
-			return fmt.Errorf("failed to bind retry queue %s: %w", q.retry, err)
+			return fmt.Errorf("failed to bind retry queue %s: %w", longQueue, err)
 		}
 
 		// Bind queue to exchange

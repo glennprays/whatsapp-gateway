@@ -210,9 +210,10 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 			return
 		}
 
+		retryQueue, _ := retryRoute(wg.queueName, delay)
 		wg.logger.Info(traceID, fmt.Sprintf(
-			"Worker %s: retry published to %s.retry with %s delay",
-			workerName, wg.queueName, delay,
+			"Worker %s: retry published to %s with %s delay",
+			workerName, retryQueue, delay,
 		), nil)
 
 		if ackErr := msg.Ack(false); ackErr != nil { // Ack original message (retry is scheduled)
@@ -231,20 +232,23 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 }
 
 func (wg *WorkerGroup) publishRetry(task retryTask) error {
-	expiration := fmt.Sprintf("%d", task.delay.Milliseconds())
-	routingKey := fmt.Sprintf("%s.retry", task.queue)
+	// Tier queues carry the delay as a queue-level TTL; only the long queue
+	// needs a per-message expiration.
+	routingKey, perMessageTTL := retryRoute(task.queue, task.delay)
 
 	wg.logger.Debug("RETRY-PUBLISH", fmt.Sprintf(
-		"Publishing to %s with expiration %sms, retryCount=%d",
-		routingKey, expiration, getRetryCount(task.headers),
+		"Publishing to %s with %s delay, retryCount=%d",
+		routingKey, task.delay, getRetryCount(task.headers),
 	), nil)
 
 	publishing := amqp.Publishing{
 		Headers:      task.headers,
 		Body:         task.body,
 		DeliveryMode: amqp.Persistent,
-		Expiration:   expiration,
 		Timestamp:    time.Now(),
+	}
+	if perMessageTTL {
+		publishing.Expiration = fmt.Sprintf("%d", task.delay.Milliseconds())
 	}
 
 	if wg.config.RabbitMQPublishConfirm {

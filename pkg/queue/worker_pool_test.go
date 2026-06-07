@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
 func newDelivery(ack *fakeAcknowledger, headers amqp.Table) amqp.Delivery {
@@ -45,14 +48,14 @@ func TestProcessMessage_ErrorSchedulesRetryAndAcks(t *testing.T) {
 	if len(pub.published) != 1 {
 		t.Fatalf("expected 1 retry publish, got %d", len(pub.published))
 	}
-	if pub.routingKey[0] != QueueOutgoingMessages+".retry" {
+	if pub.routingKey[0] != QueueOutgoingMessages+".retry.1s" {
 		t.Fatalf("unexpected retry routing key: %s", pub.routingKey[0])
 	}
 	if pub.published[0].Headers[RetryCountKey] != 1 {
 		t.Fatalf("expected retry count 1, got %v", pub.published[0].Headers[RetryCountKey])
 	}
-	if pub.published[0].Expiration == "" {
-		t.Fatal("expected expiration to be set on retry message")
+	if pub.published[0].Expiration != "" {
+		t.Fatal("tier queues carry the delay as queue TTL; per-message expiration must be empty")
 	}
 	if ack.acks != 1 {
 		t.Fatalf("expected original message acked after retry scheduled, got %d acks", ack.acks)
@@ -179,6 +182,48 @@ func TestRetryBackoff(t *testing.T) {
 		if got := retryBackoff(c.retry).String(); got != c.want {
 			t.Errorf("retryBackoff(%d) = %s, want %s", c.retry, got, c.want)
 		}
+	}
+}
+
+func TestRetryRoute(t *testing.T) {
+	cases := []struct {
+		delay         time.Duration
+		wantQueue     string
+		wantPerMsgTTL bool
+	}{
+		{500 * time.Millisecond, "q.retry.1s", false},
+		{1 * time.Second, "q.retry.1s", false},
+		{3 * time.Second, "q.retry.5s", false},
+		{25 * time.Second, "q.retry.25s", false},
+		{30 * time.Second, "q.retry.long", true},
+		{5 * time.Minute, "q.retry.long", true},
+	}
+	for _, c := range cases {
+		queue, perMsg := retryRoute("q", c.delay)
+		if queue != c.wantQueue || perMsg != c.wantPerMsgTTL {
+			t.Errorf("retryRoute(q, %s) = (%s, %v), want (%s, %v)",
+				c.delay, queue, perMsg, c.wantQueue, c.wantPerMsgTTL)
+		}
+	}
+}
+
+func TestProcessMessage_LongDelayUsesPerMessageExpiration(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	pub := &fakePublisher{}
+	wg := newTestWorkerGroup(pub, 3, func(ctx context.Context, body []byte, headers amqp.Table) error {
+		return &ratelimiter.RateLimitError{RetryAfter: 90 * time.Second}
+	})
+
+	wg.processMessage("test-worker", newDelivery(ack, nil))
+
+	if len(pub.published) != 1 {
+		t.Fatalf("expected 1 retry publish, got %d", len(pub.published))
+	}
+	if pub.routingKey[0] != QueueOutgoingMessages+".retry.long" {
+		t.Fatalf("expected long retry queue, got %s", pub.routingKey[0])
+	}
+	if pub.published[0].Expiration != "90000" {
+		t.Fatalf("expected 90000ms expiration, got %q", pub.published[0].Expiration)
 	}
 }
 

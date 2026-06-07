@@ -4,6 +4,8 @@ package queue
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -147,6 +149,39 @@ func TestIntegration_ConsumersRestartAfterBrokerRestart(t *testing.T) {
 			return false
 		}
 	}, 30*time.Second, time.Second, "messages published after broker restart must be consumed")
+}
+
+func TestIntegration_FailedMessageRetriesViaTierQueue(t *testing.T) {
+	rc := startRabbitMQ(t)
+	mq := newTestQueue(t, rc.url)
+
+	var mu sync.Mutex
+	attempts := 0
+	received := make(chan []byte, 1)
+	handler := func(ctx context.Context, body []byte, headers amqp.Table) error {
+		mu.Lock()
+		attempts++
+		n := attempts
+		mu.Unlock()
+		if n == 1 {
+			return errors.New("transient failure")
+		}
+		received <- body
+		return nil
+	}
+	require.NoError(t, mq.StartWorkers(discardHandler, discardHandler, handler))
+
+	start := time.Now()
+	require.NoError(t, mq.publish(context.Background(), RoutingKeyOutgoingMsg, map[string]string{"n": "1"}))
+
+	// First attempt fails; redelivery flows through the 1s tier queue.
+	waitForBody(t, received, 15*time.Second)
+	elapsed := time.Since(start)
+	require.GreaterOrEqual(t, elapsed, 900*time.Millisecond, "retry must be delayed by the 1s tier TTL")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, 2, attempts)
 }
 
 func TestIntegration_GracefulShutdownStopsMonitor(t *testing.T) {
