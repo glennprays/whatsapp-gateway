@@ -15,6 +15,7 @@ import (
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
+	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 )
 
@@ -26,6 +27,7 @@ type OutgoingMessageHandler struct {
 	Sender     *whatsapp.WebhookSender
 	Config     *config.Config
 	Limiter    ratelimiter.Limiter
+	Dedup      *pkgQueue.DedupCache
 }
 
 func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, headers amqp.Table) error {
@@ -44,6 +46,15 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		h.Logger.Warn(traceID, "Job missing trace_id, using fallback", nil,
 			customLog.String("job_id", job.JobID),
 		)
+	}
+
+	// Skip jobs already completed within the dedup TTL so redeliveries
+	// after crashes/requeues cannot send the same message twice
+	if h.Dedup.IsDuplicate(pkgQueue.QueueOutgoingMessages, job.JobID) {
+		h.Logger.Info(traceID, "Skipping duplicate outgoing message job", nil,
+			customLog.String("job_id", job.JobID),
+		)
+		return nil
 	}
 
 	masked := whatsapp.MaskedPhoneNumber(job.PhoneNumber)
@@ -142,6 +153,8 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 			customLog.Error(err),
 		)
 	}
+
+	h.Dedup.MarkProcessed(pkgQueue.QueueOutgoingMessages, job.JobID)
 
 	// Send success webhook notification
 	h.sendStatusWebhook(ctx, traceID, job, domainQueue.EventMessageSent, messageID, "")

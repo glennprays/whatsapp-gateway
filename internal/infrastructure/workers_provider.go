@@ -1,6 +1,8 @@
 package infrastructure
 
 import (
+	"time"
+
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
@@ -32,6 +34,14 @@ func ProvideQueueWorkers(
 		return nil, nil
 	}
 
+	// Shared duplicate-detection cache (nil when disabled; handlers are
+	// nil-safe). Scoped per queue so the same message ID can flow through
+	// multiple queues.
+	var dedup *pkgQueue.DedupCache
+	if cfg.QueueDedupEnabled {
+		dedup = pkgQueue.NewDedupCache(time.Duration(cfg.QueueDedupTTLSeconds) * time.Second)
+	}
+
 	// Create handlers
 	incomingHandler := &queueHandlers.IncomingEventHandler{
 		Repository:     repo,
@@ -39,11 +49,13 @@ func ProvideQueueWorkers(
 		Logger:         logger,
 		MediaDownloader: mediaDownloader,
 		ClientStore:     manager.GetClientStore(),
+		Dedup:           dedup,
 	}
 
 	webhookHandler := &queueHandlers.WebhookDeliveryHandler{
 		Sender: sender,
 		Logger: logger,
+		Dedup:  dedup,
 	}
 
 	outgoingHandler := &queueHandlers.OutgoingMessageHandler{
@@ -54,6 +66,15 @@ func ProvideQueueWorkers(
 		Sender:     sender,
 		Config:     cfg,
 		Limiter:    limiter,
+		Dedup:      dedup,
+	}
+
+	dlqHandler := &queueHandlers.DLQHandler{
+		Manager:    manager,
+		Repository: repo,
+		Sender:     sender,
+		Logger:     logger,
+		Config:     cfg,
 	}
 
 	// Start workers
@@ -61,6 +82,7 @@ func ProvideQueueWorkers(
 		incomingHandler.Handle,
 		webhookHandler.Handle,
 		outgoingHandler.Handle,
+		dlqHandler.Handle,
 	); err != nil {
 		return nil, err
 	}

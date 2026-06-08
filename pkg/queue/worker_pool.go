@@ -35,8 +35,8 @@ type MessageHandler func(ctx context.Context, body []byte, headers amqp.Table) e
 type WorkerGroup struct {
 	queueName string
 	workers   int
-	publishCh *amqp.Channel
-	consumeCh *amqp.Channel
+	publishCh AMQPPublisher
+	consumeCh AMQPConsumer
 	handler   MessageHandler
 	logger    *customLog.Logger
 	config    *config.Config
@@ -54,8 +54,8 @@ type WorkerPool struct {
 func (wp *WorkerPool) StartWorkerGroup(
 	queueName string,
 	workerCount int,
-	publishCh *amqp.Channel,
-	consumeCh *amqp.Channel,
+	publishCh AMQPPublisher,
+	consumeCh AMQPConsumer,
 	handler MessageHandler,
 ) error {
 	group := &WorkerGroup{
@@ -126,6 +126,22 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 	retryCount := getRetryCount(msg.Headers)
 	traceID := GetTraceIDWorkerProcess(msg.Headers)
 
+	// Recover from handler panics so a panicking message kills neither the
+	// worker goroutine nor strands the message unacked. Nack without requeue
+	// routes it to the DLQ via the queue's x-dead-letter-exchange.
+	defer func() {
+		if r := recover(); r != nil {
+			wg.logger.Error(traceID, fmt.Sprintf(
+				"Worker %s: panic while processing message: %v", workerName, r,
+			), nil)
+			if nackErr := msg.Nack(false, false); nackErr != nil {
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message after panic", workerName,
+				), nil, customLog.Error(nackErr))
+			}
+		}
+	}()
+
 	headers := msg.Headers
 	if headers == nil {
 		headers = amqp.Table{}
@@ -150,7 +166,11 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 				"Worker %s: max retries (%d) exceeded, sending to DLQ",
 				workerName, wg.config.QueueMaxRetries,
 			), nil, customLog.Error(err))
-			_ = msg.Nack(false, false)
+			if nackErr := msg.Nack(false, false); nackErr != nil {
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message to DLQ", workerName,
+				), nil, customLog.Error(nackErr))
+			}
 			return
 		}
 
@@ -182,43 +202,80 @@ func (wg *WorkerGroup) processMessage(workerName string, msg amqp.Delivery) {
 
 		if err := wg.publishRetry(task); err != nil {
 			wg.logger.Error(traceID, "failed to publish retry", nil, customLog.Error(err))
-			_ = msg.Nack(false, true) // Requeue on publish failure
+			if nackErr := msg.Nack(false, true); nackErr != nil { // Requeue on publish failure
+				wg.logger.Error(traceID, fmt.Sprintf(
+					"Worker %s: failed to nack message for requeue", workerName,
+				), nil, customLog.Error(nackErr))
+			}
 			return
 		}
 
+		retryQueue, _ := retryRoute(wg.queueName, delay)
 		wg.logger.Info(traceID, fmt.Sprintf(
-			"Worker %s: retry published to %s.retry with %s delay",
-			workerName, wg.queueName, delay,
+			"Worker %s: retry published to %s with %s delay",
+			workerName, retryQueue, delay,
 		), nil)
 
-		_ = msg.Ack(false) // Ack original message (retry is scheduled)
+		if ackErr := msg.Ack(false); ackErr != nil { // Ack original message (retry is scheduled)
+			wg.logger.Error(traceID, fmt.Sprintf(
+				"Worker %s: failed to ack message after scheduling retry", workerName,
+			), nil, customLog.Error(ackErr))
+		}
 		return
 	}
 
-	_ = msg.Ack(false)
+	if ackErr := msg.Ack(false); ackErr != nil {
+		wg.logger.Error(traceID, fmt.Sprintf(
+			"Worker %s: failed to ack message", workerName,
+		), nil, customLog.Error(ackErr))
+	}
 }
 
 func (wg *WorkerGroup) publishRetry(task retryTask) error {
-	expiration := fmt.Sprintf("%d", task.delay.Milliseconds())
-	routingKey := fmt.Sprintf("%s.retry", task.queue)
+	// Tier queues carry the delay as a queue-level TTL; only the long queue
+	// needs a per-message expiration.
+	routingKey, perMessageTTL := retryRoute(task.queue, task.delay)
 
 	wg.logger.Debug("RETRY-PUBLISH", fmt.Sprintf(
-		"Publishing to %s with expiration %sms, retryCount=%d",
-		routingKey, expiration, getRetryCount(task.headers),
+		"Publishing to %s with %s delay, retryCount=%d",
+		routingKey, task.delay, getRetryCount(task.headers),
 	), nil)
+
+	publishing := amqp.Publishing{
+		Headers:      task.headers,
+		Body:         task.body,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now(),
+	}
+	if perMessageTTL {
+		publishing.Expiration = fmt.Sprintf("%d", task.delay.Milliseconds())
+	}
+
+	if wg.config.RabbitMQPublishConfirm {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(wg.config.RabbitMQConfirmTimeoutSeconds)*time.Second)
+		defer cancel()
+
+		conf, err := wg.publishCh.PublishWithConfirm(ctx, ExchangeName, routingKey, false, false, publishing)
+		if err != nil {
+			return err
+		}
+
+		acked, err := conf.WaitContext(ctx)
+		if err != nil {
+			return fmt.Errorf("waiting for retry publish confirm: %w", err)
+		}
+		if !acked {
+			return fmt.Errorf("retry publish nacked by broker")
+		}
+		return nil
+	}
 
 	return wg.publishCh.Publish(
 		ExchangeName,
 		routingKey,
 		false,
 		false,
-		amqp.Publishing{
-			Headers:      task.headers,
-			Body:         task.body,
-			DeliveryMode: amqp.Persistent,
-			Expiration:   expiration,
-			Timestamp:    time.Now(),
-		},
+		publishing,
 	)
 }
 

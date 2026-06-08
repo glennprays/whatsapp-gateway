@@ -26,7 +26,7 @@ type Config struct {
 	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
 	BasicAuthSecretKey                     string      `mapstructure:"SECRET_KEY" default:"secret"`
 	WhatsappDatastoreType                  string      `mapstructure:"WHATSAPP_DATASTORE_TYPE" default:"sqlite"`
-	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)"`
+	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"`
 	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
 	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
 	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
@@ -51,6 +51,9 @@ type Config struct {
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
 	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
 	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+	RabbitMQReconnectDelaySeconds int `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
+	RabbitMQPublishConfirm        bool `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
+	RabbitMQConfirmTimeoutSeconds int  `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
 
 	// Redis Configuration
 	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`
@@ -63,6 +66,10 @@ type Config struct {
 
 	// Queue Retry Settings
 	QueueMaxRetries int `mapstructure:"QUEUE_MAX_RETRIES" default:"3"`
+
+	// Queue Duplicate Detection (in-memory, single instance only)
+	QueueDedupEnabled    bool `mapstructure:"QUEUE_DEDUP_ENABLED" default:"true"`
+	QueueDedupTTLSeconds int  `mapstructure:"QUEUE_DEDUP_TTL_SECONDS" default:"600"`
 
 	// Status Webhook Configuration
 	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`

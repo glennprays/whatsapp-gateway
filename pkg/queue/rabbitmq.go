@@ -28,6 +28,13 @@ func init() {
 	traceIDRabbitMQClose = fmt.Sprintf("RABBITMQ-CLOSE:%s", uuid.New().String())
 }
 
+// handlerRegistration remembers a queue's worker count and handler so
+// consumers can be restarted with fresh channels after a reconnect.
+type handlerRegistration struct {
+	workers int
+	handler MessageHandler
+}
+
 type RabbitMQQueue struct {
 	config     *config.Config
 	logger     *customLog.Logger
@@ -36,7 +43,10 @@ type RabbitMQQueue struct {
 	consumeCh  *amqp.Channel
 	mu         sync.RWMutex
 	healthy    bool
+	closing    bool
+	stopCh     chan struct{}
 	workerPool *WorkerPool
+	handlers   map[string]handlerRegistration
 }
 
 func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQueue, error) {
@@ -44,6 +54,7 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 		config:  cfg,
 		logger:  logger,
 		healthy: false,
+		stopCh:  make(chan struct{}),
 	}
 
 	if err := mq.connect(); err != nil {
@@ -64,6 +75,15 @@ func NewRabbitMQQueue(cfg *config.Config, logger *customLog.Logger) (*RabbitMQQu
 }
 
 func (mq *RabbitMQQueue) connect() error {
+	// Close any stale previous connection so repeated reconnect attempts
+	// never leak sockets.
+	mq.mu.RLock()
+	oldConn := mq.conn
+	mq.mu.RUnlock()
+	if oldConn != nil && !oldConn.IsClosed() {
+		_ = oldConn.Close()
+	}
+
 	conn, err := amqp.DialConfig(mq.config.RabbitMQURL, amqp.Config{
 		Properties: amqp.Table{
 			"connection_name": mq.config.RabbitMQConnectionName,
@@ -96,6 +116,18 @@ func (mq *RabbitMQQueue) connect() error {
 		consumeCh.Close()
 		conn.Close()
 		return err
+	}
+
+	// Put the publish channel in confirm mode so publishes can be verified
+	// against broker acknowledgements. Re-applied automatically on reconnect
+	// since connect() runs each time.
+	if mq.config.RabbitMQPublishConfirm {
+		if err := publishCh.Confirm(false); err != nil {
+			publishCh.Close()
+			consumeCh.Close()
+			conn.Close()
+			return fmt.Errorf("failed to enable publisher confirms: %w", err)
+		}
 	}
 
 	mq.mu.Lock()
@@ -143,11 +175,10 @@ func (mq *RabbitMQQueue) setupTopology() error {
 		name       string
 		routingKey string
 		dlq        string
-		retry      string
 	}{
-		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents, RetryIncomingEvents},
-		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery, RetryWebhookDelivery},
-		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages, RetryOutgoingMessages},
+		{QueueIncomingEvents, RoutingKeyIncomingEvent, DLQIncomingEvents},
+		{QueueWebhookDelivery, RoutingKeyWebhook, DLQWebhookDelivery},
+		{QueueOutgoingMessages, RoutingKeyOutgoingMsg, DLQOutgoingMessages},
 	}
 
 	for _, q := range queues {
@@ -189,9 +220,42 @@ func (mq *RabbitMQQueue) setupTopology() error {
 			return fmt.Errorf("failed to declare queue %s: %w", q.name, err)
 		}
 
-		// Declare retry queue
+		// Declare tiered retry queues. Each tier has a queue-level TTL and
+		// dead-letters back to the main queue, so a long delay can never
+		// block shorter ones (head-of-line blocking).
+		for _, tier := range RetryTiers {
+			retryQueue := retryTierQueueName(q.name, tier)
+			if _, err := ch.QueueDeclare(
+				retryQueue,
+				true,
+				false,
+				false,
+				false,
+				amqp.Table{
+					"x-dead-letter-exchange":    ExchangeName,
+					"x-dead-letter-routing-key": q.routingKey,
+					"x-message-ttl":             tier.Milliseconds(),
+				},
+			); err != nil {
+				return fmt.Errorf("failed to declare retry queue %s: %w", retryQueue, err)
+			}
+
+			if err := ch.QueueBind(
+				retryQueue,
+				retryQueue,
+				ExchangeName,
+				false,
+				nil,
+			); err != nil {
+				return fmt.Errorf("failed to bind retry queue %s: %w", retryQueue, err)
+			}
+		}
+
+		// Declare the long-delay retry queue (per-message expiration, for
+		// delays beyond the largest tier — e.g. rate-limit Retry-After).
+		longQueue := retryLongQueueName(q.name)
 		if _, err := ch.QueueDeclare(
-			q.retry,
+			longQueue,
 			true,
 			false,
 			false,
@@ -201,18 +265,17 @@ func (mq *RabbitMQQueue) setupTopology() error {
 				"x-dead-letter-routing-key": q.routingKey,
 			},
 		); err != nil {
-			return fmt.Errorf("failed to declare retry queue %s: %w", q.retry, err)
+			return fmt.Errorf("failed to declare retry queue %s: %w", longQueue, err)
 		}
 
-		// Bind retry queue to exchange with retry routing key
 		if err := ch.QueueBind(
-			q.retry,
-			fmt.Sprintf("%s.retry", q.name),
+			longQueue,
+			longQueue,
 			ExchangeName,
 			false,
 			nil,
 		); err != nil {
-			return fmt.Errorf("failed to bind retry queue %s: %w", q.retry, err)
+			return fmt.Errorf("failed to bind retry queue %s: %w", longQueue, err)
 		}
 
 		// Bind queue to exchange
@@ -236,39 +299,75 @@ func (mq *RabbitMQQueue) monitorConnection() {
 		conn := mq.conn
 		mq.mu.RUnlock()
 
-		if conn != nil {
-			closeChan := make(chan *amqp.Error)
-			conn.NotifyClose(closeChan)
+		if conn == nil {
+			return
+		}
 
-			err := <-closeChan
-			if err != nil {
-				mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
-				mq.mu.Lock()
-				mq.healthy = false
-				mq.mu.Unlock()
+		closeChan := conn.NotifyClose(make(chan *amqp.Error, 1))
 
-				// Attempt reconnection
-				mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
-				for {
-					time.Sleep(5 * time.Second)
-					if err := mq.connect(); err != nil {
-						mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
-						continue
-					}
+		select {
+		case <-mq.stopCh:
+			return
+		case err := <-closeChan:
+			// A nil error means the connection was closed gracefully (e.g.
+			// via Shutdown); do not attempt to reconnect, just stop.
+			if err == nil {
+				return
+			}
 
-					if err := mq.setupTopology(); err != nil {
-						mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
-						continue
-					}
+			mq.logger.Error(traceIDRabbitMQHealth, "RabbitMQ connection closed", nil, customLog.Error(err))
+			mq.mu.Lock()
+			mq.healthy = false
+			mq.mu.Unlock()
 
-					mq.mu.Lock()
-					mq.healthy = true
-					mq.mu.Unlock()
-					mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
-					break
+			// Reconnect, then restart consumers on the fresh channels. If
+			// restarting consumers fails the connection is likely broken
+			// again, so go back to reconnecting.
+			for {
+				if !mq.reconnectLoop() {
+					return
 				}
+				if err := mq.restartConsumers(); err != nil {
+					mq.logger.Error(traceIDRabbitMQHealth, "Failed to restart consumers after reconnect", nil, customLog.Error(err))
+					mq.mu.Lock()
+					mq.healthy = false
+					mq.mu.Unlock()
+					continue
+				}
+				break
 			}
 		}
+	}
+}
+
+// reconnectLoop retries until the connection and topology are restored.
+// It returns false if shutdown was requested while reconnecting.
+func (mq *RabbitMQQueue) reconnectLoop() bool {
+	mq.logger.Info(traceIDRabbitMQHealth, "Attempting to reconnect to RabbitMQ...", nil)
+	delay := time.Duration(mq.config.RabbitMQReconnectDelaySeconds) * time.Second
+
+	for {
+		select {
+		case <-mq.stopCh:
+			return false
+		case <-time.After(delay):
+		}
+
+		if err := mq.connect(); err != nil {
+			mq.logger.Error(traceIDRabbitMQHealth, "Failed to reconnect to RabbitMQ", nil, customLog.Error(err))
+			continue
+		}
+
+		if err := mq.setupTopology(); err != nil {
+			mq.logger.Error(traceIDRabbitMQHealth, "Failed to setup topology after reconnect", nil, customLog.Error(err))
+			continue
+		}
+
+		mq.mu.Lock()
+		mq.healthy = true
+		mq.mu.Unlock()
+		mq.logger.Info(traceIDRabbitMQHealth, "Successfully reconnected to RabbitMQ", nil)
+		return true
 	}
 }
 
@@ -299,6 +398,34 @@ func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	publishing := amqp.Publishing{
+		ContentType:  "application/json",
+		Body:         body,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now(),
+	}
+
+	if mq.config.RabbitMQPublishConfirm {
+		confirmCtx, cancel := context.WithTimeout(ctx, time.Duration(mq.config.RabbitMQConfirmTimeoutSeconds)*time.Second)
+		defer cancel()
+
+		conf, err := ch.PublishWithDeferredConfirmWithContext(
+			confirmCtx, ExchangeName, routingKey, false, false, publishing,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to publish message: %w", err)
+		}
+
+		acked, err := conf.WaitContext(confirmCtx)
+		if err != nil {
+			return fmt.Errorf("waiting for publish confirm: %w", err)
+		}
+		if !acked {
+			return fmt.Errorf("publish nacked by broker")
+		}
+		return nil
+	}
+
 	publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -308,12 +435,7 @@ func (mq *RabbitMQQueue) publish(ctx context.Context, routingKey string, payload
 		routingKey,
 		false, // mandatory
 		false, // immediate
-		amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         body,
-			DeliveryMode: amqp.Persistent,
-			Timestamp:    time.Now(),
-		},
+		publishing,
 	)
 }
 
@@ -327,10 +449,35 @@ func (mq *RabbitMQQueue) StartWorkers(
 	incomingHandler MessageHandler,
 	webhookHandler MessageHandler,
 	outgoingHandler MessageHandler,
+	dlqHandler MessageHandler,
 ) error {
+	// Remember registrations so consumers can be restarted with fresh
+	// channels after a reconnect.
+	mq.mu.Lock()
+	mq.handlers = map[string]handlerRegistration{
+		QueueIncomingEvents:   {workers: mq.config.WorkerIncomingEvents, handler: incomingHandler},
+		QueueWebhookDelivery:  {workers: mq.config.WorkerWebhookDelivery, handler: webhookHandler},
+		QueueOutgoingMessages: {workers: mq.config.WorkerOutgoingMessages, handler: outgoingHandler},
+	}
+	if dlqHandler != nil {
+		// One worker per DLQ keeps dead-letter handling observable without
+		// competing with the main queues.
+		mq.handlers[DLQIncomingEvents] = handlerRegistration{workers: 1, handler: dlqHandler}
+		mq.handlers[DLQWebhookDelivery] = handlerRegistration{workers: 1, handler: dlqHandler}
+		mq.handlers[DLQOutgoingMessages] = handlerRegistration{workers: 1, handler: dlqHandler}
+	}
+	mq.mu.Unlock()
+
+	return mq.startConsumers()
+}
+
+// startConsumers builds a fresh worker pool consuming on the current
+// channels for every registered handler.
+func (mq *RabbitMQQueue) startConsumers() error {
 	mq.mu.RLock()
-	publishCh := mq.publishCh
+	publishCh := NewChannelPublisher(mq.publishCh)
 	consumeCh := mq.consumeCh
+	handlers := mq.handlers
 	mq.mu.RUnlock()
 
 	workerPool := &WorkerPool{
@@ -339,45 +486,63 @@ func (mq *RabbitMQQueue) StartWorkers(
 		pools:  make(map[string]*WorkerGroup),
 	}
 
-	// Start incoming events workers
-	if err := workerPool.StartWorkerGroup(
-		QueueIncomingEvents,
-		mq.config.WorkerIncomingEvents,
-		publishCh,
-		consumeCh,
-		incomingHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start incoming events workers: %w", err)
+	for queueName, reg := range handlers {
+		if err := workerPool.StartWorkerGroup(
+			queueName,
+			reg.workers,
+			publishCh,
+			consumeCh,
+			reg.handler,
+		); err != nil {
+			return fmt.Errorf("failed to start workers for %s: %w", queueName, err)
+		}
 	}
 
-	// Start webhook delivery workers
-	if err := workerPool.StartWorkerGroup(
-		QueueWebhookDelivery,
-		mq.config.WorkerWebhookDelivery,
-		publishCh,
-		consumeCh,
-		webhookHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start webhook delivery workers: %w", err)
-	}
-
-	// Start outgoing messages workers
-	if err := workerPool.StartWorkerGroup(
-		QueueOutgoingMessages,
-		mq.config.WorkerOutgoingMessages,
-		publishCh,
-		consumeCh,
-		outgoingHandler,
-	); err != nil {
-		return fmt.Errorf("failed to start outgoing messages workers: %w", err)
-	}
-
+	mq.mu.Lock()
 	mq.workerPool = workerPool
+	mq.mu.Unlock()
+	return nil
+}
+
+// restartConsumers tears down the old worker pool (whose delivery channels
+// died with the previous connection) and starts consumers on the fresh
+// channels. Called by the connection monitor after a successful reconnect.
+func (mq *RabbitMQQueue) restartConsumers() error {
+	mq.mu.RLock()
+	closing := mq.closing
+	oldPool := mq.workerPool
+	registered := len(mq.handlers) > 0
+	mq.mu.RUnlock()
+
+	if closing || !registered {
+		return nil
+	}
+
+	if oldPool != nil {
+		// Workers exit promptly: their delivery channels closed with the
+		// old connection.
+		oldPool.Shutdown(5 * time.Second)
+	}
+
+	if err := mq.startConsumers(); err != nil {
+		return err
+	}
+
+	mq.logger.Info(traceIDRabbitMQHealth, "Consumers restarted after reconnect", nil)
 	return nil
 }
 
 func (mq *RabbitMQQueue) Shutdown(timeout time.Duration) error {
 	mq.logger.Info(traceIDRabbitMQClose, "Shutting down RabbitMQ queue...", nil)
+
+	// Signal the connection monitor to stop before closing the connection so
+	// a graceful close is never mistaken for a connection failure.
+	mq.mu.Lock()
+	if !mq.closing {
+		mq.closing = true
+		close(mq.stopCh)
+	}
+	mq.mu.Unlock()
 
 	if mq.workerPool != nil {
 		mq.workerPool.Shutdown(timeout)
