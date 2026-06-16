@@ -83,7 +83,7 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 func (c *client) Reconnect(traceID string, phoneNumber string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
-		return errors.New(constant.ErrClientNotFound)
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 	cli.Disconnect()
 	err := cli.Connect()
@@ -190,7 +190,7 @@ func (c *client) LoginStatus(traceID string, phoneNumber string) (bool, error) {
 	if cli != nil {
 		return cli.IsLoggedIn(), nil
 	}
-	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
+	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }
 
 func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string) error {
