@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	customLog "github.com/glennprays/log"
@@ -82,7 +83,7 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 func (c *client) Reconnect(traceID string, phoneNumber string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
-		return errors.New(constant.ErrClientNotFound)
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 	cli.Disconnect()
 	err := cli.Connect()
@@ -111,7 +112,21 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 		clients.Delete(phoneNumber)
 		return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 	}
+	// Recipient problems (e.g. "can't send message to unknown server") are
+	// caller input errors, not server faults — surface as 400, not 500.
+	if isRecipientError(err) {
+		return errDomain.NewError(errDomain.ErrBadRequest, err)
+	}
 	return errDomain.NewError(errDomain.ErrInternalFailure, err)
+}
+
+// isRecipientError reports whether a whatsmeow send error is caused by a bad
+// recipient/JID rather than a server-side fault.
+func isRecipientError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unknown server") ||
+		strings.Contains(msg, "invalid jid") ||
+		strings.Contains(msg, "recipient")
 }
 
 func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
@@ -175,7 +190,7 @@ func (c *client) LoginStatus(traceID string, phoneNumber string) (bool, error) {
 	if cli != nil {
 		return cli.IsLoggedIn(), nil
 	}
-	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
+	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }
 
 func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string) error {
@@ -278,7 +293,7 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send message: %w", err))
 	}
 
 	return resp.ID, nil
@@ -344,7 +359,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send image message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send image message: %w", err))
 	}
 
 	return resp.ID, nil
@@ -383,7 +398,7 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send reaction: %w", err))
+		return c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send reaction: %w", err))
 	}
 
 	return nil
@@ -477,7 +492,7 @@ func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneN
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send location message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send location message: %w", err))
 	}
 	return resp.ID, nil
 }
@@ -518,7 +533,7 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send poll message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send poll message: %w", err))
 	}
 	return resp.ID, nil
 }
@@ -561,7 +576,7 @@ func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNu
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send sticker message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send sticker message: %w", err))
 	}
 	return resp.ID, nil
 }

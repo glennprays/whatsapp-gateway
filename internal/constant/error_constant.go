@@ -1,7 +1,7 @@
 package constant
 
 const (
-	ErrClientNotFound        = "client not found, please register first"
+	ErrClientNotFound        = "no active WhatsApp session for this number; link via QR or pair code"
 	ErrPhoneNumberNotFound   = "phone number not found in context"
 	ErrClientAlreadyLoggedIn = "client already logged in"
 	ErrClientNotLoggedIn     = "client not logged in"

@@ -41,6 +41,49 @@ func validateLength(field, name string, max int) error {
 	return nil
 }
 
+// validJIDServers are the WhatsApp address spaces a recipient may target.
+var validJIDServers = map[string]bool{
+	"s.whatsapp.net": true, // individual user
+	"g.us":           true, // group
+	"lid":            true, // privacy-preserving linked id
+	"broadcast":      true, // broadcast / status list
+}
+
+// validateRecipient trims and normalizes a recipient identifier into a JID.
+// A bare phone number (optionally with +, spaces or dashes) becomes
+// "<digits>@s.whatsapp.net"; a value already in JID form must use a known
+// server. Empty or otherwise invalid input returns a 400-mapped domain error
+// instead of letting whatsmeow fail later with a confusing 500
+// ("can't send message to unknown server").
+func validateRecipient(msisdn string) (string, error) {
+	v := strings.TrimSpace(msisdn)
+	if v == "" {
+		return "", errDomain.NewError(errDomain.ErrBadRequest,
+			errors.New("recipient (msisdn) is required"))
+	}
+
+	if user, server, found := strings.Cut(v, "@"); found {
+		if user == "" || !validJIDServers[server] {
+			return "", errDomain.NewError(errDomain.ErrBadRequest,
+				fmt.Errorf("invalid recipient %q", msisdn))
+		}
+		return v, nil
+	}
+
+	// Bare number: keep digits only, then attach the individual-user server.
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, strings.TrimPrefix(v, "+"))
+	if digits == "" {
+		return "", errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("invalid recipient %q", msisdn))
+	}
+	return digits + "@s.whatsapp.net", nil
+}
+
 // WhatsappMessageUsecase handles message operations business logic
 type WhatsappMessageUsecase struct {
 	whatsappManager whatsapp.Manager
@@ -82,6 +125,12 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendTextMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.Message, "message", maxTextMessageLen); err != nil {
 		return nil, nil, err
 	}
@@ -179,6 +228,12 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	fileHeader *multipart.FileHeader,
 	isViewOnce bool,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
 		return nil, nil, err
 	}
@@ -275,6 +330,12 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendLocationMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.Name, "name", maxLocationName); err != nil {
 		return nil, nil, err
 	}
@@ -335,6 +396,12 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendPollMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.Question, "question", maxPollQuestion); err != nil {
 		return nil, nil, err
 	}
@@ -403,6 +470,12 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	req waDomain.SendStickerMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
 	file, err := fileHeader.Open()
 	if err != nil {
 		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("failed to open sticker file: %w", err))
@@ -467,6 +540,12 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
+	to, rErr := validateRecipient(req.Msisdn)
+	if rErr != nil {
+		return rErr
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
 		return err
 	}
@@ -490,6 +569,12 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageDeleteRequest,
 ) error {
+	to, rErr := validateRecipient(req.Msisdn)
+	if rErr != nil {
+		return rErr
+	}
+	req.Msisdn = to
+
 	err := uc.whatsappManager.DeleteMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to delete message", nil,
@@ -509,6 +594,12 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
+	to, rErr := validateRecipient(req.Msisdn)
+	if rErr != nil {
+		return rErr
+	}
+	req.Msisdn = to
+
 	if err := validateLength(req.NewMessage, "new_message", maxTextMessageLen); err != nil {
 		return err
 	}
