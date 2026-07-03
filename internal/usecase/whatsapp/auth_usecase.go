@@ -90,6 +90,13 @@ func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phone
 
 // GetLoginStatus returns the current login status
 func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phoneNumber string) (bool, error) {
+	// Ensure a client exists (restoring a persisted session if there is one)
+	// so status is a safe first call: it reports not-linked (false) rather than
+	// a 404 "client not found" when the in-memory client is missing after a
+	// restart. Mirrors the QR/pair-code paths so callers never need to
+	// re-register just to check state.
+	uc.whatsappManager.RegisterClient(ctx, traceID, phoneNumber)
+
 	status, err := uc.whatsappManager.LoginStatus(ctx, traceID, phoneNumber)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to get login status", nil,

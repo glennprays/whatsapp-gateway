@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	customLog "github.com/glennprays/log"
@@ -62,8 +63,17 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 	binary.IndentXML = true
 	if clients.Get(phoneNumber) == nil {
 		if device == nil {
-			c.logger.Info(traceID, fmt.Sprintf("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber)), nil)
-			device = c.container.NewDevice()
+			// Prefer restoring an existing paired device from the store so a
+			// session that was evicted from the in-memory map (but still
+			// persisted) reconnects instead of being orphaned and forced to
+			// re-pair. Fall back to a fresh device only when no row exists
+			// (a never-linked phone).
+			if restored := c.findDeviceByPhone(traceID, phoneNumber); restored != nil {
+				device = restored
+			} else {
+				c.logger.Info(traceID, fmt.Sprintf("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber)), nil)
+				device = c.container.NewDevice()
+			}
 		}
 		store.DeviceProps.Os = proto.String(c.cfg.WhatsappDeviceLabel)
 		store.DeviceProps.RequireFullSync = proto.Bool(false)
@@ -79,10 +89,35 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 	}
 }
 
+// findDeviceByPhone returns the persisted device whose JID user matches the
+// given phone number, or nil if none exists in the store. Used to restore a
+// paired session on demand when its in-memory client is missing.
+func (c *client) findDeviceByPhone(traceID string, phoneNumber string) *store.Device {
+	devices, err := c.container.GetAllDevices(context.Background())
+	if err != nil {
+		c.logger.Error(traceID, "Failed to list devices while restoring client",
+			nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil
+	}
+	for _, device := range devices {
+		if device.ID == nil {
+			continue
+		}
+		if WhatsappDecomposeJID(device.ID.User) == phoneNumber {
+			c.logger.Info(traceID, "Restoring existing device from store for "+MaskedPhoneNumber(phoneNumber), nil)
+			return device
+		}
+	}
+	return nil
+}
+
 func (c *client) Reconnect(traceID string, phoneNumber string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
-		return errors.New(constant.ErrClientNotFound)
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 	cli.Disconnect()
 	err := cli.Connect()
@@ -111,7 +146,21 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 		clients.Delete(phoneNumber)
 		return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 	}
+	// Recipient problems (e.g. "can't send message to unknown server") are
+	// caller input errors, not server faults — surface as 400, not 500.
+	if isRecipientError(err) {
+		return errDomain.NewError(errDomain.ErrBadRequest, err)
+	}
 	return errDomain.NewError(errDomain.ErrInternalFailure, err)
+}
+
+// isRecipientError reports whether a whatsmeow send error is caused by a bad
+// recipient/JID rather than a server-side fault.
+func isRecipientError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unknown server") ||
+		strings.Contains(msg, "invalid jid") ||
+		strings.Contains(msg, "recipient")
 }
 
 func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
@@ -175,7 +224,7 @@ func (c *client) LoginStatus(traceID string, phoneNumber string) (bool, error) {
 	if cli != nil {
 		return cli.IsLoggedIn(), nil
 	}
-	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New("client not found"))
+	return false, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }
 
 func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string) error {
@@ -278,7 +327,7 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send message: %w", err))
 	}
 
 	return resp.ID, nil
@@ -344,7 +393,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send image message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send image message: %w", err))
 	}
 
 	return resp.ID, nil
@@ -383,7 +432,7 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send reaction: %w", err))
+		return c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send reaction: %w", err))
 	}
 
 	return nil
@@ -477,7 +526,7 @@ func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneN
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send location message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send location message: %w", err))
 	}
 	return resp.ID, nil
 }
@@ -518,7 +567,7 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send poll message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send poll message: %w", err))
 	}
 	return resp.ID, nil
 }
@@ -561,7 +610,7 @@ func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNu
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
-		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to send sticker message: %w", err))
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send sticker message: %w", err))
 	}
 	return resp.ID, nil
 }
