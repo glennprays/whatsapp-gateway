@@ -63,8 +63,17 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 	binary.IndentXML = true
 	if clients.Get(phoneNumber) == nil {
 		if device == nil {
-			c.logger.Info(traceID, fmt.Sprintf("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber)), nil)
-			device = c.container.NewDevice()
+			// Prefer restoring an existing paired device from the store so a
+			// session that was evicted from the in-memory map (but still
+			// persisted) reconnects instead of being orphaned and forced to
+			// re-pair. Fall back to a fresh device only when no row exists
+			// (a never-linked phone).
+			if restored := c.findDeviceByPhone(traceID, phoneNumber); restored != nil {
+				device = restored
+			} else {
+				c.logger.Info(traceID, fmt.Sprintf("Creating new device for Phone Number: %s", MaskedPhoneNumber(phoneNumber)), nil)
+				device = c.container.NewDevice()
+			}
 		}
 		store.DeviceProps.Os = proto.String(c.cfg.WhatsappDeviceLabel)
 		store.DeviceProps.RequireFullSync = proto.Bool(false)
@@ -78,6 +87,31 @@ func (c *client) InitClient(traceID string, phoneNumber string, device *store.De
 
 		clients.Set(phoneNumber, cli)
 	}
+}
+
+// findDeviceByPhone returns the persisted device whose JID user matches the
+// given phone number, or nil if none exists in the store. Used to restore a
+// paired session on demand when its in-memory client is missing.
+func (c *client) findDeviceByPhone(traceID string, phoneNumber string) *store.Device {
+	devices, err := c.container.GetAllDevices(context.Background())
+	if err != nil {
+		c.logger.Error(traceID, "Failed to list devices while restoring client",
+			nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil
+	}
+	for _, device := range devices {
+		if device.ID == nil {
+			continue
+		}
+		if WhatsappDecomposeJID(device.ID.User) == phoneNumber {
+			c.logger.Info(traceID, "Restoring existing device from store for "+MaskedPhoneNumber(phoneNumber), nil)
+			return device
+		}
+	}
+	return nil
 }
 
 func (c *client) Reconnect(traceID string, phoneNumber string) error {
