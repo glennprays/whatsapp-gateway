@@ -18,6 +18,11 @@ type MessageReactionRequest struct {
 	Msisdn    string `json:"msisdn" binding:"required"`
 	MessageID string `json:"message_id" binding:"required"`
 	Emoji     string `json:"emoji" binding:"required"`
+	// SenderMsisdn is the JID/phone of the original message's sender.
+	// Omit it when reacting to your own outgoing message (FromMe=true).
+	// Required for correct attribution in groups and for reacting to
+	// incoming DM messages.
+	SenderMsisdn string `json:"sender_msisdn,omitempty"`
 }
 
 // MessageDeleteRequest represents a message deletion request
@@ -53,6 +58,30 @@ type SendPollMessageRequest struct {
 // SendStickerMessageRequest represents a sticker message send request
 type SendStickerMessageRequest struct {
 	Msisdn string `form:"msisdn" binding:"required"`
+}
+
+// SendAudioMessageRequest represents an audio message send request.
+// IsPTT=true renders the waveform "voice note" bubble; false renders a
+// playable audio-file card.
+type SendAudioMessageRequest struct {
+	Msisdn     string `form:"msisdn" binding:"required"`
+	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
+	IsPTT      bool   `form:"is_ptt" binding:"omitempty"`
+}
+
+// SendVideoMessageRequest represents a video message send request.
+type SendVideoMessageRequest struct {
+	Msisdn     string `form:"msisdn" binding:"required"`
+	Caption    string `form:"caption" binding:"omitempty"`
+	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
+	IsGif      bool   `form:"is_gif" binding:"omitempty"`
+}
+
+// SendDocumentMessageRequest represents a document (file) message send request.
+type SendDocumentMessageRequest struct {
+	Msisdn   string `form:"msisdn" binding:"required"`
+	Caption  string `form:"caption" binding:"omitempty"`
+	FileName string `form:"file_name" binding:"omitempty"`
 }
 
 // SendMessageResponse represents a successful message send response

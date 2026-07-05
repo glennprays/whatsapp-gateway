@@ -46,6 +46,14 @@ type Config struct {
 	MessageRateLimitRequests        int64  `mapstructure:"MESSAGE_RATE_LIMIT_REQUESTS" default:"100"`
 	MessageRateLimitDurationSeconds int64  `mapstructure:"MESSAGE_RATE_LIMIT_DURATION_SECONDS" default:"60"`
 
+	// Upload limits
+	MaxUploadBytes int64 `mapstructure:"MAX_UPLOAD_BYTES" default:"16777216"` // 16 MiB cap on outbound media
+
+	// Register endpoint rate limiting (per-IP, in-process memory limiter)
+	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
+	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`
+	RegisterRateLimitDurationSeconds int64 `mapstructure:"REGISTER_RATE_LIMIT_DURATION_SECONDS" default:"60"`
+
 	// RabbitMQ Configuration
 	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
@@ -162,7 +170,22 @@ func Load() (*Config, error) {
 		}
 	}
 
+	cfg.normalize()
+
 	return cfg, nil
+}
+
+// maxJWTDurationMinutes caps token lifetime at 1 year. JWT_TOKEN_DURATION_MINUTES
+// is multiplied by time.Minute (nanoseconds) to build the token expiry; an
+// out-of-range value (e.g. the 1e18 seen in a committed .env) overflows
+// time.Duration and yields a garbage/near-infinite expiry. Clamp it.
+const maxJWTDurationMinutes = 525600 // 1 year
+
+// normalize clamps derived config values into safe ranges after env loading.
+func (c *Config) normalize() {
+	if c.JwtDurationMinutes <= 0 || c.JwtDurationMinutes > maxJWTDurationMinutes {
+		c.JwtDurationMinutes = 1440 // 24h default
+	}
 }
 
 func (c *Config) validateProductionSecrets() error {

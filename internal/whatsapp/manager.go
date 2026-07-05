@@ -39,14 +39,18 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
+		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
-		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
+		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
+		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -264,6 +268,87 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
+func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending audio message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.Bool("ptt", isPTT),
+	)
+
+	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send audio message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent audio message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending video message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.Bool("gif", isGif),
+	)
+
+	messageID, err := m.Client.SendVideoMessage(ctx, traceID, phoneNumber, to, videoBytes, mimeType, caption, isGif, isViewOnce)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send video message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent video message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending document message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("file_name", fileName),
+	)
+
+	messageID, err := m.Client.SendDocumentMessage(ctx, traceID, phoneNumber, to, docBytes, mimeType, fileName, caption)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send document message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent document message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+
+	return messageID, nil
+}
+
 func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending location message", nil,
@@ -339,7 +424,7 @@ func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneN
 	return messageID, nil
 }
 
-func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
+func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Reacting to message", nil,
 		customLog.String("phone_number", masked),
@@ -347,7 +432,7 @@ func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumbe
 		customLog.String("message_id", messageID),
 	)
 
-	err := m.Client.ReactToMessage(ctx, traceID, phoneNumber, chatJID, messageID, emoji)
+	err := m.Client.ReactToMessage(ctx, traceID, phoneNumber, chatJID, senderJID, messageID, emoji)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to react to message", nil,
 			customLog.String("phone_number", masked),
@@ -430,6 +515,22 @@ func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
 	}
 
 	return client.Store.ID.String(), nil
+}
+
+func (m *manager) CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Checking if number is on WhatsApp", nil,
+		customLog.String("phone_number", masked),
+	)
+	resp, err := m.Client.CheckNumber(ctx, traceID, phoneNumber, msisdn)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to check number", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
+		return waDomain.ContactCheckResponse{}, err
+	}
+	return resp, nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

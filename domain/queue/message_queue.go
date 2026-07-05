@@ -39,9 +39,15 @@ type OutgoingMessageJob struct {
 	MimeType    string
 	Caption     string
 	IsViewOnce  bool
-	MessageID   string // For react/delete/edit
-	Emoji       string // For react
-	NewText     string // For edit
+	MessageID    string // For react/delete/edit
+	Emoji        string // For react
+	SenderMsisdn string // For react: original message sender (empty = own message)
+	NewText      string // For edit
+
+	// Media extras (audio/video/document)
+	FileName string // document name
+	IsPTT    bool   // audio: push-to-talk voice note
+	IsGif    bool   // video: gif playback
 
 	// Location
 	Latitude        float64

@@ -92,39 +92,54 @@ func WhatsappGenerateQRCode(ctx context.Context, qrChan <-chan whatsmeow.QRChann
 	}
 }
 
-// ConvertJIDToNonADLID converts @lid JIDs to @s.whatsapp.net format.
-// This is useful for webhook payloads where the sender JID needs to be
-// a phone number rather than an internal @lid identifier.
+// ConvertJIDToNonADLID resolves a sender JID to a phone-number (@s.whatsapp.net)
+// form for webhook/buffer payloads. It returns the resolved address plus an
+// addressing mode: "pn" (a callable @s.whatsapp.net address) or "lid" (the
+// only available identifier was an opaque @lid — consumers should not assume
+// `from` is dialable).
 //
-// Resolution strategy:
-// 1. If already @s.whatsapp.net, return as-is
-// 2. For @lid format, resolve using client's LID store
-// 3. Fallback to chat JID for 1-on-1 chats if resolution fails
-func ConvertJIDToNonADLID(senderJID types.JID, chatJID types.JID, client *whatsmeow.Client) string {
+// Resolution order for @lid senders:
+//  1. msg.Info.SenderAlt — whatsmeow fills this with the sender's PN JID on
+//     every LID-addressed message; strictly more reliable than a DB lookup.
+//  2. client.Store.LIDs.GetPNForLID — persisted LID→PN mapping.
+//  3. chat JID — only useful for 1:1 chats where chat == peer PN.
+//  4. raw sender @lid — last resort (group LID-only participant); mode "lid".
+func ConvertJIDToNonADLID(senderJID types.JID, senderAlt types.JID, chatJID types.JID, client *whatsmeow.Client) (string, string) {
+	const pnSuffix = "@s.whatsapp.net"
 	senderStr := senderJID.String()
 
-	// If already @s.whatsapp.net, return as-is
-	if strings.HasSuffix(senderStr, "@s.whatsapp.net") {
-		return StripDeviceIDFromJID(senderStr)
+	// Already a phone-number JID.
+	if strings.HasSuffix(senderStr, pnSuffix) {
+		return StripDeviceIDFromJID(senderStr), "pn"
 	}
 
-	// If @lid format, try to resolve using LID store
 	if strings.HasSuffix(senderStr, "@lid") {
-		// Try to get phone number for LID from the store
+		// 1. Prefer SenderAlt — no DB round-trip, filled by whatsmeow.
+		altStr := senderAlt.String()
+		if strings.HasSuffix(altStr, pnSuffix) {
+			return StripDeviceIDFromJID(altStr), "pn"
+		}
+
+		// 2. Persisted LID→PN mapping.
 		if client != nil && client.Store != nil && client.Store.LIDs != nil {
 			resolvedJID, err := client.Store.LIDs.GetPNForLID(context.Background(), senderJID)
-			if err == nil && !resolvedJID.IsEmpty() && strings.HasSuffix(resolvedJID.String(), "@s.whatsapp.net") {
-				return StripDeviceIDFromJID(resolvedJID.String())
+			if err == nil && !resolvedJID.IsEmpty() && strings.HasSuffix(resolvedJID.String(), pnSuffix) {
+				return StripDeviceIDFromJID(resolvedJID.String()), "pn"
 			}
 		}
 
-		// Fallback to chat JID (which should have phone number for 1-on-1 chats)
+		// 3. Chat JID (only valid for 1:1 chats where chat == peer PN).
 		chatStr := chatJID.String()
-		if strings.HasSuffix(chatStr, "@s.whatsapp.net") {
-			return StripDeviceIDFromJID(chatStr)
+		if strings.HasSuffix(chatStr, pnSuffix) {
+			return StripDeviceIDFromJID(chatStr), "pn"
 		}
+
+		// 4. Unresolvable (typically a group LID-only participant). Surface the
+		// raw @lid honestly and flag it so consumers don't treat `from` as a
+		// phone number.
+		return StripDeviceIDFromJID(senderStr), "lid"
 	}
 
-	// Default: return stripped sender JID
-	return StripDeviceIDFromJID(senderStr)
+	// Default: stripped sender.
+	return StripDeviceIDFromJID(senderStr), "pn"
 }

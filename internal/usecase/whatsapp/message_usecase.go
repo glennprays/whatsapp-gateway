@@ -41,6 +41,39 @@ func validateLength(field, name string, max int) error {
 	return nil
 }
 
+// mediaMimeAllowlists caps which MIME types each media kind accepts. Documents
+// are intentionally unrestricted (arbitrary file types).
+var mediaMimeAllowlists = map[string]map[string]bool{
+	"image":   {"image/jpeg": true, "image/png": true, "image/webp": true},
+	"sticker": {"image/webp": true},
+	"audio":   {"audio/ogg": true, "audio/mpeg": true, "audio/mp4": true, "audio/aac": true, "audio/x-aac": true, "audio/amr": true, "audio/3gpp": true, "audio/3gpp2": true, "audio/webm": true, "audio/x-m4a": true, "application/ogg": true},
+	"video":   {"video/mp4": true, "video/3gpp": true, "video/webm": true},
+}
+
+// validateMediaSize enforces the outbound size cap. Call before io.ReadAll so
+// oversized uploads are rejected without ever being read into memory.
+func (uc *WhatsappMessageUsecase) validateMediaSize(size int64) error {
+	if uc.config.MaxUploadBytes > 0 && size > uc.config.MaxUploadBytes {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("media exceeds maximum upload size of %d bytes", uc.config.MaxUploadBytes))
+	}
+	return nil
+}
+
+// validateMediaMime enforces a per-kind MIME allow-list. Pass detectedMime=""
+// to opt out (e.g. PTT voice notes whose opus/ogg sniffing is unreliable).
+func validateMediaMime(kind, detectedMime string) error {
+	allow, ok := mediaMimeAllowlists[kind]
+	if !ok || detectedMime == "" {
+		return nil
+	}
+	if !allow[detectedMime] {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("unsupported %s mime type %q", kind, detectedMime))
+	}
+	return nil
+}
+
 // validJIDServers are the WhatsApp address spaces a recipient may target.
 var validJIDServers = map[string]bool{
 	"s.whatsapp.net": true, // individual user
@@ -239,6 +272,9 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}
 
 	// Open and read image file
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to open image file", nil, customLog.Error(err))
@@ -254,8 +290,9 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 	// Detect MIME type
 	mimeType := http.DetectContentType(imageBytes)
-
-	// Check if queue is enabled and healthy
+	if err := validateMediaMime("image", mimeType); err != nil {
+		return nil, nil, err
+	}
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
 		jobID := uuid.New().String()
@@ -322,6 +359,264 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		Success:   true,
 		MessageID: messageID,
 	}, nil, nil
+}
+
+// SendAudioMessage sends an audio message (queued or direct). IsPTT=true
+// renders a voice-note bubble.
+func (uc *WhatsappMessageUsecase) SendAudioMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendAudioMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open audio file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	audioBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read audio file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	// Sniff the mimetype; for voice notes (PTT) we require opus/ogg, which
+	// DetectContentType cannot identify — in that case pass "" and let the
+	// client default to "audio/ogg; codecs=opus".
+	mimeType := http.DetectContentType(audioBytes)
+	if req.IsPTT && !strings.HasPrefix(mimeType, "audio/") {
+		mimeType = ""
+	}
+	if err := validateMediaMime("audio", mimeType); err != nil {
+		return nil, nil, err
+	}
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "audio",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(audioBytes),
+			MimeType:    mimeType,
+			IsPTT:       req.IsPTT,
+			IsViewOnce:  req.IsViewOnce,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send audio message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
+// SendVideoMessage sends a video message (queued or direct).
+func (uc *WhatsappMessageUsecase) SendVideoMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendVideoMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open video file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	videoBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read video file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	mimeType := http.DetectContentType(videoBytes)
+	if err := validateMediaMime("video", mimeType); err != nil {
+		return nil, nil, err
+	}
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "video",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(videoBytes),
+			MimeType:    mimeType,
+			Caption:     req.Caption,
+			IsGif:       req.IsGif,
+			IsViewOnce:  req.IsViewOnce,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send video message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
+// SendDocumentMessage sends a document (file) message (queued or direct).
+func (uc *WhatsappMessageUsecase) SendDocumentMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendDocumentMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	// Default the visible file name from the upload when the caller omits it.
+	if req.FileName == "" {
+		req.FileName = fileHeader.Filename
+	}
+	if req.FileName == "" {
+		req.FileName = "file"
+	}
+
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open document file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	docBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read document file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	mimeType := http.DetectContentType(docBytes)
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "document",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(docBytes),
+			MimeType:    mimeType,
+			FileName:    req.FileName,
+			Caption:     req.Caption,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send document message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
 }
 
 // SendLocationMessage sends a location message (queued or direct)
@@ -476,6 +771,9 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 	req.Msisdn = to
 
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("failed to open sticker file: %w", err))
@@ -488,6 +786,9 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 
 	mimeType := http.DetectContentType(stickerBytes)
+	if err := validateMediaMime("sticker", mimeType); err != nil {
+		return nil, nil, err
+	}
 
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
@@ -546,11 +847,20 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	}
 	req.Msisdn = to
 
+	// Sender is optional: omit it when reacting to your own outgoing message.
+	var senderJID string
+	if strings.TrimSpace(req.SenderMsisdn) != "" {
+		senderJID, rErr = validateRecipient(req.SenderMsisdn)
+		if rErr != nil {
+			return rErr
+		}
+	}
+
 	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
 		return err
 	}
 
-	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
+	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, senderJID, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -618,6 +928,36 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 }
 
 // GetJobStatus retrieves job status
+// CheckNumber validates whether a recipient is registered on WhatsApp before
+// sending. Also warms the LID<->PN cache, reducing send fragility.
+func (uc *WhatsappMessageUsecase) CheckNumber(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.ContactCheckRequest,
+) (waDomain.ContactCheckResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return waDomain.ContactCheckResponse{}, err
+	}
+
+	// IsOnWhatsApp expects a bare phone number; strip the JID server if present.
+	query := to
+	if user, _, ok := strings.Cut(query, "@"); ok {
+		query = user
+	}
+
+	resp, err := uc.whatsappManager.CheckNumber(ctx, traceID, phoneNumber, query)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to check number", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("query", query),
+			customLog.Error(err),
+		)
+		return waDomain.ContactCheckResponse{}, err
+	}
+	return resp, nil
+}
+
 func (uc *WhatsappMessageUsecase) GetJobStatus(
 	ctx context.Context,
 	traceID, phoneNumber, jobID string,

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 )
 
@@ -48,4 +49,53 @@ func TestValidateRecipient(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateMediaMime(t *testing.T) {
+	cases := []struct {
+		name    string
+		kind    string
+		mime    string
+		wantErr bool
+	}{
+		{"image jpeg", "image", "image/jpeg", false},
+		{"image png", "image", "image/png", false},
+		{"image bad", "image", "application/octet-stream", true},
+		{"sticker webp", "sticker", "image/webp", false},
+		{"sticker png rejected", "sticker", "image/png", true},
+		{"audio mpeg", "audio", "audio/mpeg", false},
+		{"audio empty allowed (PTT)", "audio", "", false},
+		{"video mp4", "video", "video/mp4", false},
+		{"video mkv rejected", "video", "video/x-matroska", true},
+		{"document unrestricted", "document", "application/zip", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateMediaMime(c.kind, c.mime)
+			if (err != nil) != c.wantErr {
+				t.Errorf("validateMediaMime(%q,%q) err=%v, wantErr=%v", c.kind, c.mime, err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateMediaSize(t *testing.T) {
+	t.Run("disabled when zero", func(t *testing.T) {
+		uc := &WhatsappMessageUsecase{config: &config.Config{MaxUploadBytes: 0}}
+		if err := uc.validateMediaSize(1 << 30); err != nil {
+			t.Errorf("disabled cap should allow any size, got %v", err)
+		}
+	})
+	t.Run("rejects over cap", func(t *testing.T) {
+		uc := &WhatsappMessageUsecase{config: &config.Config{MaxUploadBytes: 1024}}
+		if err := uc.validateMediaSize(2048); err == nil {
+			t.Error("expected size violation, got nil")
+		}
+	})
+	t.Run("allows under cap", func(t *testing.T) {
+		uc := &WhatsappMessageUsecase{config: &config.Config{MaxUploadBytes: 1024}}
+		if err := uc.validateMediaSize(512); err != nil {
+			t.Errorf("expected ok for small upload, got %v", err)
+		}
+	})
 }

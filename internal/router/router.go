@@ -101,11 +101,12 @@ func SetupRouter(
 		initDocumentationRoutes(app, cfg)
 	}
 
-	api.Post("/register", h.AuthHandler.Register)
+	api.Post("/register", middleware.NewRegisterRateLimiter(cfg), h.AuthHandler.Register)
 
 	initWhatsappRoutes(api, h, authMw)
 	initWebhookRoutes(api, h, authMw)
 	initMessageRoutes(api, h, authMw)
+	initContactRoutes(api, h, authMw)
 
 	// Register storage routes
 	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)

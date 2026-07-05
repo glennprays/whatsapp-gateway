@@ -14,10 +14,11 @@ import (
 //
 // Once Pushed into a buffer, instances MUST be treated as read-only.
 type IncomingMessage struct {
-	MessageID string         `json:"message_id"`
-	Chat      string         `json:"chat"`
-	From      string         `json:"from"`
-	IsGroup   bool           `json:"is_group"`
+	MessageID      string         `json:"message_id"`
+	Chat           string         `json:"chat"`
+	From           string         `json:"from"`
+	AddressingMode string         `json:"addressing_mode,omitempty"` // "pn" or "lid"
+	IsGroup        bool           `json:"is_group"`
 	PushName  string         `json:"push_name"`
 	Timestamp int64          `json:"timestamp"`
 	Type      string         `json:"type"`
@@ -90,11 +91,13 @@ func toIncomingMessage(evt *events.Message, client *whatsmeow.Client) *IncomingM
 	if evt == nil {
 		return nil
 	}
+	from, addrMode := ConvertJIDToNonADLID(evt.Info.Sender, evt.Info.SenderAlt, evt.Info.Chat, client)
 	m := &IncomingMessage{
-		MessageID: evt.Info.ID,
-		Chat:      evt.Info.Chat.String(),
-		From:      ConvertJIDToNonADLID(evt.Info.Sender, evt.Info.Chat, client),
-		IsGroup:   evt.Info.IsGroup,
+		MessageID:      evt.Info.ID,
+		Chat:           evt.Info.Chat.String(),
+		From:           from,
+		AddressingMode: addrMode,
+		IsGroup:        evt.Info.IsGroup,
 		PushName:  evt.Info.PushName,
 		Timestamp: evt.Info.Timestamp.Unix(),
 	}

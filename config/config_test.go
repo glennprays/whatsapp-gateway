@@ -64,3 +64,28 @@ func TestValidateProductionSecrets_AcceptsNonDefaults(t *testing.T) {
 		t.Errorf("expected no error for non-default secrets, got: %v", err)
 	}
 }
+
+func TestNormalize_ClampsJWTDurationOverflow(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{"overflow value clamps to default", 1000000000000000000, 1440},
+		{"negative clamps to default", -5, 1440},
+		{"zero clamps to default", 0, 1440},
+		{"above one year clamps to default", maxJWTDurationMinutes + 1, 1440},
+		{"one year is allowed", maxJWTDurationMinutes, maxJWTDurationMinutes},
+		{"normal value passes through", 720, 720},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{JwtDurationMinutes: tt.in}
+			cfg.normalize()
+			if cfg.JwtDurationMinutes != tt.want {
+				t.Errorf("JwtDurationMinutes = %d, want %d", cfg.JwtDurationMinutes, tt.want)
+			}
+		})
+	}
+}
+

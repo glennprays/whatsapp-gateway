@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -37,14 +36,18 @@ type (
 		LoginStatus(traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
 		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
+	CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+	SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+	SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
+	SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
-		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
+		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 	}
@@ -254,6 +257,40 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 	return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 }
 
+func (c *client) CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	resp, err := cli.IsOnWhatsApp(ctx, []string{msisdn})
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return waDomain.ContactCheckResponse{}, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return waDomain.ContactCheckResponse{}, c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to check number: %w", err))
+	}
+	if len(resp) == 0 {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrInternalFailure, errors.New("empty IsOnWhatsApp response"))
+	}
+
+	out := waDomain.ContactCheckResponse{
+		Query:        resp[0].Query,
+		JID:          resp[0].JID.String(),
+		IsOnWhatsApp: resp[0].IsIn,
+	}
+	if resp[0].VerifiedName != nil && resp[0].VerifiedName.Details != nil {
+		name := resp[0].VerifiedName.Details.GetVerifiedName()
+		if name != "" {
+			out.VerifiedName = &name
+		}
+	}
+	return out, nil
+}
+
 func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
@@ -399,7 +436,186 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 	return resp.ID, nil
 }
 
-func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
+func (c *client) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Voice notes must be opus ogg; clients render the PTT waveform only for
+	// that mimetype. DetectContentType can't see ogg, so trust the caller's
+	// extension/mime and default to the opus mimetype for PTT.
+	if isPTT && mimeType == "" {
+		mimeType = "audio/ogg; codecs=opus"
+	} else if mimeType == "" {
+		mimeType = "audio/mpeg"
+	}
+
+	uploaded, err := cli.Upload(ctx, audioBytes, whatsmeow.MediaAudio)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload audio: %w", err))
+	}
+
+	audioMsg := &waE2E.AudioMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(audioBytes))),
+		PTT:           proto.Bool(isPTT),
+		ViewOnce:      proto.Bool(isViewOnce),
+	}
+
+	msg := &waE2E.Message{AudioMessage: audioMsg}
+	if isViewOnce {
+		msg = &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{AudioMessage: audioMsg},
+			},
+		}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send audio message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	uploaded, err := cli.Upload(ctx, videoBytes, whatsmeow.MediaVideo)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload video: %w", err))
+	}
+
+	videoMsg := &waE2E.VideoMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(videoBytes))),
+		GifPlayback:   proto.Bool(isGif),
+		ViewOnce:      proto.Bool(isViewOnce),
+	}
+	if caption != "" {
+		videoMsg.Caption = proto.String(caption)
+	}
+
+	msg := &waE2E.Message{VideoMessage: videoMsg}
+	if isViewOnce {
+		msg = &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{VideoMessage: videoMsg},
+			},
+		}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send video message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	uploaded, err := cli.Upload(ctx, docBytes, whatsmeow.MediaDocument)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload document: %w", err))
+	}
+
+	docMsg := &waE2E.DocumentMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		Title:         proto.String(fileName),
+		FileName:      proto.String(fileName),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(docBytes))),
+	}
+	if caption != "" {
+		docMsg.Caption = proto.String(caption)
+	}
+
+	// Captions on documents render reliably only when wrapped in a
+	// DocumentWithCaptionMessage (FutureProofMessage); a bare DocumentMessage
+	// caption is dropped by many clients.
+	var msg *waE2E.Message
+	if caption != "" {
+		msg = &waE2E.Message{
+			DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{DocumentMessage: docMsg},
+			},
+		}
+	} else {
+		msg = &waE2E.Message{DocumentMessage: docMsg}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send document message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -414,18 +630,19 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	// Build reaction message
-	msg := &waE2E.Message{
-		ReactionMessage: &waE2E.ReactionMessage{
-			Key: &waE2E.MessageKey{
-				RemoteJID: proto.String(chatJID),
-				FromMe:    proto.Bool(false),
-				ID:        proto.String(messageID),
-			},
-			Text:              proto.String(emoji),
-			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
-		},
+	// Resolve the original message's sender. An empty sender means we are
+	// reacting to our own outgoing message (FromMe=true). BuildReaction +
+	// BuildMessageKey set FromMe/Participant from this, so reactions now
+	// attribute correctly in both DMs and groups and on your own messages.
+	var sender types.JID
+	if senderJID != "" {
+		sender, err = types.ParseJID(senderJID)
+		if err != nil {
+			return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid sender JID format: %w", err))
+		}
 	}
+
+	msg := cli.BuildReaction(toJID, sender, messageID, emoji)
 
 	_, err = cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
@@ -545,24 +762,16 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	pollOptions := make([]*waE2E.PollCreationMessage_Option, len(options))
-	for i, opt := range options {
-		optCopy := opt
-		pollOptions[i] = &waE2E.PollCreationMessage_Option{OptionName: &optCopy}
-	}
-
+	// Use BuildPollCreation so the message carries the 32-byte MessageSecret
+	// required to decrypt votes. Hand-building PollCreationMessage produces a
+	// poll that can never be voted on (votes arrive undecryptable).
 	if selectableCount <= 0 {
 		selectableCount = 1
 	}
-	sc := uint32(selectableCount)
 
-	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{
-		PollCreationMessage: &waE2E.PollCreationMessage{
-			Name:                   &question,
-			Options:                pollOptions,
-			SelectableOptionsCount: &sc,
-		},
-	})
+	msg := cli.BuildPollCreation(question, options, selectableCount)
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)

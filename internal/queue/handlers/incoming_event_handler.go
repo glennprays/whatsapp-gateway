@@ -86,14 +86,16 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 }
 
 func buildWebhookPayload(msg *events.Message, mediaDownloader whatsapp.MediaDownloader, traceID string, phoneNumber string, client *whatsmeow.Client) map[string]interface{} {
+	from, addrMode := whatsapp.ConvertJIDToNonADLID(msg.Info.Sender, msg.Info.SenderAlt, msg.Info.Chat, client)
 	payload := map[string]interface{}{
-		"event":      string(domainQueue.EventMessageIncoming),
-		"message_id": msg.Info.ID,
-		"timestamp":  msg.Info.Timestamp.Unix(),
-		"from":       whatsapp.ConvertJIDToNonADLID(msg.Info.Sender, msg.Info.Chat, client),
-		"chat":       msg.Info.Chat.String(),
-		"is_group":   msg.Info.IsGroup,
-		"push_name":  msg.Info.PushName,
+		"event":           string(domainQueue.EventMessageIncoming),
+		"message_id":      msg.Info.ID,
+		"timestamp":       msg.Info.Timestamp.Unix(),
+		"from":            from,
+		"addressing_mode": addrMode,
+		"chat":            msg.Info.Chat.String(),
+		"is_group":        msg.Info.IsGroup,
+		"push_name":       msg.Info.PushName,
 	}
 
 	if msg.Message == nil {

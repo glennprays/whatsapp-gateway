@@ -104,6 +104,27 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		} else {
 			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
 		}
+	case "audio":
+		audioBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode audio data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce)
+		}
+	case "video":
+		videoBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode video data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce)
+		}
+	case "document":
+		docBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode document data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption)
+		}
 	case "location":
 		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
 	case "poll":
@@ -116,7 +137,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType)
 		}
 	case "react":
-		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID, job.Emoji)
+		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.SenderMsisdn, job.MessageID, job.Emoji)
 		if err == nil {
 			messageID = job.MessageID // For react, use the original message ID
 		}
