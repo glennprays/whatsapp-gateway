@@ -324,6 +324,86 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}, nil, nil
 }
 
+// SendAudioMessage sends an audio message (queued or direct). IsPTT=true
+// renders a voice-note bubble.
+func (uc *WhatsappMessageUsecase) SendAudioMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendAudioMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open audio file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	audioBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read audio file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	// Sniff the mimetype; for voice notes (PTT) we require opus/ogg, which
+	// DetectContentType cannot identify — in that case pass "" and let the
+	// client default to "audio/ogg; codecs=opus".
+	mimeType := http.DetectContentType(audioBytes)
+	if req.IsPTT && !strings.HasPrefix(mimeType, "audio/") {
+		mimeType = ""
+	}
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "audio",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(audioBytes),
+			MimeType:    mimeType,
+			IsPTT:       req.IsPTT,
+			IsViewOnce:  req.IsViewOnce,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send audio message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
 // SendLocationMessage sends a location message (queued or direct)
 func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	ctx context.Context,

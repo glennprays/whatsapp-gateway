@@ -109,6 +109,46 @@ func (h *WhatsappMessageHandler) SendImageMessage(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(directResponse)
 }
 
+func (h *WhatsappMessageHandler) SendAudioMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendAudioMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse form data", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	fileHeader, err := c.FormFile("audio")
+	if err != nil {
+		h.logger.Error(traceID, "Failed to get audio file", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	isPTT, _ := strconv.ParseBool(c.FormValue("is_ptt"))
+	isViewOnce, _ := strconv.ParseBool(c.FormValue("is_view_once"))
+	req.IsPTT = isPTT
+	req.IsViewOnce = isViewOnce
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendAudioMessage(ctx, traceID, phoneNumber, req, fileHeader)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
 func (h *WhatsappMessageHandler) ReactToMessage(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)

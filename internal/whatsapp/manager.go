@@ -39,6 +39,7 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -256,6 +257,33 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 	}
 
 	m.Logger.Info(traceID, "Successfully sent image message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending audio message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.Bool("ptt", isPTT),
+	)
+
+	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send audio message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent audio message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 		customLog.String("message_id", messageID),

@@ -104,6 +104,13 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		} else {
 			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
 		}
+	case "audio":
+		audioBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode audio data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce)
+		}
 	case "location":
 		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
 	case "poll":

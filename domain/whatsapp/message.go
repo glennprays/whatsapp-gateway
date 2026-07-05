@@ -60,6 +60,15 @@ type SendStickerMessageRequest struct {
 	Msisdn string `form:"msisdn" binding:"required"`
 }
 
+// SendAudioMessageRequest represents an audio message send request.
+// IsPTT=true renders the waveform "voice note" bubble; false renders a
+// playable audio-file card.
+type SendAudioMessageRequest struct {
+	Msisdn     string `form:"msisdn" binding:"required"`
+	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
+	IsPTT      bool   `form:"is_ptt" binding:"omitempty"`
+}
+
 // SendMessageResponse represents a successful message send response
 type SendMessageResponse struct {
 	Success   bool   `json:"success"`

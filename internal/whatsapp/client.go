@@ -40,6 +40,7 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
+	SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -395,6 +396,68 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send image message: %w", err))
 	}
 
+	return resp.ID, nil
+}
+
+func (c *client) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	// Voice notes must be opus ogg; clients render the PTT waveform only for
+	// that mimetype. DetectContentType can't see ogg, so trust the caller's
+	// extension/mime and default to the opus mimetype for PTT.
+	if isPTT && mimeType == "" {
+		mimeType = "audio/ogg; codecs=opus"
+	} else if mimeType == "" {
+		mimeType = "audio/mpeg"
+	}
+
+	uploaded, err := cli.Upload(ctx, audioBytes, whatsmeow.MediaAudio)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload audio: %w", err))
+	}
+
+	audioMsg := &waE2E.AudioMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(audioBytes))),
+		PTT:           proto.Bool(isPTT),
+		ViewOnce:      proto.Bool(isViewOnce),
+	}
+
+	msg := &waE2E.Message{AudioMessage: audioMsg}
+	if isViewOnce {
+		msg = &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{AudioMessage: audioMsg},
+			},
+		}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send audio message: %w", err))
+	}
 	return resp.ID, nil
 }
 
