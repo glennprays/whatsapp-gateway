@@ -42,6 +42,7 @@ type (
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
 	SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
 	SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
+	SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -514,6 +515,67 @@ func (c *client) SendVideoMessage(ctx context.Context, traceID string, phoneNumb
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send video message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	uploaded, err := cli.Upload(ctx, docBytes, whatsmeow.MediaDocument)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload document: %w", err))
+	}
+
+	docMsg := &waE2E.DocumentMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		Title:         proto.String(fileName),
+		FileName:      proto.String(fileName),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(docBytes))),
+	}
+	if caption != "" {
+		docMsg.Caption = proto.String(caption)
+	}
+
+	// Captions on documents render reliably only when wrapped in a
+	// DocumentWithCaptionMessage (FutureProofMessage); a bare DocumentMessage
+	// caption is dropped by many clients.
+	var msg *waE2E.Message
+	if caption != "" {
+		msg = &waE2E.Message{
+			DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{DocumentMessage: docMsg},
+			},
+		}
+	} else {
+		msg = &waE2E.Message{DocumentMessage: docMsg}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send document message: %w", err))
 	}
 	return resp.ID, nil
 }

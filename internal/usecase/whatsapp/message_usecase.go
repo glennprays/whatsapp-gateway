@@ -482,6 +482,91 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
 }
 
+// SendDocumentMessage sends a document (file) message (queued or direct).
+func (uc *WhatsappMessageUsecase) SendDocumentMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendDocumentMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	// Default the visible file name from the upload when the caller omits it.
+	if req.FileName == "" {
+		req.FileName = fileHeader.Filename
+	}
+	if req.FileName == "" {
+		req.FileName = "file"
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open document file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	docBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read document file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	mimeType := http.DetectContentType(docBytes)
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "document",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(docBytes),
+			MimeType:    mimeType,
+			FileName:    req.FileName,
+			Caption:     req.Caption,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send document message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
 // SendLocationMessage sends a location message (queued or direct)
 func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	ctx context.Context,

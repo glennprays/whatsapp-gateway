@@ -118,6 +118,13 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		} else {
 			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce)
 		}
+	case "document":
+		docBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
+		if decodeErr != nil {
+			err = fmt.Errorf("failed to decode document data: %w", decodeErr)
+		} else {
+			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption)
+		}
 	case "location":
 		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
 	case "poll":

@@ -109,6 +109,41 @@ func (h *WhatsappMessageHandler) SendImageMessage(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(directResponse)
 }
 
+func (h *WhatsappMessageHandler) SendDocumentMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendDocumentMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse form data", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	fileHeader, err := c.FormFile("document")
+	if err != nil {
+		h.logger.Error(traceID, "Failed to get document file", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendDocumentMessage(ctx, traceID, phoneNumber, req, fileHeader)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
 func (h *WhatsappMessageHandler) SendVideoMessage(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)

@@ -77,6 +77,13 @@ type SendVideoMessageRequest struct {
 	IsGif      bool   `form:"is_gif" binding:"omitempty"`
 }
 
+// SendDocumentMessageRequest represents a document (file) message send request.
+type SendDocumentMessageRequest struct {
+	Msisdn   string `form:"msisdn" binding:"required"`
+	Caption  string `form:"caption" binding:"omitempty"`
+	FileName string `form:"file_name" binding:"omitempty"`
+}
+
 // SendMessageResponse represents a successful message send response
 type SendMessageResponse struct {
 	Success   bool   `json:"success"`
