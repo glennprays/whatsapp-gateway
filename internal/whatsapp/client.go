@@ -545,24 +545,16 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	pollOptions := make([]*waE2E.PollCreationMessage_Option, len(options))
-	for i, opt := range options {
-		optCopy := opt
-		pollOptions[i] = &waE2E.PollCreationMessage_Option{OptionName: &optCopy}
-	}
-
+	// Use BuildPollCreation so the message carries the 32-byte MessageSecret
+	// required to decrypt votes. Hand-building PollCreationMessage produces a
+	// poll that can never be voted on (votes arrive undecryptable).
 	if selectableCount <= 0 {
 		selectableCount = 1
 	}
-	sc := uint32(selectableCount)
 
-	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{
-		PollCreationMessage: &waE2E.PollCreationMessage{
-			Name:                   &question,
-			Options:                pollOptions,
-			SelectableOptionsCount: &sc,
-		},
-	})
+	msg := cli.BuildPollCreation(question, options, selectableCount)
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
