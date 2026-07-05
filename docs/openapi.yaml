@@ -214,6 +214,99 @@ components:
       required:
         - msisdn
         - sticker
+    SendMessageAudioRequest:
+      type: multipart/form-data
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        audio:
+          type: string
+          format: binary
+          description: The audio file to send. For voice notes use opus/ogg.
+        is_ptt:
+          type: boolean
+          description: >
+            Render as a push-to-talk voice-note bubble (waveform). When true and
+            no mimetype is sniffed, the gateway defaults to "audio/ogg; codecs=opus".
+            Omit/leave false to send a playable audio-file card.
+          example: true
+        is_view_once:
+          type: boolean
+          description: Whether the audio should be sent as view once.
+          example: false
+      required:
+        - msisdn
+        - audio
+    SendMessageVideoRequest:
+      type: multipart/form-data
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        video:
+          type: string
+          format: binary
+          description: The video file to send (mp4/3gpp/webm).
+        caption:
+          type: string
+          description: Optional caption for the video.
+          example: "Check this out!"
+        is_gif:
+          type: boolean
+          description: Toggle GIF-like rendering (GifPlayback).
+          example: false
+        is_view_once:
+          type: boolean
+          description: Whether the video should be sent as view once.
+          example: false
+      required:
+        - msisdn
+        - video
+    SendMessageDocumentRequest:
+      type: multipart/form-data
+      properties:
+        msisdn:
+          type: string
+          description: The recipient's Personal ID or Group ID.
+          example: "6281234567890@s.whatsapp.net"
+        document:
+          type: string
+          format: binary
+          description: The document/file to send (any mimetype).
+        file_name:
+          type: string
+          description: >
+            Visible file name. Defaults to the uploaded filename if omitted, then "file".
+          example: "invoice.pdf"
+        caption:
+          type: string
+          description: Optional caption. Wrapped so it renders reliably across clients.
+          example: "Invoice for July"
+      required:
+        - msisdn
+        - document
+    ContactCheckResponse:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The phone number queried.
+          example: "6281234567890"
+        jid:
+          type: string
+          description: The canonical WhatsApp JID, or empty if not registered.
+          example: "6281234567890@s.whatsapp.net"
+        is_on_whatsapp:
+          type: boolean
+          description: Whether the number is registered on WhatsApp.
+          example: true
+        verified_name:
+          type: string
+          description: The business verified name, if the number is a verified business.
+          example: "Acme Inc."
     MessageDeleteRequest:
       type: object
       properties:
@@ -255,6 +348,14 @@ components:
           type: string
           description: The reaction to add (e.g., "👍", "❤️").
           example: "👍"
+        sender_msisdn:
+          type: string
+          description: >
+            Optional JID/phone of the original message's sender. Omit when
+            reacting to your own outgoing message (FromMe=true). Required for
+            correct attribution in groups and when reacting to incoming DM
+            messages.
+          example: "6281234567890@s.whatsapp.net"
     OutgoingEventMessage:
       type: string 
       enum:
@@ -341,6 +442,15 @@ components:
           type: string
           description: The sender's Personal ID or Group ID.
           example: "6281234567890:87@s.whatsapp.net"
+        addressing_mode:
+          type: string
+          enum: [pn, lid]
+          description: >
+            How `from` is addressed. "pn" = a callable @s.whatsapp.net phone
+            number. "lid" = the only available identifier was an opaque @lid
+            (typically a group LID-only participant); do not assume `from` is
+            dialable in that case.
+          example: "pn"
         is_group:
           type: boolean
           description: Indicates if the message is from a group.
@@ -497,6 +607,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisterResponse'
+        '429':
+          description: >
+            Too many registration requests from this IP. Per-IP rate limited
+            (REGISTER_RATE_LIMIT_REQUESTS per REGISTER_RATE_LIMIT_DURATION_SECONDS,
+            5/min by default). Retry after the indicated window.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "too many registration requests, please retry later"
+              headers:
+                Retry-After:
+                  description: Seconds to wait before retrying.
+                  schema:
+                    type: integer
+                    example: 42
   /login/qr_code/{format}:
     post:
       tags:
@@ -560,6 +689,33 @@ paths:
                     type: boolean
                     description: Indicates if the user is authenticated with WhatsApp.
                     example: true
+      security:
+        - accountBearerAuth: []
+  /contact/check:
+    get:
+      tags:
+        - Contact
+      summary: Check if a number is on WhatsApp
+      description: >
+        Validates whether a recipient is registered on WhatsApp before sending
+        (uses whatsmeow IsOnWhatsApp). Returns the canonical JID, registration
+        status, and verified business name if any. Also warms the LID<->PN
+        cache, reducing send fragility.
+      parameters:
+        - name: msisdn
+          in: query
+          required: true
+          description: The phone number or JID to validate.
+          schema:
+            type: string
+            example: "6281234567890"
+      responses:
+        '200':
+          description: Recipient validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactCheckResponse'
       security:
         - accountBearerAuth: []
   /session/reconnect:
@@ -789,6 +945,97 @@ paths:
                 $ref: '#/components/schemas/SendMessageResponse'
         '202':
           description: Sticker message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
+      security:
+        - accountBearerAuth: []
+  /message/audio:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send an audio message
+      description: >
+        Sends an audio message. Set is_ptt=true to render a push-to-talk voice-note
+        bubble (opus/ogg); leave it false to send a playable audio-file card.
+        is_view_once is supported. Uploads are capped at MAX_UPLOAD_BYTES and must
+        pass the audio MIME allow-list.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageAudioRequest'
+      responses:
+        '200':
+          description: Audio message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Audio message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
+      security:
+        - accountBearerAuth: []
+  /message/video:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a video message
+      description: >
+        Sends a video message with an optional caption. is_gif toggles GIF-like
+        rendering; is_view_once is supported. Uploads are capped at
+        MAX_UPLOAD_BYTES and must pass the video MIME allow-list.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageVideoRequest'
+      responses:
+        '200':
+          description: Video message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Video message queued for sending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageQueuedResponse'
+      security:
+        - accountBearerAuth: []
+  /message/document:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Send a document (file) message
+      description: >
+        Sends a document/file of any mimetype with an optional caption (wrapped
+        so it renders reliably) and a visible file_name (defaults to the uploaded
+        filename). Uploads are capped at MAX_UPLOAD_BYTES.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageDocumentRequest'
+      responses:
+        '200':
+          description: Document message sent successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '202':
+          description: Document message queued for sending.
           content:
             application/json:
               schema:
