@@ -162,7 +162,22 @@ func Load() (*Config, error) {
 		}
 	}
 
+	cfg.normalize()
+
 	return cfg, nil
+}
+
+// maxJWTDurationMinutes caps token lifetime at 1 year. JWT_TOKEN_DURATION_MINUTES
+// is multiplied by time.Minute (nanoseconds) to build the token expiry; an
+// out-of-range value (e.g. the 1e18 seen in a committed .env) overflows
+// time.Duration and yields a garbage/near-infinite expiry. Clamp it.
+const maxJWTDurationMinutes = 525600 // 1 year
+
+// normalize clamps derived config values into safe ranges after env loading.
+func (c *Config) normalize() {
+	if c.JwtDurationMinutes <= 0 || c.JwtDurationMinutes > maxJWTDurationMinutes {
+		c.JwtDurationMinutes = 1440 // 24h default
+	}
 }
 
 func (c *Config) validateProductionSecrets() error {
