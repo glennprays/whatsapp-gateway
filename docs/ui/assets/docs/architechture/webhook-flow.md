@@ -142,35 +142,32 @@ Webhook signature validation is mandatory for secure deployments.
 
 ### Verifying Webhook Signatures
 
-If you provided an `hmac_secret`, webhook requests will include an `X-Signature` header containing the HMAC signature. Verify it like this:
+If you provided an `hmac_secret`, webhook requests will include an `X-Webhook-Signature` header of the form `sha256=<hex_signature>`, where the signature is the HMAC-SHA256 of the **raw request body**. Verify it like this:
+
+> The header is `X-Webhook-Signature` (not `X-Signature`) and includes the `sha256=` prefix — strip it before comparing. Compute the HMAC over the **raw bytes**, not a re-serialized object.
 
 **Python Example:**
 ```python
 import hmac
 import hashlib
 
-def verify_webhook(payload, signature, secret):
-    expected = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+def verify_webhook(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    if not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    received = signature_header[len("sha256="):]
+    return hmac.compare_digest(expected, received)
 ```
 
 **Node.js Example:**
 ```javascript
 const crypto = require('crypto');
 
-function verifyWebhook(payload, signature, secret) {
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(expected),
-    Buffer.from(signature)
-  );
+function verifyWebhook(rawBody, signatureHeader, secret) {
+  if (!signatureHeader.startsWith('sha256=')) return false;
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const received = signatureHeader.slice('sha256='.length);
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
 }
 ```
 
@@ -183,15 +180,27 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"strings"
 )
 
-func verifyWebhook(payload, signature, secret string) bool {
+func verifyWebhook(rawBody []byte, signatureHeader, secret string) bool {
+	if !strings.HasPrefix(signatureHeader, "sha256=") {
+		return false
+	}
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(payload))
+	mac.Write(rawBody)
 	expected := hex.EncodeToString(mac.Sum(nil))
-	return subtle.ConstantTimeCompare([]byte(expected), []byte(signature)) == 1
+	received := strings.TrimPrefix(signatureHeader, "sha256=")
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(received)) == 1
 }
 ```
+
+### `addressing_mode` on incoming webhooks
+
+Incoming-message webhooks include an `addressing_mode` field alongside `from`:
+
+- `"pn"` — `from` is a callable `@s.whatsapp.net` phone number.
+- `"lid"` — the only available identifier was an opaque `@lid` (typically a group LID-only participant). Do **not** assume `from` is dialable; treat it as an opaque sender key.
 
 ## Delivery Process
 

@@ -202,6 +202,10 @@ Event types:
 - `message.failed` - Message failed to send
 - `message.incoming` - Incoming message received
 
+Incoming-message webhooks include an `addressing_mode` field:
+- `"pn"` - `from` is a callable `@s.whatsapp.net` phone number
+- `"lid"` - the sender could only be resolved to an opaque `@lid` (e.g. a group LID-only participant); do not treat `from` as dialable
+
 ## Recipient Address Format
 
 - **Individual chat**: `{phone}@s.whatsapp.net` (e.g., `6281234567890@s.whatsapp.net`)
@@ -223,7 +227,8 @@ For complete API documentation, including all endpoints, request/response schema
 |----------|-----------|
 | Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
 | Webhooks | `GET /webhook`, `POST /webhook`, `DELETE /webhook` |
-| Messaging | `POST /message/text`, `POST /message/image`, `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message`, `DELETE /message` |
+| Messaging | `POST /message/text`, `POST /message/image`, `POST /message/audio` (is_ptt = voice note), `POST /message/video` (caption/is_gif), `POST /message/document` (file_name/caption), `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message` (edit), `DELETE /message` |
+| Contact | `GET /contact/check?msisdn=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name) |
 | Health | `GET /health` |
 
 ## Error Responses
@@ -274,7 +279,7 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 | Variable | Default | Description |
 |----------|---------|-------------|
 | **`JWT_SECRET`** | `secret` | JWT signing key — must be strong in prod |
-| `JWT_TOKEN_DURATION_MINUTES` | `1440` | JWT lifetime (24h default) |
+| `JWT_TOKEN_DURATION_MINUTES` | `1440` | JWT lifetime; clamped to 1..525600 (24h..1y), out-of-range resets to 1440 |
 | `JWT_ISSUER` | `whatsapp-gateway` | `iss` claim |
 | **`SECRET_KEY`** | `secret` | Basic-auth secret for `POST /api/register` |
 
@@ -301,9 +306,18 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `REGISTER_RATE_LIMIT_ENABLED` | `true` | Toggle per-IP throttle on `POST /register` (in-process memory limiter) |
+| `REGISTER_RATE_LIMIT_REQUESTS` | `5` | Max registrations per IP per window |
+| `REGISTER_RATE_LIMIT_DURATION_SECONDS` | `60` | Register throttle window |
 | `MESSAGE_RATE_LIMIT_PROVIDER` | `memory` | `memory`, `redis`, or `noop` |
 | `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window |
 | `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length |
+
+### Uploads
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_UPLOAD_BYTES` | `16777216` (16 MiB) | Max outbound media size (image/audio/video/document/sticker), checked before reading into memory; image/sticker/audio/video also enforce a per-kind MIME allow-list |
 
 ### RabbitMQ (optional queue mode)
 

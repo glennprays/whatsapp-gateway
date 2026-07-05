@@ -11,9 +11,15 @@ The matrix is intended to give solution architects and integrators a clear view 
 | Capability                     | Supported | Notes |
 |--------------------------------|-----------|-------|
 | Send Text Message              | Yes       | Via REST API |
-| Send Image Media               | Yes       | Media support currently limited to images |
+| Send Image Media               | Yes       | View-once supported |
+| Send Audio / Voice Note        | Yes       | `is_ptt` renders the voice-note bubble |
+| Send Video                     | Yes       | Caption, GIF flag, view-once |
+| Send Document / File           | Yes       | Any mimetype; caption + file name |
+| Send Location / Poll / Sticker | Yes       | Static location, polls, stickers |
+| React / Edit / Delete          | Yes       | Message actions |
+| Recipient Validation           | Yes       | `GET /contact/check` (IsOnWhatsApp) |
 | Receive Incoming Text          | Yes       | Delivered via webhook |
-| Receive Incoming Media         | Yes       | Image media supported |
+| Receive Incoming Media         | Yes       | Image/audio/video/document/sticker/contact/location/poll |
 | Delivery Status Tracking       | Yes       | Status updates available via webhook |
 | Message Retry (Outbound)       | Yes       | Controlled by queue mode and retry policy |
 
@@ -21,7 +27,9 @@ The matrix is intended to give solution architects and integrators a clear view 
 
 | Capability                     | Supported | Notes |
 |--------------------------------|-----------|-------|
-| Outbound Rate Limiting         | Yes       | Enforced per gateway instance |
+| Outbound Rate Limiting         | Yes       | Per-phone message pacing |
+| Register Rate Limiting         | Yes       | Per-IP throttle on `/register` (5/min default) |
+| Media Upload Cap               | Yes       | `MAX_UPLOAD_BYTES` (16 MiB default) + per-kind MIME allow-lists |
 | Queue Mode (RabbitMQ)          | Optional  | Toggle-based activation |
 | Immediate Reject on Limit      | Yes       | When queue mode disabled |
 | Buffered Dispatch              | Yes       | When queue mode enabled |

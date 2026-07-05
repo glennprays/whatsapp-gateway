@@ -89,8 +89,10 @@ That's it! Check the API documentation at `/docs` (if Documentation is enabled) 
 - Basic auth support
 
 ### Messaging
-- Send text messages
-- Receive messages via webhooks
+- Send text, image, audio (voice notes), video, document, location, poll, and sticker messages
+- React to, edit, and delete messages
+- Validate recipients before sending (`IsOnWhatsApp` check)
+- Receive messages via webhooks (with `addressing_mode` for LID/phone senders)
 - Connection status monitoring
 - Session management
 
@@ -143,7 +145,13 @@ Key configuration options in `.env`:
 
 ### Security Configuration
 - `JWT_SECRET` - Secret for JWT token generation
+- `JWT_TOKEN_DURATION_MINUTES` - Token lifetime (default: 1440; clamped to 1..525600)
 - `WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY` - Master key for webhook HMAC encryption on DB
+
+### Rate Limiting & Uploads
+- `REGISTER_RATE_LIMIT_ENABLED` / `REGISTER_RATE_LIMIT_REQUESTS` / `REGISTER_RATE_LIMIT_DURATION_SECONDS` - Per-IP throttle on `/register` (default: 5 per 60s)
+- `MESSAGE_RATE_LIMIT_REQUESTS` / `MESSAGE_RATE_LIMIT_DURATION_SECONDS` - Per-phone outbound message pacing
+- `MAX_UPLOAD_BYTES` - Outbound media size cap (default: 16777216 = 16 MiB), with per-kind MIME allow-lists
 
 See `.env.example` for all available options.
 

@@ -106,7 +106,7 @@ JWT expiration duration.
 Type: integer  
 Default: 1440  
 
-Defines how long access tokens remain valid.
+Defines how long access tokens remain valid. Clamped to 1..525600 (1 minute..1 year); out-of-range values reset to the 1440 default.
 
 ### JWT_ISSUER
 
@@ -241,6 +241,40 @@ Window duration in seconds.
 
 Type: integer  
 Default: 60  
+
+### REGISTER_RATE_LIMIT_ENABLED
+
+Toggle per-IP throttling on `POST /register`.
+
+Type: boolean  
+Default: true  
+
+Over-budget requests get `429 Too Many Requests` with a `Retry-After` header. The limiter fails open on internal errors.
+
+### REGISTER_RATE_LIMIT_REQUESTS
+
+Maximum registrations per IP per window.
+
+Type: integer  
+Default: 5  
+
+### REGISTER_RATE_LIMIT_DURATION_SECONDS
+
+Register throttle window in seconds.
+
+Type: integer  
+Default: 60  
+
+## Upload Limits
+
+### MAX_UPLOAD_BYTES
+
+Maximum size of an outbound media upload (image/audio/video/document/sticker), checked before the file is read into memory.
+
+Type: integer (bytes)  
+Default: 16777216 (16 MiB)  
+
+Image/sticker/audio/video uploads are also validated against a per-kind MIME allow-list; documents accept any mimetype. PTT voice notes opt out of MIME sniffing (opus/ogg is unidentifiable).
 
 ## RabbitMQ Configuration
 
