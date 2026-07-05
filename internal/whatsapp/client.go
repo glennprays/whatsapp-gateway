@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -44,7 +43,7 @@ type (
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
-		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
+		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 	}
@@ -399,7 +398,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 	return resp.ID, nil
 }
 
-func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
+func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -414,18 +413,19 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	// Build reaction message
-	msg := &waE2E.Message{
-		ReactionMessage: &waE2E.ReactionMessage{
-			Key: &waE2E.MessageKey{
-				RemoteJID: proto.String(chatJID),
-				FromMe:    proto.Bool(false),
-				ID:        proto.String(messageID),
-			},
-			Text:              proto.String(emoji),
-			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
-		},
+	// Resolve the original message's sender. An empty sender means we are
+	// reacting to our own outgoing message (FromMe=true). BuildReaction +
+	// BuildMessageKey set FromMe/Participant from this, so reactions now
+	// attribute correctly in both DMs and groups and on your own messages.
+	var sender types.JID
+	if senderJID != "" {
+		sender, err = types.ParseJID(senderJID)
+		if err != nil {
+			return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid sender JID format: %w", err))
+		}
 	}
+
+	msg := cli.BuildReaction(toJID, sender, messageID, emoji)
 
 	_, err = cli.SendMessage(ctx, toJID, msg)
 	if err != nil {

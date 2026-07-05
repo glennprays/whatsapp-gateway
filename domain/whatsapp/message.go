@@ -18,6 +18,11 @@ type MessageReactionRequest struct {
 	Msisdn    string `json:"msisdn" binding:"required"`
 	MessageID string `json:"message_id" binding:"required"`
 	Emoji     string `json:"emoji" binding:"required"`
+	// SenderMsisdn is the JID/phone of the original message's sender.
+	// Omit it when reacting to your own outgoing message (FromMe=true).
+	// Required for correct attribution in groups and for reacting to
+	// incoming DM messages.
+	SenderMsisdn string `json:"sender_msisdn,omitempty"`
 }
 
 // MessageDeleteRequest represents a message deletion request

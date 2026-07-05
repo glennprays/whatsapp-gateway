@@ -41,6 +41,7 @@ type OutgoingMessageJob struct {
 	IsViewOnce  bool
 	MessageID   string // For react/delete/edit
 	Emoji       string // For react
+	SenderMsisdn string // For react: original message sender (empty = own message)
 	NewText     string // For edit
 
 	// Location

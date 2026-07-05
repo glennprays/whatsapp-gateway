@@ -116,7 +116,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType)
 		}
 	case "react":
-		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.MessageID, job.Emoji)
+		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.SenderMsisdn, job.MessageID, job.Emoji)
 		if err == nil {
 			messageID = job.MessageID // For react, use the original message ID
 		}

@@ -42,7 +42,7 @@ type (
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
-		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error
+		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
@@ -339,7 +339,7 @@ func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneN
 	return messageID, nil
 }
 
-func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, emoji string) error {
+func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Reacting to message", nil,
 		customLog.String("phone_number", masked),
@@ -347,7 +347,7 @@ func (m *manager) ReactToMessage(ctx context.Context, traceID string, phoneNumbe
 		customLog.String("message_id", messageID),
 	)
 
-	err := m.Client.ReactToMessage(ctx, traceID, phoneNumber, chatJID, messageID, emoji)
+	err := m.Client.ReactToMessage(ctx, traceID, phoneNumber, chatJID, senderJID, messageID, emoji)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to react to message", nil,
 			customLog.String("phone_number", masked),

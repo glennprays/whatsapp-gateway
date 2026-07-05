@@ -546,11 +546,20 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	}
 	req.Msisdn = to
 
+	// Sender is optional: omit it when reacting to your own outgoing message.
+	var senderJID string
+	if strings.TrimSpace(req.SenderMsisdn) != "" {
+		senderJID, rErr = validateRecipient(req.SenderMsisdn)
+		if rErr != nil {
+			return rErr
+		}
+	}
+
 	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
 		return err
 	}
 
-	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID, req.Emoji)
+	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, senderJID, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
