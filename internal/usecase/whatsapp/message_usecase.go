@@ -41,6 +41,39 @@ func validateLength(field, name string, max int) error {
 	return nil
 }
 
+// mediaMimeAllowlists caps which MIME types each media kind accepts. Documents
+// are intentionally unrestricted (arbitrary file types).
+var mediaMimeAllowlists = map[string]map[string]bool{
+	"image":   {"image/jpeg": true, "image/png": true, "image/webp": true},
+	"sticker": {"image/webp": true},
+	"audio":   {"audio/ogg": true, "audio/mpeg": true, "audio/mp4": true, "audio/aac": true, "audio/x-aac": true, "audio/amr": true, "audio/3gpp": true, "audio/3gpp2": true, "audio/webm": true, "audio/x-m4a": true, "application/ogg": true},
+	"video":   {"video/mp4": true, "video/3gpp": true, "video/webm": true},
+}
+
+// validateMediaSize enforces the outbound size cap. Call before io.ReadAll so
+// oversized uploads are rejected without ever being read into memory.
+func (uc *WhatsappMessageUsecase) validateMediaSize(size int64) error {
+	if uc.config.MaxUploadBytes > 0 && size > uc.config.MaxUploadBytes {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("media exceeds maximum upload size of %d bytes", uc.config.MaxUploadBytes))
+	}
+	return nil
+}
+
+// validateMediaMime enforces a per-kind MIME allow-list. Pass detectedMime=""
+// to opt out (e.g. PTT voice notes whose opus/ogg sniffing is unreliable).
+func validateMediaMime(kind, detectedMime string) error {
+	allow, ok := mediaMimeAllowlists[kind]
+	if !ok || detectedMime == "" {
+		return nil
+	}
+	if !allow[detectedMime] {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("unsupported %s mime type %q", kind, detectedMime))
+	}
+	return nil
+}
+
 // validJIDServers are the WhatsApp address spaces a recipient may target.
 var validJIDServers = map[string]bool{
 	"s.whatsapp.net": true, // individual user
@@ -239,6 +272,9 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}
 
 	// Open and read image file
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to open image file", nil, customLog.Error(err))
@@ -254,8 +290,9 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 	// Detect MIME type
 	mimeType := http.DetectContentType(imageBytes)
-
-	// Check if queue is enabled and healthy
+	if err := validateMediaMime("image", mimeType); err != nil {
+		return nil, nil, err
+	}
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
 		jobID := uuid.New().String()
@@ -338,6 +375,9 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	}
 	req.Msisdn = to
 
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to open audio file", nil, customLog.Error(err))
@@ -357,6 +397,9 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	mimeType := http.DetectContentType(audioBytes)
 	if req.IsPTT && !strings.HasPrefix(mimeType, "audio/") {
 		mimeType = ""
+	}
+	if err := validateMediaMime("audio", mimeType); err != nil {
+		return nil, nil, err
 	}
 
 	if uc.queue != nil && uc.queue.IsHealthy() {
@@ -421,6 +464,9 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 		return nil, nil, err
 	}
 
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to open video file", nil, customLog.Error(err))
@@ -435,6 +481,9 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	}
 
 	mimeType := http.DetectContentType(videoBytes)
+	if err := validateMediaMime("video", mimeType); err != nil {
+		return nil, nil, err
+	}
 
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
@@ -507,6 +556,9 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 		req.FileName = "file"
 	}
 
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to open document file", nil, customLog.Error(err))
@@ -719,6 +771,9 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 	req.Msisdn = to
 
+	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
+		return nil, nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		return nil, nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("failed to open sticker file: %w", err))
@@ -731,6 +786,9 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 
 	mimeType := http.DetectContentType(stickerBytes)
+	if err := validateMediaMime("sticker", mimeType); err != nil {
+		return nil, nil, err
+	}
 
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()

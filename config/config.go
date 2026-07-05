@@ -46,6 +46,9 @@ type Config struct {
 	MessageRateLimitRequests        int64  `mapstructure:"MESSAGE_RATE_LIMIT_REQUESTS" default:"100"`
 	MessageRateLimitDurationSeconds int64  `mapstructure:"MESSAGE_RATE_LIMIT_DURATION_SECONDS" default:"60"`
 
+	// Upload limits
+	MaxUploadBytes int64 `mapstructure:"MAX_UPLOAD_BYTES" default:"16777216"` // 16 MiB cap on outbound media
+
 	// RabbitMQ Configuration
 	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
 	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
