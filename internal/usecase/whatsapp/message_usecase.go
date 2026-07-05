@@ -870,6 +870,36 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 }
 
 // GetJobStatus retrieves job status
+// CheckNumber validates whether a recipient is registered on WhatsApp before
+// sending. Also warms the LID<->PN cache, reducing send fragility.
+func (uc *WhatsappMessageUsecase) CheckNumber(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.ContactCheckRequest,
+) (waDomain.ContactCheckResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return waDomain.ContactCheckResponse{}, err
+	}
+
+	// IsOnWhatsApp expects a bare phone number; strip the JID server if present.
+	query := to
+	if user, _, ok := strings.Cut(query, "@"); ok {
+		query = user
+	}
+
+	resp, err := uc.whatsappManager.CheckNumber(ctx, traceID, phoneNumber, query)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to check number", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("query", query),
+			customLog.Error(err),
+		)
+		return waDomain.ContactCheckResponse{}, err
+	}
+	return resp, nil
+}
+
 func (uc *WhatsappMessageUsecase) GetJobStatus(
 	ctx context.Context,
 	traceID, phoneNumber, jobID string,

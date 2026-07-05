@@ -36,6 +36,7 @@ type (
 		LoginStatus(traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
 		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
+	CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
@@ -254,6 +255,40 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 		return nil
 	}
 	return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+}
+
+func (c *client) CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	resp, err := cli.IsOnWhatsApp(ctx, []string{msisdn})
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return waDomain.ContactCheckResponse{}, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return waDomain.ContactCheckResponse{}, c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to check number: %w", err))
+	}
+	if len(resp) == 0 {
+		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrInternalFailure, errors.New("empty IsOnWhatsApp response"))
+	}
+
+	out := waDomain.ContactCheckResponse{
+		Query:        resp[0].Query,
+		JID:          resp[0].JID.String(),
+		IsOnWhatsApp: resp[0].IsIn,
+	}
+	if resp[0].VerifiedName != nil && resp[0].VerifiedName.Details != nil {
+		name := resp[0].VerifiedName.Details.GetVerifiedName()
+		if name != "" {
+			out.VerifiedName = &name
+		}
+	}
+	return out, nil
 }
 
 func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {

@@ -50,6 +50,7 @@ type (
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
+		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -514,6 +515,22 @@ func (m *manager) GetJIDFromPhoneNumber(phoneNumber string) (string, error) {
 	}
 
 	return client.Store.ID.String(), nil
+}
+
+func (m *manager) CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Checking if number is on WhatsApp", nil,
+		customLog.String("phone_number", masked),
+	)
+	resp, err := m.Client.CheckNumber(ctx, traceID, phoneNumber, msisdn)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to check number", nil,
+			customLog.String("phone_number", masked),
+			customLog.Error(err),
+		)
+		return waDomain.ContactCheckResponse{}, err
+	}
+	return resp, nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

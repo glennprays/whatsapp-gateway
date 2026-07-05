@@ -1,6 +1,7 @@
 package whatsapp_handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -398,6 +399,34 @@ func (h *WhatsappMessageHandler) SendStickerMessage(c *fiber.Ctx) error {
 		return c.Status(http.StatusAccepted).JSON(queuedResponse)
 	}
 	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
+func (h *WhatsappMessageHandler) CheckNumber(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.ContactCheckRequest
+	if err := c.QueryParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse query", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	if req.Msisdn == "" {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, errors.New("msisdn query param is required")))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	ctx := c.Context()
+	resp, err := h.whatsappMessageUsecase.CheckNumber(ctx, traceID, phoneNumber, req)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
 }
 
 func (h *WhatsappMessageHandler) GetJobStatus(c *fiber.Ctx) error {

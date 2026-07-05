@@ -106,6 +106,7 @@ func SetupRouter(
 	initWhatsappRoutes(api, h, authMw)
 	initWebhookRoutes(api, h, authMw)
 	initMessageRoutes(api, h, authMw)
+	initContactRoutes(api, h, authMw)
 
 	// Register storage routes
 	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)
