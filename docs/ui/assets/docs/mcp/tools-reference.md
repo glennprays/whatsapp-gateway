@@ -79,6 +79,85 @@ Send an image message to a WhatsApp contact or group.
 Send image from https://example.com/photo.jpg to 6281234567890@s.whatsapp.net with caption "Check this out!"
 ```
 
+### send_audio_message
+
+Send an audio message. `is_ptt=true` renders a push-to-talk voice-note bubble (opus/ogg); `false` sends a playable audio-file card.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `to` | string | Yes | Recipient address in JID format |
+| `audio_url` | string | Yes | Public URL of the audio file to send |
+| `is_ptt` | boolean | No | Render as a voice-note bubble (default: false) |
+| `view_once` | boolean | No | Whether audio should be view-once (default: false) |
+
+**Returns:** Same shape as `send_image_message`, with `"type": "audio"`.
+
+**Example:**
+
+```
+Send a voice note from https://example.com/note.ogg to 6281234567890@s.whatsapp.net
+```
+
+### send_video_message
+
+Send a video message with an optional caption.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `to` | string | Yes | Recipient address in JID format |
+| `video_url` | string | Yes | Public URL of the video file to send |
+| `caption` | string | No | Video caption |
+| `is_gif` | boolean | No | Toggle GIF-like rendering (default: false) |
+| `view_once` | boolean | No | Whether video should be view-once (default: false) |
+
+**Returns:** Same shape as `send_image_message`, with `"type": "video"`.
+
+### send_document_message
+
+Send a document/file of any mimetype with a visible file name and optional caption.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `to` | string | Yes | Recipient address in JID format |
+| `document_url` | string | Yes | Public URL of the document to send |
+| `file_name` | string | No | Visible file name (defaults to the uploaded filename, then "file") |
+| `caption` | string | No | Document caption |
+
+**Returns:** Same shape as `send_image_message`, with `"type": "document"`.
+
+### check_contact
+
+Validate whether a number is registered on WhatsApp before sending (uses `IsOnWhatsApp`).
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `msisdn` | string | Yes | Phone number or JID to validate |
+
+**Returns:**
+
+```json
+{
+  "query": "6281234567890",
+  "jid": "6281234567890@s.whatsapp.net",
+  "is_on_whatsapp": true,
+  "verified_name": null
+}
+```
+
+**Example:**
+
+```
+Check if 6281234567890 is on WhatsApp
+```
+
 ### edit_message
 
 Edit a previously sent message.

@@ -120,8 +120,8 @@ Your backend must:
 ```python
 @app.post("/webhook/whatsapp")
 def handle_webhook(request):
-    # Verify HMAC signature
-    signature = request.headers.get('X-Signature')
+    # Verify HMAC signature (header: X-Webhook-Signature, format: "sha256=<hex>")
+    signature = request.headers.get('X-Webhook-Signature')
     if not verify_hmac(request.body, signature, WEBHOOK_SECRET):
         raise Unauthorized("Invalid signature")
     
