@@ -101,7 +101,7 @@ func SetupRouter(
 		initDocumentationRoutes(app, cfg)
 	}
 
-	api.Post("/register", h.AuthHandler.Register)
+	api.Post("/register", middleware.NewRegisterRateLimiter(cfg), h.AuthHandler.Register)
 
 	initWhatsappRoutes(api, h, authMw)
 	initWebhookRoutes(api, h, authMw)
