@@ -69,6 +69,14 @@ type SendAudioMessageRequest struct {
 	IsPTT      bool   `form:"is_ptt" binding:"omitempty"`
 }
 
+// SendVideoMessageRequest represents a video message send request.
+type SendVideoMessageRequest struct {
+	Msisdn     string `form:"msisdn" binding:"required"`
+	Caption    string `form:"caption" binding:"omitempty"`
+	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
+	IsGif      bool   `form:"is_gif" binding:"omitempty"`
+}
+
 // SendMessageResponse represents a successful message send response
 type SendMessageResponse struct {
 	Success   bool   `json:"success"`

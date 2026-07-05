@@ -109,6 +109,44 @@ func (h *WhatsappMessageHandler) SendImageMessage(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(directResponse)
 }
 
+func (h *WhatsappMessageHandler) SendVideoMessage(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.SendVideoMessageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error(traceID, "Failed to parse form data", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	fileHeader, err := c.FormFile("video")
+	if err != nil {
+		h.logger.Error(traceID, "Failed to get video file", nil, customLog.Error(err))
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	req.IsGif, _ = strconv.ParseBool(c.FormValue("is_gif"))
+	req.IsViewOnce, _ = strconv.ParseBool(c.FormValue("is_view_once"))
+
+	ctx := c.Context()
+	directResponse, queuedResponse, err := h.whatsappMessageUsecase.SendVideoMessage(ctx, traceID, phoneNumber, req, fileHeader)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if queuedResponse != nil {
+		return c.Status(http.StatusAccepted).JSON(queuedResponse)
+	}
+	return c.Status(http.StatusOK).JSON(directResponse)
+}
+
 func (h *WhatsappMessageHandler) SendAudioMessage(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)

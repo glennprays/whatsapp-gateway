@@ -13,6 +13,7 @@ func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Au
 		messageGroup.Post("/text", h.WhatsappMessageHandler.SendTextMessage)
 		messageGroup.Post("/image", h.WhatsappMessageHandler.SendImageMessage)
 		messageGroup.Post("/audio", h.WhatsappMessageHandler.SendAudioMessage)
+		messageGroup.Post("/video", h.WhatsappMessageHandler.SendVideoMessage)
 		messageGroup.Post("/location", h.WhatsappMessageHandler.SendLocationMessage)
 		messageGroup.Post("/poll", h.WhatsappMessageHandler.SendPollMessage)
 		messageGroup.Post("/sticker", h.WhatsappMessageHandler.SendStickerMessage)

@@ -41,6 +41,7 @@ type (
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
 	SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+	SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -457,6 +458,62 @@ func (c *client) SendAudioMessage(ctx context.Context, traceID string, phoneNumb
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send audio message: %w", err))
+	}
+	return resp.ID, nil
+}
+
+func (c *client) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return "", errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	toJID, err := types.ParseJID(to)
+	if err != nil {
+		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
+	}
+
+	uploaded, err := cli.Upload(ctx, videoBytes, whatsmeow.MediaVideo)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", errDomain.NewError(errDomain.ErrInternalFailure, fmt.Errorf("failed to upload video: %w", err))
+	}
+
+	videoMsg := &waE2E.VideoMessage{
+		URL:           proto.String(uploaded.URL),
+		DirectPath:    proto.String(uploaded.DirectPath),
+		MediaKey:      uploaded.MediaKey,
+		Mimetype:      proto.String(mimeType),
+		FileEncSHA256: uploaded.FileEncSHA256,
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uint64(len(videoBytes))),
+		GifPlayback:   proto.Bool(isGif),
+		ViewOnce:      proto.Bool(isViewOnce),
+	}
+	if caption != "" {
+		videoMsg.Caption = proto.String(caption)
+	}
+
+	msg := &waE2E.Message{VideoMessage: videoMsg}
+	if isViewOnce {
+		msg = &waE2E.Message{
+			ViewOnceMessage: &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{VideoMessage: videoMsg},
+			},
+		}
+	}
+
+	resp, err := cli.SendMessage(ctx, toJID, msg)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to send video message: %w", err))
 	}
 	return resp.ID, nil
 }

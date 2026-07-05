@@ -404,6 +404,84 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
 }
 
+// SendVideoMessage sends a video message (queued or direct).
+func (uc *WhatsappMessageUsecase) SendVideoMessage(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.SendVideoMessageRequest,
+	fileHeader *multipart.FileHeader,
+) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
+	to, err := validateRecipient(req.Msisdn)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Msisdn = to
+
+	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to open video file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+	defer file.Close()
+
+	videoBytes, err := io.ReadAll(file)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to read video file", nil, customLog.Error(err))
+		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	mimeType := http.DetectContentType(videoBytes)
+
+	if uc.queue != nil && uc.queue.IsHealthy() {
+		jobID := uuid.New().String()
+		job := domainQueue.OutgoingMessageJob{
+			TraceID:     traceID,
+			JobID:       jobID,
+			PhoneNumber: phoneNumber,
+			Type:        "video",
+			To:          req.Msisdn,
+			ImageData:   base64.StdEncoding.EncodeToString(videoBytes),
+			MimeType:    mimeType,
+			Caption:     req.Caption,
+			IsGif:       req.IsGif,
+			IsViewOnce:  req.IsViewOnce,
+			CreatedAt:   time.Now().Unix(),
+		}
+
+		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
+			uc.logger.Warn(traceID, "Queue publish failed, using direct send", nil,
+				customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+				customLog.String("job_id", jobID),
+				customLog.Error(err),
+			)
+		} else {
+			if err := uc.jobRepo.Create(ctx, jobID, "queued", phoneNumber); err != nil {
+				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
+			}
+			uc.sendQueuedWebhook(ctx, traceID, job)
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+		}
+	}
+
+	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to send video message", nil,
+			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
+			customLog.String("to", req.Msisdn),
+			customLog.Error(err),
+		)
+		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
+		return nil, nil, err
+	}
+
+	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+}
+
 // SendLocationMessage sends a location message (queued or direct)
 func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	ctx context.Context,

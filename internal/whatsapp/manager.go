@@ -40,6 +40,7 @@ type (
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -284,6 +285,33 @@ func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNum
 	}
 
 	m.Logger.Info(traceID, "Successfully sent audio message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.String("message_id", messageID),
+	)
+
+	return messageID, nil
+}
+
+func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error) {
+	masked := MaskedPhoneNumber(phoneNumber)
+	m.Logger.Info(traceID, "Sending video message", nil,
+		customLog.String("phone_number", masked),
+		customLog.String("to", to),
+		customLog.Bool("gif", isGif),
+	)
+
+	messageID, err := m.Client.SendVideoMessage(ctx, traceID, phoneNumber, to, videoBytes, mimeType, caption, isGif, isViewOnce)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to send video message", nil,
+			customLog.String("phone_number", masked),
+			customLog.String("to", to),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+
+	m.Logger.Info(traceID, "Successfully sent video message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 		customLog.String("message_id", messageID),
