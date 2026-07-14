@@ -36,6 +36,8 @@ func FromError(err error) APIError {
 			apiError.Status = http.StatusMethodNotAllowed
 		case errDomain.ErrTooManyRequests:
 			apiError.Status = http.StatusTooManyRequests
+		case errDomain.ErrGone:
+			apiError.Status = http.StatusGone
 		}
 	} else {
 		apiError.Message = err.Error()
