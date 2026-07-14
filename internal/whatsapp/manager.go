@@ -61,6 +61,8 @@ type (
 		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
 		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
 		GetClientStore() *ClientStore
+		SessionInventory(ctx context.Context, traceID string) (*waDomain.SessionInventory, error)
+		GetOneSession(ctx context.Context, traceID string, phone string) (*waDomain.SessionInventoryItem, error)
 	}
 )
 

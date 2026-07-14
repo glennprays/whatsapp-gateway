@@ -66,19 +66,24 @@ type Config struct {
 	IdempotencyTTLSeconds            int64 `mapstructure:"IDEMPOTENCY_TTL_SECONDS" default:"86400"`
 	IdempotencyPendingTimeoutSeconds int64 `mapstructure:"IDEMPOTENCY_PENDING_TIMEOUT_SECONDS" default:"30"`
 
+	// Admin plane: operator-only, cross-tenant endpoints (/admin/*, /metrics) at
+	// the ROOT path. Empty secret keeps the whole plane unregistered (404, dark
+	// by default); when set, requests need Authorization: Bearer <secret>.
+	AdminAPISecret string `mapstructure:"ADMIN_API_SECRET" default:""`
+
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
 	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`
 	RegisterRateLimitDurationSeconds int64 `mapstructure:"REGISTER_RATE_LIMIT_DURATION_SECONDS" default:"60"`
 
 	// RabbitMQ Configuration
-	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
-	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
-	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
-	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
-	RabbitMQReconnectDelaySeconds int `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
-	RabbitMQPublishConfirm        bool `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
-	RabbitMQConfirmTimeoutSeconds int  `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
+	RabbitMQEnabled               bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
+	RabbitMQURL                   string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
+	RabbitMQConnectionName        string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
+	RabbitMQPrefetchCount         int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+	RabbitMQReconnectDelaySeconds int    `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
+	RabbitMQPublishConfirm        bool   `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
+	RabbitMQConfirmTimeoutSeconds int    `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
 
 	// Redis Configuration
 	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`
@@ -207,13 +212,13 @@ func (c *Config) normalize() {
 
 func (c *Config) validateProductionSecrets() error {
 	defaults := map[string]string{
-		"JWT_SECRET":                              "secret",
-		"SECRET_KEY":                              "secret",
+		"JWT_SECRET": "secret",
+		"SECRET_KEY": "secret",
 		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": "0123456789abcdef0123456789abcdef",
 	}
 	values := map[string]string{
-		"JWT_SECRET":                              c.JwtSecret,
-		"SECRET_KEY":                              c.BasicAuthSecretKey,
+		"JWT_SECRET": c.JwtSecret,
+		"SECRET_KEY": c.BasicAuthSecretKey,
 		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": c.WhatsappWebhookHmacEncryptionMasterKey,
 	}
 	for key, val := range values {

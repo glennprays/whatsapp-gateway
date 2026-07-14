@@ -60,6 +60,8 @@ type (
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
+		SessionInventory(ctx context.Context) ([]waDomain.SessionInventoryItem, error)
+		GetOneSession(ctx context.Context, phone string) (*waDomain.SessionInventoryItem, error)
 	}
 )
 

@@ -11,7 +11,9 @@ import (
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
+	admin_handler "github.com/glennprays/whatsapp-gateway/internal/handler/admin"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
+	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/template/html/v2"
@@ -33,6 +35,7 @@ func SetupRouter(
 	queue domainQueue.MessageQueue,
 	storage domainStorage.Storage,
 	db *sql.DB,
+	manager whatsapp.Manager,
 ) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
@@ -159,6 +162,19 @@ func SetupRouter(
 
 	// Register storage routes
 	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)
+
+	// Operator-only admin plane at the ROOT path. Dark by default: with no
+	// ADMIN_API_SECRET the routes are never registered, so an unconfigured plane
+	// returns Fiber's default 404 (never a 401 that would confirm it exists).
+	// Constructed inline here (mirroring the idempotency middleware / health
+	// probes) rather than via Wire.
+	if cfg.AdminAPISecret != "" {
+		adminAuth := middleware.NewAdminAuth(cfg.AdminAPISecret)
+		adminHandler := admin_handler.NewAdminHandler(manager, lgr)
+		adminGrp := app.Group("/admin", adminAuth)
+		adminGrp.Get("/sessions", adminHandler.Sessions)
+		adminGrp.Get("/sessions/:phone", adminHandler.Session)
+	}
 
 	return app
 }
