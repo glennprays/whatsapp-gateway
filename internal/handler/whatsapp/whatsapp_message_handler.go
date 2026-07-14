@@ -497,6 +497,48 @@ func (h *WhatsappMessageHandler) GetContactInfo(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(resp)
 }
 
+func (h *WhatsappMessageHandler) MarkRead(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.MarkReadRequest
+	if err := c.BodyParser(&req); err != nil {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if err := h.whatsappMessageUsecase.MarkRead(c.Context(), traceID, phoneNumber, req); err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(fiber.Map{"success": true})
+}
+
+func (h *WhatsappMessageHandler) SendChatPresence(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.ChatPresenceRequest
+	if err := c.BodyParser(&req); err != nil {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if err := h.whatsappMessageUsecase.SendChatPresence(c.Context(), traceID, phoneNumber, req); err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(fiber.Map{"success": true})
+}
+
 func (h *WhatsappMessageHandler) GetAvatar(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)

@@ -56,6 +56,8 @@ type (
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
+		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
+		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
 		GetClientStore() *ClientStore
 	}
 )
@@ -596,6 +598,28 @@ func (m *manager) GetAvatar(ctx context.Context, traceID string, phoneNumber str
 		return nil, err
 	}
 	return info, nil
+}
+
+func (m *manager) MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error {
+	if err := m.Client.MarkRead(ctx, traceID, phoneNumber, chat, sender, messageIDs); err != nil {
+		m.Logger.Error(traceID, "Failed to mark messages read", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error {
+	if err := m.Client.SendChatPresence(ctx, traceID, phoneNumber, chat, state, media); err != nil {
+		m.Logger.Error(traceID, "Failed to send chat presence", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -42,6 +43,8 @@ type (
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
+		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
+		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
@@ -509,6 +512,70 @@ func (c *client) GetAvatar(ctx context.Context, traceID string, phoneNumber stri
 		Type:       info.Type,
 		DirectPath: info.DirectPath,
 	}, nil
+}
+
+// MarkRead marks messages in a chat as read. For a group chat the sender (the
+// message author) must be supplied so the receipt is attributed. Exactly one
+// receipt type is passed to whatsmeow, avoiding its multi-type panic.
+func (c *client) MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+	if len(messageIDs) == 0 {
+		return errDomain.NewError(errDomain.ErrBadRequest, errors.New("message_ids is required"))
+	}
+
+	chatJID, err := types.ParseJID(chat)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", chat))
+	}
+
+	var senderJID types.JID
+	if sender != "" {
+		senderJID, err = types.ParseJID(sender)
+		if err != nil {
+			return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid sender %q", sender))
+		}
+	}
+	if chatJID.Server == types.GroupServer && senderJID.IsEmpty() {
+		return errDomain.NewError(errDomain.ErrBadRequest, errors.New("sender is required for group chats"))
+	}
+
+	ids := make([]types.MessageID, len(messageIDs))
+	for i, id := range messageIDs {
+		ids[i] = types.MessageID(id)
+	}
+
+	if err := cli.MarkRead(ctx, ids, time.Now(), chatJID, senderJID); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// SendChatPresence sets the typing indicator in a chat. state is the resolved
+// whatsmeow ChatPresence ("composing"/"paused") and media is "" or "audio".
+func (c *client) SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	chatJID, err := types.ParseJID(chat)
+	if err != nil {
+		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", chat))
+	}
+
+	if err := cli.SendChatPresence(ctx, chatJID, types.ChatPresence(state), types.ChatPresenceMedia(media)); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
 }
 
 // jidStringOrEmpty returns the JID string, or "" for the zero JID (so empty

@@ -21,6 +21,7 @@ func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Au
 		messageGroup.Post("/poll", h.WhatsappMessageHandler.SendPollMessage)
 		messageGroup.Post("/sticker", h.WhatsappMessageHandler.SendStickerMessage)
 		messageGroup.Post("/react", h.WhatsappMessageHandler.ReactToMessage)
+		messageGroup.Post("/read", h.WhatsappMessageHandler.MarkRead)
 		messageGroup.Delete("/", h.WhatsappMessageHandler.DeleteMessage)
 		messageGroup.Put("/", h.WhatsappMessageHandler.EditMessage)
 		messageGroup.Get("/job/:job_id", h.WhatsappMessageHandler.GetJobStatus)

@@ -155,6 +155,7 @@ func SetupRouter(
 	initMessageRoutes(api, h, authMw, idempotencyMw)
 	initContactRoutes(api, h, authMw)
 	initGroupRoutes(api, h, authMw)
+	initChatRoutes(api, h, authMw)
 
 	// Register storage routes
 	RegisterStorageRoutes(app, h.StorageHandler, cfg.StorageAPIPath)
