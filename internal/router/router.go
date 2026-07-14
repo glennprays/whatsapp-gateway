@@ -89,6 +89,49 @@ func SetupRouter(
 		return c.Status(httpStatus).JSON(response)
 	})
 
+	// Liveness + readiness probes at the ROOT path (k8s / load-balancer
+	// convention), separate from the BasePath-scoped /health alias above.
+	//
+	// Liveness: the process is up and serving. It deliberately reflects neither
+	// DB, queue, nor WhatsApp session state — a live process that momentarily
+	// can't reach its DB should not be killed, only drained (via readiness).
+	app.Get("/health/live", func(c *fiber.Ctx) error {
+		return c.Status(http.StatusOK).JSON(fiber.Map{"status": "alive"})
+	})
+
+	// Readiness: safe to route traffic to. DB reachable + (if enabled) queue
+	// healthy. Deliberately NOT coupled to WhatsApp session health — a node
+	// whose sessions are all logged out can still serve /register and QR
+	// pairing, so it must stay in rotation.
+	app.Get("/health/ready", func(c *fiber.Ctx) error {
+		ready := true
+		response := fiber.Map{"timestamp": time.Now().Format(time.RFC3339)}
+
+		if db != nil {
+			dbHealthy := db.PingContext(c.Context()) == nil
+			response["database"] = fiber.Map{"connected": dbHealthy}
+			if !dbHealthy {
+				ready = false
+			}
+		}
+
+		if cfg.RabbitMQEnabled && queue != nil {
+			queueHealthy := queue.IsHealthy()
+			response["queue"] = fiber.Map{"enabled": true, "connected": queueHealthy}
+			if !queueHealthy {
+				ready = false
+			}
+		}
+
+		httpStatus := http.StatusOK
+		response["status"] = "ready"
+		if !ready {
+			httpStatus = http.StatusServiceUnavailable
+			response["status"] = "not_ready"
+		}
+		return c.Status(httpStatus).JSON(response)
+	})
+
 	// Serve llms.txt for AI assistant context
 	api.Get("/llms.txt", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/plain; charset=utf-8")

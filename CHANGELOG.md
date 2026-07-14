@@ -8,6 +8,7 @@ All notable changes to this project are documented here. Versions follow
 ### Added
 - **Unified `chat` recipient** on every send/message/contact-check request. `chat` accepts a bare phone number, a user JID (`@s.whatsapp.net`), a group JID (`@g.us`), or a `@lid`, so groups are now addressable. Send responses echo the resolved canonical `chat` JID. First step of the automation-platform plan (`docs/plan/`).
 - **Graceful multi-account shutdown**: all whatsmeow clients are now disconnected cleanly on shutdown (before the DB closes), concurrently and bounded by `SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS` (default 10), so deploys no longer drop sockets abruptly.
+- **Liveness/readiness probes** at the root path: `GET /health/live` (always `200`, process-only) and `GET /health/ready` (`503` when the DB or an enabled queue is down; deliberately not coupled to WhatsApp session health). The existing `/health` under the API base path is unchanged.
 
 ### Changed
 - `msisdn` is now a **deprecated back-compat alias** for `chat` (still fully supported; `chat` wins when both are set). Recipient resolution funnels through `resolveChat`, which strips device/agent JID suffixes, lowercases the server, requires a digits-only user, and rejects `broadcast`/unknown servers early with a `400` instead of a late `500`.
