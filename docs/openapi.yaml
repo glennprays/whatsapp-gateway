@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.21.0
+  version: 0.22.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -29,9 +29,18 @@ tags:
   - name: Contact
     description: Endpoints for validating and listing contacts.
   - name: Group
-    description: Endpoints for reading the account's WhatsApp groups.
+    description: >
+      Endpoints for reading and managing the account's WhatsApp groups. Reads
+      (list, info) are always available. Mutations (create/leave/participants/
+      settings/name/topic/photo), invite links, join-via-link, and join-requests
+      are gated by GROUP_MANAGEMENT_ENABLED (404 when off). Every group op needs
+      an explicit @g.us JID. The ban-risky bulk vectors (participant add, join via
+      link) are gated OFF by default.
   - name: Community
-    description: Endpoints for reading a community's sub-groups and participants.
+    description: >
+      Endpoints for reading and managing a community's sub-groups. Reads
+      (sub-groups, participants) are always available; link/unlink mutations are
+      gated by GROUP_MANAGEMENT_ENABLED (404 when off).
   - name: Admin
     description: >
       Operator-only, cross-tenant endpoints served at the ROOT path (not under
@@ -691,6 +700,279 @@ components:
         count:
           type: integer
           example: 42
+    GroupTargetRequest:
+      type: object
+      description: Bare recipient wrapper; chat wins over the deprecated msisdn alias.
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+    ParticipantInvite:
+      type: object
+      description: Present when a privacy-blocked add was converted to an invite.
+      properties:
+        code:
+          type: string
+          example: "AbCdEf123456"
+        expires_at:
+          type: string
+          format: date-time
+    ParticipantResult:
+      type: object
+      description: >
+        Canonical per-participant outcome. A partial failure never fails the whole
+        request — it surfaces here.
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        lid:
+          type: string
+          example: "1122334455@lid"
+        status:
+          type: string
+          enum: [ok, invited, failed]
+        code:
+          type: integer
+          description: whatsmeow participant error code (when not ok).
+          example: 403
+        invite:
+          $ref: '#/components/schemas/ParticipantInvite'
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 25
+          example: "Project Team"
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890", "6289999999999"]
+        is_community:
+          type: boolean
+        linked_parent_jid:
+          type: string
+          description: Create the group inside this community (@g.us).
+        is_announce:
+          type: boolean
+        is_locked:
+          type: boolean
+        is_join_approval_required:
+          type: boolean
+    CreateGroupResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        group_info:
+          $ref: '#/components/schemas/GroupInfoResponse'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    GroupParticipantsRequest:
+      type: object
+      required: [chat, action, participants]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        action:
+          type: string
+          enum: [add, remove, promote, demote]
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890"]
+    GroupParticipantsResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        action:
+          type: string
+          example: "add"
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    GroupSettingsRequest:
+      type: object
+      required: [chat]
+      description: At least one of announce/locked must be supplied.
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        announce:
+          type: boolean
+          description: Only admins can send.
+        locked:
+          type: boolean
+          description: Only admins can edit group info.
+    GroupSettingsResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        applied:
+          type: array
+          items:
+            type: string
+          example: ["announce", "locked"]
+    SetGroupNameRequest:
+      type: object
+      required: [chat, name]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        name:
+          type: string
+          maxLength: 25
+          example: "Release Team"
+    SetGroupTopicRequest:
+      type: object
+      required: [chat]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        topic:
+          type: string
+          maxLength: 512
+          example: "Q3 release planning"
+    GroupPhotoResponse:
+      type: object
+      properties:
+        picture_id:
+          type: string
+          example: "1673634563"
+        removed:
+          type: boolean
+    GroupInviteLinkResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        invite_link:
+          type: string
+          example: "https://chat.whatsapp.com/AbCdEf123456"
+    GroupInviteResetRequest:
+      type: object
+      required: [chat]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+    JoinGroupRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: A full chat.whatsapp.com link or a bare invite code.
+          example: "https://chat.whatsapp.com/AbCdEf123456"
+    JoinGroupResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+    GroupJoinRequestItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        requested_at:
+          type: string
+          format: date-time
+    GroupJoinRequestsResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupJoinRequestItem'
+        count:
+          type: integer
+          example: 2
+    GroupJoinRequestsActionRequest:
+      type: object
+      required: [chat, action, participants]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        action:
+          type: string
+          enum: [approve, reject]
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890"]
+    GroupJoinRequestsActionResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        action:
+          type: string
+          example: "approve"
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    CommunityLinkRequest:
+      type: object
+      required: [chat, child_jid]
+      properties:
+        chat:
+          type: string
+          description: The parent community's JID (@g.us).
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        child_jid:
+          type: string
+          description: The sub-group's JID (@g.us).
+          example: "120363111111111111@g.us"
     ContactInfoResponse:
       type: object
       properties:
@@ -1319,6 +1601,39 @@ paths:
           description: Per-account read budget exhausted; retry after the indicated delay.
       security:
         - accountBearerAuth: []
+    post:
+      tags:
+        - Group
+      summary: Create a group or community
+      description: >
+        Creates a group (or a community when is_community=true). The account's own
+        JID is added implicitly. Adding participants at creation is gated by
+        GROUP_ADD_PARTICIPANTS_ENABLED (403 when off); privacy-blocked or
+        non-contact members come back in results[] as invited/failed (still 201).
+        Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: The created group.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateGroupResponse'
+        '400':
+          description: name missing/too long (>25), bad participant, or over cap.
+        '403':
+          description: Adding participants is disabled (GROUP_ADD_PARTICIPANTS_ENABLED=false).
+        '404':
+          description: Group management disabled.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
   /group/info:
     get:
       tags:
@@ -1352,6 +1667,412 @@ paths:
           description: The group does not exist.
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/leave:
+    post:
+      tags:
+        - Group
+      summary: Leave a group
+      description: >
+        Removes the account from a group. Allowed for non-admins. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupTargetRequest'
+      responses:
+        '200':
+          description: Left the group.
+        '400':
+          description: chat is missing or not a group JID.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/participants:
+    post:
+      tags:
+        - Group
+      summary: Add / remove / promote / demote participants
+      description: >
+        Mutates a group's roster. action=add is gated by
+        GROUP_ADD_PARTICIPANTS_ENABLED (403 when off). Per-participant failures
+        (privacy-blocked add -> invited; non-member promote -> failed) are a 200
+        partial success in results[], never an overall error. Removing/promoting/
+        demoting your own number is a 400 (use POST /group/leave). Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupParticipantsRequest'
+      responses:
+        '200':
+          description: Per-participant results (partial success).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupParticipantsResponse'
+        '400':
+          description: bad action, empty/over-cap participants, or self in remove/promote/demote.
+        '403':
+          description: action=add disabled, or the account is not an admin.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget or server rate limit exhausted.
+      security:
+        - accountBearerAuth: []
+  /group/settings:
+    patch:
+      tags:
+        - Group
+      summary: Set announce / locked
+      description: >
+        Toggles group settings. announce = only admins can send; locked = only
+        admins can edit group info. At least one flag must be supplied; flags
+        apply sequentially (best-effort — a partial apply is possible). Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupSettingsRequest'
+      responses:
+        '200':
+          description: The settings that were applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSettingsResponse'
+        '400':
+          description: chat missing/not a group, or no settings supplied.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/name:
+    patch:
+      tags:
+        - Group
+      summary: Set a group's name
+      description: >
+        Updates the group name (subject), max 25 characters. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetGroupNameRequest'
+      responses:
+        '200':
+          description: Name updated.
+        '400':
+          description: chat missing/not a group, or name empty/over 25 chars.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/topic:
+    patch:
+      tags:
+        - Group
+      summary: Set a group's topic
+      description: >
+        Updates the group topic (description), max 512 characters. An empty topic
+        clears it. Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetGroupTopicRequest'
+      responses:
+        '200':
+          description: Topic updated.
+        '400':
+          description: chat missing/not a group, or topic over 512 chars.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/photo:
+    put:
+      tags:
+        - Group
+      summary: Set a group's photo
+      description: >
+        Sets the group picture from an uploaded JPEG (multipart form). The file is
+        size-capped (MAX_UPLOAD_BYTES) and sniffed for image/jpeg. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [chat, photo]
+              properties:
+                chat:
+                  type: string
+                  example: "120363000000000000@g.us"
+                msisdn:
+                  type: string
+                  deprecated: true
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: The new picture id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupPhotoResponse'
+        '400':
+          description: chat missing/not a group, missing photo, non-JPEG, or oversize.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+    delete:
+      tags:
+        - Group
+      summary: Remove a group's photo
+      description: >
+        Clears the group picture. Accepts {chat} in the body or ?chat=. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "The target group's JID (must be @g.us). Provide in body or query."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: Photo removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupPhotoResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/invite:
+    get:
+      tags:
+        - Group
+      summary: Get a group's invite link (admin only)
+      description: >
+        Returns the group's invite link. Not cached (the link can be reset
+        out-of-band). Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The invite link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInviteLinkResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin, or not a participant.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/invite/reset:
+    post:
+      tags:
+        - Group
+      summary: Revoke and regenerate the invite link
+      description: >
+        Revokes the current invite link and returns a fresh one. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupInviteResetRequest'
+      responses:
+        '200':
+          description: The new invite link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInviteLinkResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/invite/info:
+    get:
+      tags:
+        - Group
+      summary: Preview a group from an invite link (no join)
+      description: >
+        Previews a group from an invite code (a full chat.whatsapp.com link or a
+        bare code) without joining. Served through the shared read cache + budget.
+        Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: "A full chat.whatsapp.com link or a bare invite code."
+          schema:
+            type: string
+            example: "https://chat.whatsapp.com/AbCdEf123456"
+      responses:
+        '200':
+          description: The group preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfoResponse'
+        '400':
+          description: The invite link is malformed/invalid.
+        '404':
+          description: Group management disabled.
+        '410':
+          description: The invite link has been revoked — request a fresh link.
+        '429':
+          description: Read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/join:
+    post:
+      tags:
+        - Group
+      summary: Join a group via invite link (gated)
+      description: >
+        Joins a group via an invite code. This is the mass-join vector, gated by
+        GROUP_JOIN_VIA_LINK_ENABLED (403 when off) on top of the master toggle.
+        The returned JID is either the group or a membership-approval request
+        (whatsmeow does not expose which).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinGroupRequest'
+      responses:
+        '200':
+          description: The joined (or pending) group JID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinGroupResponse'
+        '400':
+          description: The invite link is malformed/invalid.
+        '403':
+          description: Joining via link is disabled (GROUP_JOIN_VIA_LINK_ENABLED=false).
+        '404':
+          description: Group management disabled.
+        '410':
+          description: The invite link has been revoked.
+      security:
+        - accountBearerAuth: []
+  /group/requests:
+    get:
+      tags:
+        - Group
+      summary: List pending join requests
+      description: >
+        Lists a group's pending membership-approval requests. Requires admin.
+        Served through the shared read cache + budget. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The pending join requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupJoinRequestsResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+    post:
+      tags:
+        - Group
+      summary: Approve / reject join requests
+      description: >
+        Approves or rejects pending join requests. Per-participant failures are a
+        200 partial success in results[], never an overall error. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupJoinRequestsActionRequest'
+      responses:
+        '200':
+          description: Per-participant results (partial success).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupJoinRequestsActionResponse'
+        '400':
+          description: bad action or empty participants.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
       security:
         - accountBearerAuth: []
   /community/subgroups:
@@ -1388,6 +2109,66 @@ paths:
           description: The community does not exist.
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+    post:
+      tags:
+        - Community
+      summary: Link a sub-group to a community
+      description: >
+        Links a child group under a parent community. Requires admin on both.
+        Both chat (parent) and child_jid must be explicit @g.us JIDs. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommunityLinkRequest'
+      responses:
+        '200':
+          description: The sub-group was linked.
+        '400':
+          description: chat or child_jid missing/not a group JID.
+        '403':
+          description: The account is not an admin of the parent or child.
+        '404':
+          description: Group management disabled, or a group does not exist.
+        '409':
+          description: Already linked, or the child is itself a community.
+      security:
+        - accountBearerAuth: []
+    delete:
+      tags:
+        - Community
+      summary: Unlink a sub-group from a community
+      description: >
+        Removes a child group from a parent community. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The parent community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+        - name: child
+          in: query
+          required: true
+          description: "The sub-group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363111111111111@g.us"
+      responses:
+        '200':
+          description: The sub-group was unlinked.
+        '400':
+          description: chat or child missing/not a group JID.
+        '403':
+          description: The account is not an admin.
+        '404':
+          description: Group management disabled, or a group does not exist.
       security:
         - accountBearerAuth: []
   /community/participants:

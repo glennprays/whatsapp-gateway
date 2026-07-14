@@ -62,6 +62,13 @@ curl -X POST http://localhost:3000/api/v1/message/text \
 > a user JID (`@s.whatsapp.net`), a group JID (`@g.us`) — so you can message groups — or a `@lid`
 > (best-effort; not guaranteed dialable). Send responses echo the resolved canonical `chat`.
 
+> **Group/community ops require an explicit `@g.us`** — a group op never lands on a user JID (a bare
+> number or user JID is a 400). Batch mutations (add/remove/promote/demote, approve/reject) return
+> **200 partial success** with per-participant `results[]`, never an overall error for one bad member.
+> Ban-safety gates (default): the whole mutation surface is behind `GROUP_MANAGEMENT_ENABLED` (404 when
+> off); **bulk participant add** and **join-via-link (mass join)** are gated OFF (`GROUP_ADD_PARTICIPANTS_ENABLED`,
+> `GROUP_JOIN_VIA_LINK_ENABLED`) and return 403 until enabled.
+
 > **Replies & mentions (all sends):** every `POST /message/*` send (text, image, audio, video, document,
 > location, poll, sticker) accepts `reply_to_id` + `reply_to_sender` (+ optional `reply_to_text` for the
 > quoted preview) to quote a message, and `mentions[]` (numbers/JIDs) to @-tag. Storeless (caller supplies
@@ -248,8 +255,10 @@ For complete API documentation, including all endpoints, request/response schema
 | Messaging | `POST /message/text`, `POST /message/image`, `POST /message/audio` (is_ptt = voice note), `POST /message/video` (caption/is_gif), `POST /message/document` (file_name/caption), `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message` (edit), `DELETE /message` |
 | Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both counted against the interim action cap |
 | Contact | `GET /contact/check?chat=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name), `GET /contact/` (list synced contacts; paginated limit/offset; local store, never 404 on empty), `GET /contact/info?chat=` (server profile: status/picture_id/verified_name/device_count; cached+budgeted), `GET /contact/avatar?chat=&preview=` (avatar URL+id for a user OR group; ETag via If-None-Match → 304; 404 none / 403 hidden) |
-| Group | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
-| Community | `GET /community/subgroups?chat=<@g.us>` (list a community's linked sub-groups; empty list if none, not an error), `GET /community/participants?chat=<@g.us>` (all participants across the community's linked groups; each participant's primary JID only) — both server reads, cached + per-account read budget; a non-community group returns 400/403/404 |
+| Group (reads) | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
+| Group (mutations) | `POST /group/` (create group/community; add-on-create gated), `POST /group/leave`, `POST /group/participants` (`action`=add/remove/promote/demote; add gated; **200 partial success** with `results[]` — privacy-blocked add → invited, non-member promote → failed; self in remove/promote/demote → 400, use leave), `PATCH /group/settings` (announce/locked), `PATCH /group/name` (≤25), `PATCH /group/topic` (≤512), `PUT /group/photo` (multipart JPEG), `DELETE /group/photo`, `GET /group/invite` + `POST /group/invite/reset` (admin invite link), `GET /group/invite/info?code=` (preview, no join; 410 if revoked), `POST /group/join` (**mass-join, gated → 403**), `GET /group/requests` + `POST /group/requests` (list / approve-reject join requests; approve/reject is 200 partial success) — all gated by `GROUP_MANAGEMENT_ENABLED` (404 when off) |
+| Community (reads) | `GET /community/subgroups?chat=<@g.us>` (list linked sub-groups; empty list if none, not an error), `GET /community/participants?chat=<@g.us>` (all participants across linked groups; primary JID only) — server reads, cached + budgeted; a non-community group returns 400/403/404 |
+| Community (mutations) | `POST /community/subgroups` (link a sub-group under a parent community; body `{chat, child_jid}`), `DELETE /community/subgroups?chat=&child=` (unlink) — gated by `GROUP_MANAGEMENT_ENABLED` (404 when off) |
 | Health | `GET /health`, `GET /health/live`, `GET /health/ready` |
 | Admin (ROOT path, operator-only) | `GET /admin/sessions` (per-instance session inventory: honest `connected`/`disconnected`/`never_paired`/`logged_out`/`banned` states merged from live clients + device store + persisted status; masked phones + `instance` hostname), `GET /admin/sessions/{phone}` (one account or 404) |
 | Metrics (ROOT path, operator-only) | `GET /metrics` (hand-rolled Prometheus text; `whatsapp_gateway_messages_total`, `whatsapp_gateway_webhook_deliveries_total`, `whatsapp_gateway_sessions{state}`) |

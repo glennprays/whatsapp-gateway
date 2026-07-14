@@ -230,6 +230,29 @@ Implement comprehensive logging:
   the bearer-gated `/admin/sessions`. The inventory is **per-instance** — behind a load balancer,
   scrape/inspect each node.
 
+### 10. Group & Community Mutations (ban risk)
+
+Group/community mutations are the **highest-ban-risk** surface: mass-adding strangers to groups
+and mass-joining via invite links are exactly the automated-abuse patterns WhatsApp bans for. The
+gateway ships these gated **default-safe**, and the wrapping backend should keep them that way
+unless it has verified consent for the specific action.
+
+- **Master toggle, hidden when off.** `GROUP_MANAGEMENT_ENABLED` (default `true`) gates the entire
+  mutation/invite/join-request/community surface. When `false` those routes are **not registered**
+  → `404` (never `403`), so a disabled surface never confirms it exists. Reads stay up.
+- **Bulk add is gated OFF by default.** `GROUP_ADD_PARTICIPANTS_ENABLED` (default `false`) blocks
+  `POST /group/participants action=add` and add-on-create with `403`, **before** any server call.
+  Only enable it once your backend verifies the target actually consented to be added.
+- **Mass-join is gated OFF by default.** `GROUP_JOIN_VIA_LINK_ENABLED` (default `false`) blocks
+  `POST /group/join` with `403`. Enable only behind human/paced control.
+- **Batch cap.** `GROUP_MAX_PARTICIPANTS_PER_REQUEST` (default `256`) bounds a single batch; the
+  gateway rejects oversized batches with `400` before hitting WhatsApp.
+- **Self-guard.** Removing/promoting/demoting your own number is rejected (`400`); use
+  `POST /group/leave`. Partial per-participant failures are a `200` with `results[]`, so a single
+  privacy-blocked or non-member entry never masquerades as a whole-request success.
+- **Non-admin actions surface as `403`.** The server rejects admin-only mutations by a non-admin;
+  the gateway maps that to `403` — do not retry-loop.
+
 ## Encryption and Data Protection
 
 ### HMAC Master Key

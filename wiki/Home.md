@@ -10,6 +10,7 @@ Welcome to the WhatsApp Gateway documentation! This wiki provides comprehensive 
 
 ### Usage Guides
 - **[Gateway Usage Flow](Gateway-Usage-Flow.md)** - Step-by-step guide on how to use the gateway API
+- **[Group & Community Management](Group-Management.md)** - Manage groups and communities; ban-safety gates and partial-failure semantics
 - **[Security Considerations](Security-Considerations.md)** - Important security warnings and best practices
 
 ## Quick Links

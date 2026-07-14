@@ -239,6 +239,32 @@ Server-hitting reads (joined groups; later profiles/avatars) are short-TTL **cac
 
 ---
 
+### Group & Community Management Configuration
+
+Group/community **mutations** are the highest-ban-risk surface. They are gated by a master toggle plus two default-off gates over the specific bulk/mass vectors. Group/community **reads** (`GET /group/`, `GET /group/info`, `GET /community/subgroups`, `GET /community/participants`) are always available regardless of these settings.
+
+#### `GROUP_MANAGEMENT_ENABLED`
+- **Description**: Master toggle for the entire mutation surface (create/leave/participants/settings/name/topic/photo, invite links, join-via-link, join-requests, community link/unlink). When `false` those routes are **never registered**, so the whole surface returns `404` (hidden entirely); reads stay up.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `GROUP_ADD_PARTICIPANTS_ENABLED`
+- **Description**: Gates **bulk participant add** — `POST /group/participants` with `action=add`, and adding participants at create time (`POST /group/` with a non-empty `participants`). When `false` those requests return `403` (checked in the usecase, before any server call). remove/promote/demote/settings/name/topic/photo/leave stay enabled. Adding people you have no prior relationship with is the classic ban trigger, so this defaults off.
+- **Type**: Boolean
+- **Default**: `false`
+
+#### `GROUP_JOIN_VIA_LINK_ENABLED`
+- **Description**: Gates `POST /group/join` — the mass-join vector. When `false` it returns `403`. Defaults off until outbound pacing lands.
+- **Type**: Boolean
+- **Default**: `false`
+
+#### `GROUP_MAX_PARTICIPANTS_PER_REQUEST`
+- **Description**: Caps how many participants a single batch (add/remove/promote/demote, approve/reject) may carry; an over-cap request is `400` before the server call. `0` disables the cap.
+- **Type**: Integer
+- **Default**: `256`
+
+---
+
 ### Send Idempotency Configuration
 
 Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key **replays** the original response (with `Idempotent-Replay: true`) rather than sending again; an in-flight duplicate returns `409`; reusing a key with a **different** request body returns `422`. Dedup is DB-backed and keyed by the **JWT phone number + key** (never the body — one Account cannot spoof another's namespace), so it survives restarts and is shared across instances. In queue mode this is **enqueued-once, not delivered-once**.

@@ -301,6 +301,38 @@ The rolling window over which `READ_QUERY_BUDGET` is counted.
 Type: integer (seconds)  
 Default: 60  
 
+## Group & Community Management
+
+Group/community **mutations** are the highest-ban-risk surface, gated default-safe. **Reads** stay available regardless of these settings.
+
+### GROUP_MANAGEMENT_ENABLED
+
+Master toggle. When `false` the entire mutation/invite/join-request/community surface is **unregistered → 404** (hidden); reads stay up.
+
+Type: boolean  
+Default: true  
+
+### GROUP_ADD_PARTICIPANTS_ENABLED
+
+Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Adding people with no prior relationship is the classic ban trigger, so this defaults off.
+
+Type: boolean  
+Default: false  
+
+### GROUP_JOIN_VIA_LINK_ENABLED
+
+Gates `POST /group/join`, the mass-join vector → `403` when off.
+
+Type: boolean  
+Default: false  
+
+### GROUP_MAX_PARTICIPANTS_PER_REQUEST
+
+Caps how many participants a single batch may carry; over-cap → `400`. `0` disables the cap.
+
+Type: integer  
+Default: 256  
+
 ## Send Idempotency
 
 Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key replays the original response (`Idempotent-Replay: true`) instead of sending again; an in-flight duplicate gets `409`; the same key with a different request body gets `422`. Dedup is DB-backed and keyed by the JWT phone number + key, so it survives restarts. In queue mode this guarantees enqueued-once, not delivered-once.
