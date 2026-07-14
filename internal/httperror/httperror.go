@@ -7,9 +7,13 @@ import (
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 )
 
+// APIError is the gateway's uniform error body. The json tags make it serialize
+// as the documented ErrorResponse shape ({"error","code"}) — matching openapi.yaml
+// and the middleware error handler — so every handler that returns
+// c.JSON(httpErr) emits the same contract clients decode (code == HTTP status).
 type APIError struct {
-	Status  int
-	Message string
+	Status  int    `json:"code"`
+	Message string `json:"error"`
 }
 
 func FromError(err error) APIError {

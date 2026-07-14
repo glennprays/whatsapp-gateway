@@ -10,9 +10,7 @@ func ErrorHandler() fiber.ErrorHandler {
 	return func(c *fiber.Ctx, err error) error {
 		// 1. Handle Fiber errors FIRST
 		if fe, ok := err.(*fiber.Error); ok {
-			return c.Status(fe.Code).JSON(fiber.Map{
-				"error": fe.Message,
-			})
+			return c.Status(fe.Code).JSON(httperror.APIError{Status: fe.Code, Message: fe.Message})
 		}
 
 		// 2. Handle domain/application errors
@@ -23,8 +21,7 @@ func ErrorHandler() fiber.ErrorHandler {
 			apiError.Message = "Internal Server Error"
 		}
 
-		return c.Status(apiError.Status).JSON(fiber.Map{
-			"error": apiError.Message,
-		})
+		// Uniform {"error","code"} body (matches httperror.APIError json tags + openapi).
+		return c.Status(apiError.Status).JSON(apiError)
 	}
 }
