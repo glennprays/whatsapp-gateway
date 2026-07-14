@@ -49,6 +49,9 @@ type Config struct {
 	// Upload limits
 	MaxUploadBytes int64 `mapstructure:"MAX_UPLOAD_BYTES" default:"16777216"` // 16 MiB cap on outbound media
 
+	// Graceful shutdown: overall bound for disconnecting all whatsmeow clients
+	ShutdownClientDisconnectTimeoutSeconds int64 `mapstructure:"SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS" default:"10"`
+
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
 	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`

@@ -5,6 +5,7 @@ import (
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
+	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 )
 
 // ShutdownManager orchestrates graceful shutdown of all application components
@@ -41,7 +42,15 @@ func (sm *ShutdownManager) Shutdown() error {
 		sm.logger.Error(sm.traceID, "HTTP server shutdown encountered errors", nil, log.Error(err))
 	}
 
-	// Step 3: Final cleanup (close DB connections, flush logs, etc.)
+	// Step 3: Disconnect all WhatsApp clients cleanly. Must run before cleanup
+	// closes the shared DB, since whatsmeow flushes session state on Disconnect.
+	timeout := time.Duration(sm.config.ShutdownClientDisconnectTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	whatsapp.DisconnectAll(sm.logger, sm.traceID, timeout)
+
+	// Step 4: Final cleanup (close DB connections, flush logs, etc.)
 	sm.cleanup()
 
 	sm.logger.Info(sm.traceID, "Graceful shutdown completed", nil)
