@@ -527,6 +527,11 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
 	}
@@ -551,17 +556,21 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "video",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(videoBytes),
-			MimeType:    mimeType,
-			Caption:     req.Caption,
-			IsGif:       req.IsGif,
-			IsViewOnce:  req.IsViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "video",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(videoBytes),
+			MimeType:      mimeType,
+			Caption:       req.Caption,
+			IsGif:         req.IsGif,
+			IsViewOnce:    req.IsViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -579,7 +588,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce)
+	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce, msgCtx)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send video message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

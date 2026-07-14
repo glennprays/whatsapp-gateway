@@ -122,7 +122,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode video data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce)
+			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "document":
 		docBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
