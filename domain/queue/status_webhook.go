@@ -14,6 +14,14 @@ const (
 	EventMessageFailed StatusWebhookEvent = "message.failed"
 	// EventMessageIncoming indicates an incoming message was received
 	EventMessageIncoming StatusWebhookEvent = "message.incoming"
+
+	// Session lifecycle events (roadmap #1), emitted from the whatsmeow event switch.
+	EventSessionLoggedOut      StatusWebhookEvent = "session.logged_out"
+	EventSessionBanned         StatusWebhookEvent = "session.banned"
+	EventSessionConnectFailure StatusWebhookEvent = "session.connect_failure"
+	EventSessionConnected      StatusWebhookEvent = "session.connected"
+	EventSessionDisconnected   StatusWebhookEvent = "session.disconnected"
+	EventSessionReplaced       StatusWebhookEvent = "session.replaced"
 )
 
 // WebhookEventCatalog is the single source of truth for every webhook event a
@@ -21,10 +29,16 @@ const (
 // against this set before it is stored. The session.* entries are appended by
 // the generic event-system change (roadmap #1).
 var WebhookEventCatalog = map[string]struct{}{
-	string(EventMessageIncoming): {},
-	string(EventMessageQueued):   {},
-	string(EventMessageSent):     {},
-	string(EventMessageFailed):   {},
+	string(EventMessageIncoming):       {},
+	string(EventMessageQueued):         {},
+	string(EventMessageSent):           {},
+	string(EventMessageFailed):         {},
+	string(EventSessionLoggedOut):      {},
+	string(EventSessionBanned):         {},
+	string(EventSessionConnectFailure): {},
+	string(EventSessionConnected):      {},
+	string(EventSessionDisconnected):   {},
+	string(EventSessionReplaced):       {},
 }
 
 // IsKnownEvent reports whether e is a recognized webhook event type.

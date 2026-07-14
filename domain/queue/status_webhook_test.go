@@ -28,13 +28,17 @@ func TestEventMatches(t *testing.T) {
 }
 
 func TestIsKnownEvent(t *testing.T) {
-	known := []string{"message.incoming", "message.queued", "message.sent", "message.failed"}
+	known := []string{
+		"message.incoming", "message.queued", "message.sent", "message.failed",
+		"session.logged_out", "session.banned", "session.connect_failure",
+		"session.connected", "session.disconnected", "session.replaced",
+	}
 	for _, e := range known {
 		if !IsKnownEvent(e) {
 			t.Fatalf("IsKnownEvent(%q) = false, want true", e)
 		}
 	}
-	unknown := []string{"", "session.logged_out", "message.read", "garbage", "message.sent ", " message.sent"}
+	unknown := []string{"", "message.read", "session.unknown", "garbage", "message.sent ", " message.sent"}
 	for _, e := range unknown {
 		if IsKnownEvent(e) {
 			t.Fatalf("IsKnownEvent(%q) = true, want false", e)

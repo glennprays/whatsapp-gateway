@@ -133,13 +133,16 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
 
 	case *events.LoggedOut:
-		// whatsmeow deletes (or will delete) the device row; record status
-		// first so the account still surfaces as logged_out, then evict the
-		// dead in-memory client. No webhook emitted here (roadmap #1's job).
+		// Capture the jid BEFORE eviction/FK-cascade so the webhook can still
+		// address the account. Record status first (Phase D), then evict, then
+		// emit session.logged_out.
+		jid := sessionJID(phoneNumber)
 		h.recordSessionStatus(phoneNumber, "logged_out", loggedOutReason(v), nil)
 		clients.Delete(phoneNumber)
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionLoggedOut), loggedOutPayload(phoneNumber, jid, v))
 
 	case *events.TemporaryBan:
+		jid := sessionJID(phoneNumber)
 		var exp *time.Time
 		if v.Expire > 0 {
 			t := time.Now().Add(v.Expire)
@@ -147,8 +150,10 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 		h.recordSessionStatus(phoneNumber, "banned", v.String(), exp)
 		clients.Delete(phoneNumber)
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionBanned), bannedPayload(phoneNumber, jid, v))
 
 	case *events.ConnectFailure:
+		jid := sessionJID(phoneNumber)
 		if v.Reason.IsLoggedOut() {
 			h.recordSessionStatus(phoneNumber, "logged_out", v.Reason.String(), nil)
 			clients.Delete(phoneNumber)
@@ -157,12 +162,106 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 			// auto-reconnect can recover the same client object.
 			h.recordSessionStatus(phoneNumber, "disconnected", "connect_failure:"+v.Reason.String(), nil)
 		}
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionConnectFailure), connectFailurePayload(phoneNumber, jid, v))
 
 	case *events.StreamReplaced:
 		// Another process took the socket; our client is dead. Evict; do not
 		// disconnect (already gone).
+		jid := sessionJID(phoneNumber)
 		h.recordSessionStatus(phoneNumber, "disconnected", "stream_replaced", nil)
 		clients.Delete(phoneNumber)
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionReplaced), baseSessionPayload(string(domainQueue.EventSessionReplaced), phoneNumber, jid))
+
+	case *events.Connected:
+		jid := sessionJID(phoneNumber)
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionConnected), baseSessionPayload(string(domainQueue.EventSessionConnected), phoneNumber, jid))
+
+	case *events.Disconnected:
+		jid := sessionJID(phoneNumber)
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionDisconnected), baseSessionPayload(string(domainQueue.EventSessionDisconnected), phoneNumber, jid))
+	}
+}
+
+// baseSessionPayload builds the flat envelope common to every session.* event.
+func baseSessionPayload(event, phoneNumber, jid string) map[string]interface{} {
+	return map[string]interface{}{
+		"event":        event,
+		"phone_number": phoneNumber,
+		"jid":          jid,
+		"timestamp":    time.Now().Unix(),
+	}
+}
+
+// loggedOutPayload maps *events.LoggedOut to its webhook payload. reason is only
+// meaningful when on_connect is true (whatsmeow sets it on connect failures).
+func loggedOutPayload(phoneNumber, jid string, v *events.LoggedOut) map[string]interface{} {
+	p := baseSessionPayload(string(domainQueue.EventSessionLoggedOut), phoneNumber, jid)
+	p["on_connect"] = v.OnConnect
+	p["reason"] = int(v.Reason)
+	p["reason_text"] = v.Reason.String()
+	return p
+}
+
+// bannedPayload maps *events.TemporaryBan to its webhook payload.
+func bannedPayload(phoneNumber, jid string, v *events.TemporaryBan) map[string]interface{} {
+	p := baseSessionPayload(string(domainQueue.EventSessionBanned), phoneNumber, jid)
+	p["code"] = int(v.Code)
+	p["reason_text"] = v.Code.String()
+	p["expires_in"] = int(v.Expire.Seconds())
+	return p
+}
+
+// connectFailurePayload maps *events.ConnectFailure to its webhook payload.
+func connectFailurePayload(phoneNumber, jid string, v *events.ConnectFailure) map[string]interface{} {
+	p := baseSessionPayload(string(domainQueue.EventSessionConnectFailure), phoneNumber, jid)
+	p["reason"] = int(v.Reason)
+	p["reason_text"] = v.Reason.String()
+	p["message"] = v.Message
+	return p
+}
+
+// sessionJID resolves an account's device JID, or "" when the in-memory client
+// isn't paired yet (so a lifecycle webhook that can't be addressed is skipped).
+func sessionJID(phoneNumber string) string {
+	client := clients.Get(phoneNumber)
+	if client == nil || client.Store == nil || client.Store.ID == nil {
+		return ""
+	}
+	return client.Store.ID.String()
+}
+
+// dispatch fans a pre-built lifecycle event out to every matching subscription.
+// It is non-blocking (queue-publish, else bounded async send) so it is safe to
+// call from the whatsmeow event goroutine. A missing jid is a silent no-op.
+func (h *handler) dispatch(traceID, phoneNumber, jid, event string, payload map[string]interface{}) {
+	if jid == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	subs, err := h.repository.GetWebhookSubscriptions(ctx, jid)
+	if err != nil {
+		h.logger.Error(traceID, "Failed to load webhook subscriptions for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		return
+	}
+
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		if h.queue != nil && h.queue.IsHealthy() {
+			if perr := h.queue.PublishWebhookDelivery(context.Background(), domainQueue.WebhookDeliveryMessage{
+				TraceID:    traceID,
+				WebhookURL: sub.Url,
+				HmacSecret: sub.HmacSecret,
+				Payload:    payload,
+			}); perr == nil {
+				continue
+			}
+			// Publish failed: fall through to direct async delivery.
+		}
+		h.sender.SendAsync(sub.Url, sub.HmacSecret, event, payload)
 	}
 }
 
