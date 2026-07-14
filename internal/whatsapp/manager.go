@@ -52,6 +52,7 @@ type (
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
+		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -538,6 +539,18 @@ func (m *manager) ListContacts(ctx context.Context, traceID string, phoneNumber 
 	items, err := m.Client.ListContacts(ctx, traceID, phoneNumber)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to list contacts", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error) {
+	items, err := m.Client.ListGroups(ctx, traceID, phoneNumber)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list groups", nil,
 			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
 			customLog.Error(err),
 		)

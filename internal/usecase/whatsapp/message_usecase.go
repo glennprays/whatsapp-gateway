@@ -155,6 +155,8 @@ type WhatsappMessageUsecase struct {
 	webhookSender   *whatsapp.WebhookSender
 	config          *config.Config
 	limiter         ratelimiter.Limiter
+	queryCache      *ttlCache           // short-TTL cache for server-hitting reads
+	queryBudget     ratelimiter.Limiter // per-account read budget (spent on cache miss)
 }
 
 // NewWhatsappMessageUsecase creates a new message usecase
@@ -177,6 +179,8 @@ func NewWhatsappMessageUsecase(
 		webhookSender:   webhookSender,
 		config:          cfg,
 		limiter:         limiter,
+		queryCache:      newTTLCache(time.Duration(cfg.ReadQueryCacheTTLSeconds) * time.Second),
+		queryBudget:     newQueryBudget(cfg.ReadQueryBudget, cfg.ReadQueryWindowSeconds),
 	}
 }
 

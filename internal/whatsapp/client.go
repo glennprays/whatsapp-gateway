@@ -38,6 +38,7 @@ type (
 		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
+		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
@@ -324,6 +325,46 @@ func (c *client) ListContacts(ctx context.Context, traceID string, phoneNumber s
 			FullName:     info.FullName,
 			FirstName:    info.FirstName,
 			BusinessName: info.BusinessName,
+		})
+	}
+	return items, nil
+}
+
+// ListGroups returns the account's joined groups via a single whatsmeow IQ
+// (GetJoinedGroups). This hits the WhatsApp server, so the usecase layer caches
+// it and meters it against the per-account read budget.
+func (c *client) ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	groups, err := cli.GetJoinedGroups(ctx)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to list groups: %w", err))
+	}
+
+	items := make([]waDomain.GroupListItem, 0, len(groups))
+	for _, g := range groups {
+		if g == nil {
+			continue
+		}
+		count := g.ParticipantCount
+		if count == 0 {
+			count = len(g.Participants)
+		}
+		items = append(items, waDomain.GroupListItem{
+			JID:              g.JID.String(),
+			Name:             g.Name,
+			Topic:            g.Topic,
+			OwnerJID:         g.OwnerJID.String(),
+			ParticipantCount: count,
+			IsAnnounce:       g.IsAnnounce,
+			IsLocked:         g.IsLocked,
+			IsCommunity:      g.IsParent,
 		})
 	}
 	return items, nil

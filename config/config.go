@@ -52,6 +52,13 @@ type Config struct {
 	// Graceful shutdown: overall bound for disconnecting all whatsmeow clients
 	ShutdownClientDisconnectTimeoutSeconds int64 `mapstructure:"SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS" default:"10"`
 
+	// Read/query surface: server-hitting reads (groups, profiles, avatars) are
+	// short-TTL cached and metered by a per-account budget so polling can't trip
+	// WhatsApp anti-spam. A budget token is spent only on a cache miss.
+	ReadQueryCacheTTLSeconds int64 `mapstructure:"READ_QUERY_CACHE_TTL_SECONDS" default:"300"`
+	ReadQueryBudget          int64 `mapstructure:"READ_QUERY_BUDGET" default:"30"`
+	ReadQueryWindowSeconds   int64 `mapstructure:"READ_QUERY_WINDOW_SECONDS" default:"60"`
+
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
 	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`
