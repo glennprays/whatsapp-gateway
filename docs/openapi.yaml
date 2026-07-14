@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.22.0
+  version: 0.23.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -120,15 +120,45 @@ components:
           example: 300
     WebhookRegisterRequest:
       type: object
+      required:
+        - url
       properties:
         url:
           type: string
-          description: The URL to register for receiving WhatsApp webhooks.
+          description: >
+            The subscription URL. Re-posting the same URL upserts it (edits its
+            hmac/events filter).
           example: "https://example.com/webhook"
         hmac_secret:
           type: string
-          description: Optional secret for validating webhook requests.
+          description: Optional secret for signing webhook requests (never returned).
           example: "my_webhook_secret"
+        events:
+          type: array
+          items:
+            type: string
+            enum: [message.incoming, message.queued, message.sent, message.failed]
+          description: >
+            Event types this subscription receives. Omit or leave empty to
+            receive all events (matches the legacy single-URL behavior). An
+            unknown value is rejected with 400.
+          example: ["message.incoming", "message.sent"]
+    WebhookSubscription:
+      type: object
+      properties:
+        url:
+          type: string
+          example: "https://example.com/webhook"
+        events:
+          type: array
+          items:
+            type: string
+          description: The event filter; an empty array means all events.
+          example: ["message.incoming"]
+        has_hmac:
+          type: boolean
+          description: Whether a signing secret is configured (the secret itself is never returned).
+          example: true
     SendMessageTextRequest:
       type: object
       properties:
@@ -2399,12 +2429,15 @@ paths:
     get:
       tags:
         - Whatsapp Webhook
-      summary: Get registered webhook URL
+      summary: List webhook subscriptions
       description: >
-        Retrieves the currently registered webhook URL for receiving WhatsApp events.
+        Lists the account's webhook subscriptions. The top-level `url` is kept
+        for back-compat (the first subscription's url, or empty) alongside the
+        additive `subscriptions` array. The HMAC secret is never returned, only
+        `has_hmac`.
       responses:
         '200':
-          description: Webhook URL retrieved successfully.
+          description: Subscriptions retrieved successfully.
           content:
             application/json:
               schema:
@@ -2412,16 +2445,22 @@ paths:
                 properties:
                   url:
                     type: string
-                    description: The registered webhook URL.
+                    description: First subscription's url (back-compat), or empty.
                     example: "https://example.com/webhook"
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookSubscription'
       security:
         - accountBearerAuth: []
     post:
       tags:
         - Whatsapp Webhook
-      summary: Register a webhook URL
+      summary: Register or update a webhook subscription
       description: >
-        Registers a URL to receive WhatsApp webhook events. Optionally, a secret can be provided for validation.
+        Registers (upserts) one webhook subscription. Optionally a signing
+        secret and an `events` filter can be supplied; an omitted/empty filter
+        receives all events. Requires the client to be logged in.
       requestBody:
         required: true
         content:
@@ -2430,7 +2469,7 @@ paths:
               $ref: '#/components/schemas/WebhookRegisterRequest'
       responses:
         '200':
-          description: Webhook URL registered successfully.
+          description: Subscription registered successfully.
           content:
             application/json:
               schema:
@@ -2439,17 +2478,33 @@ paths:
                   success:
                     type: boolean
                     example: true
+        '400':
+          description: Invalid URL or an unknown event type in `events`.
+        '409':
+          description: Client not logged in.
       security:
         - accountBearerAuth: []
     delete:
       tags:
         - Whatsapp Webhook
-      summary: Unregister the webhook URL
+      summary: Unregister webhook subscriptions
       description: >
-        Unregisters the currently registered webhook URL.
+        With no request body, deletes ALL subscriptions for the account (legacy
+        semantics). With body `{"url": "..."}`, deletes only that subscription.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: The subscription URL to delete; omit to delete all.
+                  example: "https://example.com/webhook"
       responses:
         '200':
-          description: Webhook URL unregistered successfully.
+          description: Subscription(s) unregistered successfully.
           content:
             application/json:
               schema:

@@ -219,13 +219,27 @@ app.post('/webhook', (req, res) => {
 
 ## Webhook Events
 
-The gateway sends webhooks to your registered URL for message events.
+The gateway delivers webhooks to your registered subscriptions. Each account can
+register **multiple** subscription URLs, each with an optional per-subscription
+**event filter** (`POST /webhook` with `events: [...]`). Omit or leave `events`
+empty to receive **all** events (the legacy single-URL behavior). An unknown
+event name is rejected with `400`.
 
-Event types:
+Event catalog:
+- `message.incoming` - Incoming message received
 - `message.queued` - Message queued for sending
 - `message.sent` - Message successfully sent
 - `message.failed` - Message failed to send
-- `message.incoming` - Incoming message received
+
+Managing subscriptions:
+- `GET /webhook` → `{ "url": "<first subscription or empty>", "subscriptions": [ { "url", "events": [...], "has_hmac" } ] }`. The `url` field is retained for back-compat; the HMAC secret is **never** returned (only `has_hmac`).
+- `POST /webhook` `{ url, hmac_secret?, events?[] }` — upserts one subscription (re-posting the same URL edits its filter/secret).
+- `DELETE /webhook` — no body deletes **all** subscriptions; body `{ "url": "..." }` deletes just that one.
+
+Filtering is per-subscription: a subscription with an empty filter receives every
+event; the `WEBHOOK_STATUS_EVENTS` global list is **deprecated** and superseded
+by it. `WEBHOOK_STATUS_EVENTS_ENABLED` remains the master kill-switch for the
+`message.queued/sent/failed` status family.
 
 Incoming-message webhooks include an `addressing_mode` field:
 - `"pn"` - `from` is a callable `@s.whatsapp.net` phone number
@@ -251,7 +265,7 @@ For complete API documentation, including all endpoints, request/response schema
 | Category | Endpoints |
 |----------|-----------|
 | Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
-| Webhooks | `GET /webhook`, `POST /webhook`, `DELETE /webhook` |
+| Webhooks | `GET /webhook` (list subscriptions; back-compat `url` + `subscriptions[]`), `POST /webhook` (upsert one subscription; `events?[]` filter, empty = all), `DELETE /webhook` (no body = all, `{url}` = one) |
 | Messaging | `POST /message/text`, `POST /message/image`, `POST /message/audio` (is_ptt = voice note), `POST /message/video` (caption/is_gif), `POST /message/document` (file_name/caption), `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message` (edit), `DELETE /message` |
 | Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both counted against the interim action cap |
 | Contact | `GET /contact/check?chat=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name), `GET /contact/` (list synced contacts; paginated limit/offset; local store, never 404 on empty), `GET /contact/info?chat=` (server profile: status/picture_id/verified_name/device_count; cached+budgeted), `GET /contact/avatar?chat=&preview=` (avatar URL+id for a user OR group; ETag via If-None-Match → 304; 404 none / 403 hidden) |
@@ -384,8 +398,8 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Emit message lifecycle webhooks |
-| `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | Comma-separated subset: `message.queued`, `message.sent`, `message.failed` |
+| `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Master kill-switch for the `message.queued/sent/failed` status family |
+| `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | **Deprecated** — superseded by per-subscription `events`. Still read for back-compat; a subscription with an empty filter now inherits "all" |
 | `WEBHOOK_MAX_RETRIES` | `3` | Direct-mode async webhook retry attempts (queue mode uses RabbitMQ retry) |
 | `WEBHOOK_RETRY_BACKOFF_SECONDS` | `2` | Base for the exponential retry backoff |
 

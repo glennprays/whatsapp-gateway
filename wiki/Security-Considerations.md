@@ -116,6 +116,12 @@ Your backend must:
 - **Route webhook events** only to authorized users
 - **Sanitize webhook data** before processing
 
+Each subscription carries its **own** HMAC secret. The gateway stores it
+encrypted at rest and **never returns it** — `GET /webhook` exposes only a
+`has_hmac` boolean per subscription. A subscription registered without a secret
+is delivered **unsigned** (empty signature key); if you require signatures,
+always register a secret and reject unsigned deliveries at your receiver.
+
 **Example Webhook Handler:**
 ```python
 @app.post("/webhook/whatsapp")
