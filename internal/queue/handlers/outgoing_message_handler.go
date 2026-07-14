@@ -140,7 +140,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode sticker data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType)
+			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType, jobMessageContext(job))
 		}
 	case "react":
 		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.SenderMsisdn, job.MessageID, job.Emoji)

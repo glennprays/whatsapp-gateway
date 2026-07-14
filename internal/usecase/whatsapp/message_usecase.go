@@ -870,6 +870,11 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 	req.Msisdn = to
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
 	}
@@ -892,14 +897,18 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "sticker",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(stickerBytes),
-			MimeType:    mimeType,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "sticker",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(stickerBytes),
+			MimeType:      mimeType,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -924,7 +933,7 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
 	}
 
-	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType)
+	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType, msgCtx)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err

@@ -44,7 +44,7 @@ type (
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error)
-		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
@@ -406,14 +406,14 @@ func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumb
 	return messageID, nil
 }
 
-func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending sticker message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType)
+	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send sticker message", nil,
 			customLog.String("phone_number", masked),

@@ -54,7 +54,7 @@ type (
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error)
-		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
@@ -1124,7 +1124,7 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 	return resp.ID, nil
 }
 
-func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -1156,6 +1156,7 @@ func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNu
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
 			FileLength:    &fileLen,
+			ContextInfo:   buildContextInfo(msgCtx),
 		},
 	})
 	if err != nil {
