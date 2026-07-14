@@ -470,13 +470,13 @@ Canonical reference: [environment-variables.md](https://waga.glennprays.com/asse
 
 ## MCP (Model Context Protocol)
 
-A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. The agent invokes MCP tools (send text/image, edit/delete/react to messages, manage webhooks, check connection status); the MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
+A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. It exposes a curated read-and-messaging tool surface (26 tools): sends for text/image/audio/video/document/location/poll/sticker — each accepting canonical `chat` addressing plus optional reply/mention threading — edit/delete/react, the polled inbox (`get_latest_incoming_messages`, `get_job_status`), contact and group reads (`list_contacts`, `get_contact_info`, `get_avatar`, `list_groups`, `get_group_info`), two-way conversation signals (`mark_read`, `send_typing`), connection and health checks (`check_connection_status`, `check_contact`, `check_health`), and webhook management (`get_webhook`, `register_webhook`, `delete_webhook`). The MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
 
 ```
 AI Agent  <--MCP (stdio or HTTP+SSE)-->  MCP WhatsApp Gateway  <--HTTP/JWT-->  WhatsApp Gateway (this service)
 ```
 
-The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent.
+The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent. The MCP deliberately **excludes** group/community mutations (create, leave, participants, settings, name, topic, photo, invite, join, requests), community operations, and the operator admin plane and metrics — even though the gateway and Go SDK support them — to keep an autonomous agent from taking destructive or account-wide actions; drive those from the REST API or SDK in a trusted backend.
 
 | Doc | Link |
 |-----|------|
@@ -485,6 +485,10 @@ The MCP server is a separate component from the gateway itself — you deploy th
 | Client Setup | https://waga.glennprays.com/assets/docs/mcp/client-setup.md |
 | Configuration | https://waga.glennprays.com/assets/docs/mcp/configuration.md |
 | Tools Reference | https://waga.glennprays.com/assets/docs/mcp/tools-reference.md |
+
+## Go SDK
+
+An official Go SDK (`github.com/glennprays/whatsapp-gateway-sdk-go`) wraps the gateway's REST surface: chat-addressed sends with quoted replies, @-mentions, and `Idempotency-Key` support; contact and group reads (`ListContacts`/`GetContactInfo`/`GetAvatar`/`ListGroups`/`GetGroupInfo`); two-way primitives (`MarkRead`/`SendChatPresence`); the full group and community management surface; HMAC webhook verification with a unified `ParseWebhook` dispatcher covering the `message.*` and `session.*` events; and a separate opt-in `AdminClient` for the operator-only admin plane. Full method reference: https://github.com/glennprays/whatsapp-gateway-sdk-go.
 
 ## Documentation
 

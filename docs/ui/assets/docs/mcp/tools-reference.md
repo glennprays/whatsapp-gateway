@@ -4,13 +4,41 @@ Complete reference for all MCP tools exposed by the WhatsApp Gateway server.
 
 ## Overview
 
-The MCP WhatsApp Gateway exposes tools organized into three categories:
+The MCP WhatsApp Gateway exposes a **curated read-and-messaging subset** of the gateway API (26 tools), organized into these categories:
 
-1. **Messaging Tools** - Send, edit, delete, and react to messages
-2. **Connection Tools** - Check gateway status and health
-3. **Webhook Tools** - Manage webhook configuration
+1. **Messaging Tools** - Send (text/image/audio/video/document/location/poll/sticker), edit, delete, and react to messages, with canonical `chat` addressing and optional reply/mention threading
+2. **Contact & Group Read Tools** - List contacts, look up profiles and avatars, list groups, and read one group's roster
+3. **Conversation Tools** - Mark messages read and set the typing indicator
+4. **Connection Tools** - Check gateway status, health, and whether a number is on WhatsApp
+5. **Webhook Tools** - Manage webhook configuration
+
+### Not exposed (excluded by design)
+
+This MCP deliberately exposes only read and messaging capabilities. It does **not** expose:
+
+- **Group/community mutations** - create, leave, participants, settings, name, topic, photo, invite, join, requests
+- **Community operations** - sub-group linking/unlinking, community participants
+- **Admin plane** - operator session inventory (`/admin/sessions`)
+- **Metrics** - the Prometheus `/metrics` endpoint
+
+The underlying gateway and Go SDK support all of these, but keeping them out of the MCP prevents an autonomous agent from performing destructive or account-wide actions. To perform those operations, call the gateway's REST API directly from a trusted backend.
 
 ## Messaging Tools
+
+### Common send arguments
+
+Every send tool below accepts canonical **chat addressing** plus optional reply/mention threading, in addition to its tool-specific fields:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes* | Canonical recipient — a bare number, a user JID (`@s.whatsapp.net`), a group JID (`@g.us`), or a `@lid`. Preferred; wins over `to` when both are set. |
+| `to` | string | Yes* | Back-compat recipient alias. |
+| `reply_to_id` | string | No | Quote an existing message by id. |
+| `reply_to_sender` | string | No | Author JID/number of the quoted message. |
+| `reply_to_text` | string | No | Caller-supplied preview of the quoted text (the gateway is storeless and does not look it up). |
+| `mentions` | array of strings | No | Numbers/JIDs to @-tag in the message. |
+
+\* Either `chat` or `to` is required.
 
 ### send_text_message
 
@@ -20,8 +48,11 @@ Send a text message to a WhatsApp contact or group.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `to` | string | Yes | Recipient address in JID format |
+| `chat` | string | Yes* | Canonical recipient (preferred) — see [Common send arguments](#common-send-arguments) |
+| `to` | string | Yes* | Back-compat recipient alias. *Either `chat` or `to` is required. |
 | `message` | string | Yes | Text message content |
+
+Reply/mention fields (`reply_to_id`, `reply_to_sender`, `reply_to_text`, `mentions`) from [Common send arguments](#common-send-arguments) apply here too.
 
 **Recipient Format:**
 
@@ -246,6 +277,97 @@ React to a message with an emoji.
 ```
 React to message 3EB0xxxxxxxxxxxxx for 6281234567890@s.whatsapp.net with emoji 👍
 ```
+
+## Contact & Group Read Tools
+
+### list_contacts
+
+List the account's locally-synced WhatsApp contacts. Reads the local address book; an empty result is normal, never an error.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | integer | No | Page size. Gateway default 100, max 500. |
+| `offset` | integer | No | Pagination offset. |
+
+**Returns:** `contacts[]` (`jid`, `push_name`, `full_name`, `first_name`, `business_name`), `count`, `total`, and an optional `note`.
+
+### get_contact_info
+
+Look up one contact's WhatsApp profile.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes | Canonical recipient — a number, user JID, or `@lid`. |
+
+**Returns:** `jid`, `status`, `picture_id`, `verified_name`, `device_count`, `lid`.
+
+### get_avatar
+
+Get a chat's profile picture URL (user or group). Soft failures are surfaced as results, not errors.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes | Canonical recipient (user or `@g.us` group). |
+| `preview` | boolean | No | Request the low-res thumbnail instead of full resolution. |
+
+**Returns:** `jid`, `available` (boolean). When available: `url` (time-limited CDN link), `id` (ETag), `type` (`image`/`preview`). When not: `available=false` with `reason` `not_set` (404, no picture) or `hidden` (403, privacy).
+
+### list_groups
+
+List the account's joined groups as lightweight summaries (no participant roster; use `get_group_info` for one group's full detail).
+
+**Parameters:** None
+
+**Returns:** `groups[]` (`jid`, `name`, `topic`, `owner_jid`, `participant_count`, `is_announce`, `is_locked`, `is_community`) and `count`. Server-hitting read subject to a per-account budget (`429` when exhausted).
+
+### get_group_info
+
+Get one group's full detail plus its participant roster.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes | A group JID (`@g.us`). The account must be a member. |
+
+**Returns:** Group detail plus `participants[]` (`jid`, `phone_number`, `lid`, `is_admin`, `is_super_admin`). `403` if not a member, `404` if absent.
+
+## Conversation Tools
+
+> These are conversation-affecting **outbound** actions. They are governed by the gateway's outbound pacer (per-account pace + per-recipient cap); over-budget calls are paced or rejected with `429`.
+
+### mark_read
+
+Mark one or more messages in a chat as read (blue ticks).
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes | Canonical recipient. |
+| `message_ids` | array of strings | Yes | Message IDs to mark read. |
+| `sender` | string | No | Message author's JID/number — required for group chats. |
+
+**Returns:** Success status.
+
+### send_typing
+
+Set the typing indicator in a chat.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chat` | string | Yes | Canonical recipient. |
+| `state` | string | Yes | One of `composing` (typing…), `recording` (recording audio…), or `paused` (cleared). |
+
+**Returns:** Success status and the applied state.
 
 ## Connection Tools
 
