@@ -59,6 +59,13 @@ type Config struct {
 	ReadQueryBudget          int64 `mapstructure:"READ_QUERY_BUDGET" default:"30"`
 	ReadQueryWindowSeconds   int64 `mapstructure:"READ_QUERY_WINDOW_SECONDS" default:"60"`
 
+	// Send idempotency: an optional Idempotency-Key header dedupes sends via a
+	// DB-backed (phone, key) table. TTL bounds how long a completed response is
+	// replayable; PendingTimeout lets a retry take over a row left pending by a
+	// crashed request.
+	IdempotencyTTLSeconds            int64 `mapstructure:"IDEMPOTENCY_TTL_SECONDS" default:"86400"`
+	IdempotencyPendingTimeoutSeconds int64 `mapstructure:"IDEMPOTENCY_PENDING_TIMEOUT_SECONDS" default:"30"`
+
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
 	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`

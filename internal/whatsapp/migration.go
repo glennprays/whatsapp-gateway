@@ -12,6 +12,9 @@ func runMigrations(db *sql.DB) error {
 	if err := runMessageJobsMigrations(db); err != nil {
 		return err
 	}
+	if err := runIdempotencyKeysMigrations(db); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -46,6 +49,29 @@ func runMessageJobsMigrations(db *sql.DB) error {
 
     CREATE INDEX IF NOT EXISTS idx_message_jobs_created_at
         ON message_jobs(created_at);`
+	_, err := db.ExecContext(context.Background(), query)
+	return err
+}
+
+// runIdempotencyKeysMigrations creates the table backing send idempotency. The
+// (phone_number, idempotency_key) primary key is the dedup constraint the
+// Idempotency-Key middleware relies on (INSERT ... ON CONFLICT DO NOTHING). DDL
+// is dialect-neutral (works on SQLite + Postgres).
+func runIdempotencyKeysMigrations(db *sql.DB) error {
+	query := `
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+        phone_number TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        http_status INTEGER,
+        response_body TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (phone_number, idempotency_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
+        ON idempotency_keys(created_at);`
 	_, err := db.ExecContext(context.Background(), query)
 	return err
 }

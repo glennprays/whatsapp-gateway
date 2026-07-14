@@ -146,9 +146,13 @@ func SetupRouter(
 
 	api.Post("/register", middleware.NewRegisterRateLimiter(cfg), h.AuthHandler.Register)
 
+	// Send idempotency middleware (DB-backed); opt-in per request via the
+	// Idempotency-Key header. Constructed here since SetupRouter already holds db+cfg.
+	idempotencyMw := middleware.NewIdempotencyMiddleware(db, cfg, lgr)
+
 	initWhatsappRoutes(api, h, authMw)
 	initWebhookRoutes(api, h, authMw)
-	initMessageRoutes(api, h, authMw)
+	initMessageRoutes(api, h, authMw, idempotencyMw)
 	initContactRoutes(api, h, authMw)
 	initGroupRoutes(api, h, authMw)
 
