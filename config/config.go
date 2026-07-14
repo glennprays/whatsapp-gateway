@@ -114,9 +114,13 @@ type Config struct {
 	QueueDedupEnabled    bool `mapstructure:"QUEUE_DEDUP_ENABLED" default:"true"`
 	QueueDedupTTLSeconds int  `mapstructure:"QUEUE_DEDUP_TTL_SECONDS" default:"600"`
 
-	// Status Webhook Configuration
-	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
-	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
+	// Status Webhook Configuration. WebhookStatusEventsEnabled is the master
+	// kill-switch over the message.queued/sent/failed family.
+	WebhookStatusEventsEnabled bool `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
+	// Deprecated: superseded by the per-subscription events filter (POST
+	// /webhook). Retained so existing .env files still parse; no longer applied
+	// as a delivery filter.
+	WebhookStatusEvents string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
 
 	// Direct-mode webhook retry parity: direct-mode status webhooks are delivered
 	// asynchronously with bounded exponential backoff (queue mode keeps RabbitMQ
