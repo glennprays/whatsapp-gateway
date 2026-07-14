@@ -56,6 +56,21 @@ type (
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
 		ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error)
 		ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error)
+		CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error)
+		LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error
+		UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error)
+		SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error
+		SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error
+		SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error
+		SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error
+		SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error)
+		GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error)
+		JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error)
+		GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error)
+		GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error)
+		UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error)
+		LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
+		UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
@@ -602,6 +617,179 @@ func (m *manager) ListCommunityParticipants(ctx context.Context, traceID string,
 		return nil, err
 	}
 	return items, nil
+}
+
+func (m *manager) CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error) {
+	resp, err := m.Client.CreateGroup(ctx, traceID, phoneNumber, name, participantJIDs, isCommunity, linkedParentJID, isAnnounce, isLocked, isJoinApproval)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to create group", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (m *manager) LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error {
+	if err := m.Client.LeaveGroup(ctx, traceID, phoneNumber, groupJID); err != nil {
+		m.Logger.Error(traceID, "Failed to leave group", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error) {
+	results, err := m.Client.UpdateGroupParticipants(ctx, traceID, phoneNumber, groupJID, action, participantJIDs)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to update group participants", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return results, nil
+}
+
+func (m *manager) SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error {
+	if err := m.Client.SetGroupAnnounce(ctx, traceID, phoneNumber, groupJID, announce); err != nil {
+		m.Logger.Error(traceID, "Failed to set group announce", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error {
+	if err := m.Client.SetGroupLocked(ctx, traceID, phoneNumber, groupJID, locked); err != nil {
+		m.Logger.Error(traceID, "Failed to set group locked", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error {
+	if err := m.Client.SetGroupName(ctx, traceID, phoneNumber, groupJID, name); err != nil {
+		m.Logger.Error(traceID, "Failed to set group name", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error {
+	if err := m.Client.SetGroupTopic(ctx, traceID, phoneNumber, groupJID, topic); err != nil {
+		m.Logger.Error(traceID, "Failed to set group topic", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error) {
+	pictureID, err := m.Client.SetGroupPhoto(ctx, traceID, phoneNumber, groupJID, photo)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to set group photo", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return pictureID, nil
+}
+
+func (m *manager) GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error) {
+	link, err := m.Client.GetGroupInviteLink(ctx, traceID, phoneNumber, groupJID, reset)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get group invite link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return link, nil
+}
+
+func (m *manager) JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error) {
+	jid, err := m.Client.JoinGroupWithLink(ctx, traceID, phoneNumber, code)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to join group via link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return jid, nil
+}
+
+func (m *manager) GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error) {
+	info, err := m.Client.GetGroupInfoFromLink(ctx, traceID, phoneNumber, code)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to preview group from link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error) {
+	items, err := m.Client.GetGroupRequestParticipants(ctx, traceID, phoneNumber, groupJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list group join requests", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error) {
+	results, err := m.Client.UpdateGroupRequestParticipants(ctx, traceID, phoneNumber, groupJID, participantJIDs, approve)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to update group join requests", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return results, nil
+}
+
+func (m *manager) LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	if err := m.Client.LinkSubGroup(ctx, traceID, phoneNumber, parentJID, childJID); err != nil {
+		m.Logger.Error(traceID, "Failed to link subgroup", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	if err := m.Client.UnlinkSubGroup(ctx, traceID, phoneNumber, parentJID, childJID); err != nil {
+		m.Logger.Error(traceID, "Failed to unlink subgroup", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
 }
 
 func (m *manager) GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error) {
