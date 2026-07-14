@@ -10,4 +10,5 @@ func initGroupRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Auth
 	groupGroup := r.Group("/group")
 	groupGroup.Use(authMw.JWTAuthentication())
 	groupGroup.Get("/", h.WhatsappMessageHandler.ListGroups)
+	groupGroup.Get("/info", h.WhatsappMessageHandler.GetGroupInfo)
 }

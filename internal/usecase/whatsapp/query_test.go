@@ -70,6 +70,32 @@ func TestQueryWithBudget_ExhaustsBudget(t *testing.T) {
 	}
 }
 
+func TestGetGroupInfo_RejectsNonGroupChat(t *testing.T) {
+	uc := newTestUsecase(time.Minute, 100)
+	// A bare number resolves to @s.whatsapp.net, which is not a group; the guard
+	// must reject with 400 before ever touching the (nil) manager.
+	_, err := uc.GetGroupInfo(context.Background(), "trace", "628111", "6282222222222")
+	if err == nil {
+		t.Fatal("expected 400 for non-group chat")
+	}
+	var de errDomain.Error
+	if !errors.As(err, &de) || de.ServiceError() != errDomain.ErrBadRequest {
+		t.Fatalf("expected ErrBadRequest, got %v", err)
+	}
+}
+
+func TestGetContactInfo_RejectsGroupChat(t *testing.T) {
+	uc := newTestUsecase(time.Minute, 100)
+	_, err := uc.GetContactInfo(context.Background(), "trace", "628111", "120363000000000000@g.us", "")
+	if err == nil {
+		t.Fatal("expected 400 for group chat")
+	}
+	var de errDomain.Error
+	if !errors.As(err, &de) || de.ServiceError() != errDomain.ErrBadRequest {
+		t.Fatalf("expected ErrBadRequest, got %v", err)
+	}
+}
+
 func TestQueryWithBudget_DoesNotCacheErrors(t *testing.T) {
 	uc := newTestUsecase(time.Minute, 100)
 	calls := 0

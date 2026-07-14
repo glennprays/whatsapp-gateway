@@ -2,14 +2,18 @@ package whatsapp_usecase
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 
+	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 )
 
 const (
 	defaultContactPageLimit = 100
 	maxContactPageLimit     = 500
+	groupServerSuffix       = "g.us" // resolveChat normalizes the server to lowercase
 )
 
 // ListContacts returns a page of the account's locally-synced contacts. The
@@ -70,5 +74,46 @@ func (uc *WhatsappMessageUsecase) ListGroups(
 			}
 			sort.Slice(items, func(i, j int) bool { return items[i].JID < items[j].JID })
 			return &waDomain.GroupListResponse{Groups: items, Count: len(items)}, nil
+		})
+}
+
+// GetGroupInfo returns the full detail of one group. The chat must resolve to a
+// group JID (@g.us); anything else is a 400. Cached + budgeted like other
+// server-hitting reads.
+func (uc *WhatsappMessageUsecase) GetGroupInfo(
+	ctx context.Context,
+	traceID, phoneNumber, chat string,
+) (*waDomain.GroupInfoResponse, error) {
+	target, err := resolveChat(chat, "")
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasSuffix(target, "@"+groupServerSuffix) {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a group (@g.us), got %q", target))
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "groupinfo:"+phoneNumber+":"+target,
+		func() (*waDomain.GroupInfoResponse, error) {
+			return uc.whatsappManager.GetGroupInfo(ctx, traceID, phoneNumber, target)
+		})
+}
+
+// GetContactInfo returns a server-side profile lookup for one user. The chat
+// must resolve to a user JID (a group is a 400). Cached + budgeted.
+func (uc *WhatsappMessageUsecase) GetContactInfo(
+	ctx context.Context,
+	traceID, phoneNumber, chat, msisdn string,
+) (*waDomain.ContactInfoResponse, error) {
+	target, err := resolveChat(chat, msisdn)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasSuffix(target, "@"+groupServerSuffix) {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a user, not a group: %q", target))
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "contactinfo:"+phoneNumber+":"+target,
+		func() (*waDomain.ContactInfoResponse, error) {
+			return uc.whatsappManager.GetContactInfo(ctx, traceID, phoneNumber, target)
 		})
 }

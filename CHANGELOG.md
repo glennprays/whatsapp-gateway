@@ -12,6 +12,9 @@ All notable changes to this project are documented here. Versions follow
 - **`GET /api/contact/`** — list the account's locally-synced contacts, paginated via `limit`/`offset` (default 100, max 500), with `count`/`total` and a synced-state note. A pure local-store read (no network); an empty/partial list right after pairing is normal, not an error.
 - **`GET /api/group/`** — list the account's joined groups (lightweight summaries: jid, name, topic, owner, participant count, announce/locked/community flags). Hits the WhatsApp server, so it is short-TTL cached and metered by a per-account **read budget** (`READ_QUERY_*`); repeat polls are served from cache, and an exhausted budget returns `429`.
 - **Read/query cache + per-account budget** infra (`READ_QUERY_CACHE_TTL_SECONDS`, `READ_QUERY_BUDGET`, `READ_QUERY_WINDOW_SECONDS`) shared by all server-hitting reads so polling can't trip anti-spam.
+- **`GET /api/group/info?chat=<@g.us>`** — full detail of one group incl. the participant roster (jid/phone/lid + admin flags). Requires a group JID and account membership. Cached + budgeted.
+- **`GET /api/contact/info?chat=`** — server-side profile lookup for one user (status text, current picture id, verified business name, linked-device count, lid). Cached + budgeted.
+- **whatsmeow error sentinels mapped via `errors.Is`** (not substring): `ErrGroupNotFound`/`ErrProfilePictureNotSet` → `404`, `ErrNotInGroup`/`ErrProfilePictureUnauthorized` → `403`.
 
 ### Changed
 - `msisdn` is now a **deprecated back-compat alias** for `chat` (still fully supported; `chat` wins when both are set). Recipient resolution funnels through `resolveChat`, which strips device/agent JID suffixes, lowercases the server, requires a digits-only user, and rejects `broadcast`/unknown servers early with a `400` instead of a late `500`.

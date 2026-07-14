@@ -53,6 +53,8 @@ type (
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
+		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
+		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -557,6 +559,30 @@ func (m *manager) ListGroups(ctx context.Context, traceID string, phoneNumber st
 		return nil, err
 	}
 	return items, nil
+}
+
+func (m *manager) GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error) {
+	info, err := m.Client.GetGroupInfo(ctx, traceID, phoneNumber, groupJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get group info", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error) {
+	info, err := m.Client.GetContactInfo(ctx, traceID, phoneNumber, userJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get contact info", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

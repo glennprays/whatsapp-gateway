@@ -33,3 +33,15 @@ type ContactListResponse struct {
 	Total    int               `json:"total"` // total synced contacts
 	Note     string            `json:"note"`
 }
+
+// ContactInfoResponse is a server-side profile lookup for one user (whatsmeow
+// GetUserInfo): status text, current picture id, verified business name, and
+// the number of linked devices.
+type ContactInfoResponse struct {
+	JID          string `json:"jid"`
+	Status       string `json:"status,omitempty"`
+	PictureID    string `json:"picture_id,omitempty"`
+	VerifiedName string `json:"verified_name,omitempty"`
+	DeviceCount  int    `json:"device_count"`
+	LID          string `json:"lid,omitempty"`
+}

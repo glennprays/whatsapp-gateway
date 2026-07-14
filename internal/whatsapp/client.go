@@ -39,6 +39,8 @@ type (
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
+		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
+		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
@@ -150,6 +152,14 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 		)
 		clients.Delete(phoneNumber)
 		return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
+	}
+	// Read-surface sentinels (matched via errors.Is, never substring — ADR 0002).
+	// "Absent" resources map to 404; "not allowed to see it" maps to 403.
+	if errors.Is(err, whatsmeow.ErrGroupNotFound) || errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
+		return errDomain.NewError(errDomain.ErrNotFound, err)
+	}
+	if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
+		return errDomain.NewError(errDomain.ErrForbidden, err)
 	}
 	// Recipient problems (e.g. "can't send message to unknown server") are
 	// caller input errors, not server faults — surface as 400, not 500.
@@ -368,6 +378,103 @@ func (c *client) ListGroups(ctx context.Context, traceID string, phoneNumber str
 		})
 	}
 	return items, nil
+}
+
+// GetGroupInfo returns the full detail of one group (whatsmeow GetGroupInfo, a
+// server IQ). Requires a group JID and account membership; absence/permission
+// map to 404/403 via mapWhatsmeowErr sentinels.
+func (c *client) GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	jid, err := types.ParseJID(groupJID)
+	if err != nil || jid.Server != types.GroupServer {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a group JID (@g.us): %q", groupJID))
+	}
+
+	g, err := cli.GetGroupInfo(ctx, jid)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+
+	participants := make([]waDomain.GroupParticipantItem, 0, len(g.Participants))
+	for _, p := range g.Participants {
+		participants = append(participants, waDomain.GroupParticipantItem{
+			JID:          p.JID.String(),
+			PhoneNumber:  jidStringOrEmpty(p.PhoneNumber),
+			LID:          jidStringOrEmpty(p.LID),
+			IsAdmin:      p.IsAdmin,
+			IsSuperAdmin: p.IsSuperAdmin,
+		})
+	}
+	count := g.ParticipantCount
+	if count == 0 {
+		count = len(participants)
+	}
+
+	return &waDomain.GroupInfoResponse{
+		JID:              g.JID.String(),
+		Name:             g.Name,
+		Topic:            g.Topic,
+		OwnerJID:         g.OwnerJID.String(),
+		ParticipantCount: count,
+		IsAnnounce:       g.IsAnnounce,
+		IsLocked:         g.IsLocked,
+		IsCommunity:      g.IsParent,
+		IsEphemeral:      g.IsEphemeral,
+		Participants:     participants,
+	}, nil
+}
+
+// GetContactInfo returns a server-side profile lookup for one user (whatsmeow
+// GetUserInfo). An unknown number simply yields a response with the JID only.
+func (c *client) GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	jid, err := types.ParseJID(userJID)
+	if err != nil {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", userJID))
+	}
+
+	infos, err := cli.GetUserInfo(ctx, []types.JID{jid})
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+
+	resp := &waDomain.ContactInfoResponse{JID: jid.String()}
+	info, ok := infos[jid]
+	if !ok {
+		return resp, nil
+	}
+	resp.Status = info.Status
+	resp.PictureID = info.PictureID
+	resp.DeviceCount = len(info.Devices)
+	resp.LID = jidStringOrEmpty(info.LID)
+	if info.VerifiedName != nil && info.VerifiedName.Details != nil {
+		resp.VerifiedName = info.VerifiedName.Details.GetVerifiedName()
+	}
+	return resp, nil
+}
+
+// jidStringOrEmpty returns the JID string, or "" for the zero JID (so empty
+// optional fields are omitted rather than rendered as "@s.whatsapp.net").
+func jidStringOrEmpty(j types.JID) string {
+	if j.IsEmpty() {
+		return ""
+	}
+	return j.String()
 }
 
 func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
