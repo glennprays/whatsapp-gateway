@@ -27,6 +27,9 @@ type WhatsAppRepository interface {
 
 	UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error
 	ListSessionStatuses(ctx context.Context) (map[string]waDomain.SessionStatus, error)
+	// GetSessionStatus is a single-row PK lookup (nil when absent) for the pacer
+	// ban gate's hot path — cheaper than scanning the whole table per send.
+	GetSessionStatus(ctx context.Context, phone string) (*waDomain.SessionStatus, error)
 }
 
 func NewWhatsappRepository(db *sql.DB) WhatsAppRepository {
@@ -205,4 +208,34 @@ func (r *whatsAppRepository) ListSessionStatuses(ctx context.Context) (map[strin
 		out[phone] = s
 	}
 	return out, rows.Err()
+}
+
+// GetSessionStatus returns one account's persisted status, or (nil, nil) when no
+// row exists. Single-row PK lookup for the pacer ban gate.
+func (r *whatsAppRepository) GetSessionStatus(ctx context.Context, phone string) (*waDomain.SessionStatus, error) {
+	var state string
+	var reason sql.NullString
+	var banExpiresAt sql.NullTime
+	var updatedAt sql.NullTime
+	err := r.DB.QueryRowContext(ctx,
+		"SELECT state, reason, ban_expires_at, updated_at FROM session_status WHERE phone_number = $1", phone,
+	).Scan(&state, &reason, &banExpiresAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	s := &waDomain.SessionStatus{State: state}
+	if reason.Valid {
+		s.Reason = reason.String
+	}
+	if banExpiresAt.Valid {
+		t := banExpiresAt.Time
+		s.BanExpiresAt = &t
+	}
+	if updatedAt.Valid {
+		s.UpdatedAt = updatedAt.Time
+	}
+	return s, nil
 }

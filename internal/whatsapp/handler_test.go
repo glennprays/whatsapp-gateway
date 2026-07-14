@@ -48,6 +48,9 @@ func (m *mockSessionRepo) UpsertSessionStatus(ctx context.Context, phone, state,
 func (m *mockSessionRepo) ListSessionStatuses(ctx context.Context) (map[string]waDomain.SessionStatus, error) {
 	return nil, nil
 }
+func (m *mockSessionRepo) GetSessionStatus(ctx context.Context, phone string) (*waDomain.SessionStatus, error) {
+	return nil, nil
+}
 
 func newTestLogger(t *testing.T) *customLog.Logger {
 	t.Helper()

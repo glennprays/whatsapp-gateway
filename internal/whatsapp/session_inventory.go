@@ -185,6 +185,35 @@ func (m *manager) GetOneSession(ctx context.Context, traceID, phone string) (*wa
 	return m.Client.GetOneSession(ctx, phone)
 }
 
+// BanState reports whether an account is currently under a WhatsApp temporary
+// ban and, if so, until when — a read-through of the persisted session-status
+// store used by the outbound pacer's ban gate. A banned row with no reported
+// expiry (whatsmeow did not supply a duration) is held for
+// OutboundPaceBanDefaultHoldSeconds from when it was recorded.
+func (c *client) BanState(phoneNumber string) (time.Time, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	s, err := c.repository.GetSessionStatus(ctx, phoneNumber)
+	if err != nil || s == nil || s.State != "banned" {
+		return time.Time{}, false
+	}
+	var until time.Time
+	if s.BanExpiresAt != nil {
+		until = *s.BanExpiresAt
+	} else {
+		hold := time.Duration(c.cfg.OutboundPaceBanDefaultHoldSeconds) * time.Second
+		until = s.UpdatedAt.Add(hold)
+	}
+	if until.After(time.Now()) {
+		return until, true
+	}
+	return time.Time{}, false
+}
+
+func (m *manager) BanState(phoneNumber string) (time.Time, bool) {
+	return m.Client.BanState(phoneNumber)
+}
+
 // Hostname returns this instance's hostname (falling back to "unknown"), used
 // as the per-instance identifier in admin/session responses.
 func Hostname() string {

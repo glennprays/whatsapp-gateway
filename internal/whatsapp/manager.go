@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -80,6 +81,7 @@ type (
 		GetClientStore() *ClientStore
 		SessionInventory(ctx context.Context, traceID string) (*waDomain.SessionInventory, error)
 		GetOneSession(ctx context.Context, traceID string, phone string) (*waDomain.SessionInventoryItem, error)
+		BanState(phoneNumber string) (time.Time, bool)
 	}
 )
 

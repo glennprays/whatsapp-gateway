@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glennprays/whatsapp-gateway/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,6 +21,47 @@ func newSessionStatusTestDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	return db
+}
+
+func TestClientBanState(t *testing.T) {
+	db := newSessionStatusTestDB(t)
+	defer db.Close()
+	repo := NewWhatsappRepository(db)
+	ctx := context.Background()
+	c := &client{cfg: &config.Config{OutboundPaceBanDefaultHoldSeconds: 3600}, repository: repo}
+
+	// No row => not banned.
+	if _, banned := c.BanState("111"); banned {
+		t.Fatal("unknown account must not be banned")
+	}
+
+	// Connected => not banned.
+	_ = repo.UpsertSessionStatus(ctx, "222", "connected", "", nil)
+	if _, banned := c.BanState("222"); banned {
+		t.Fatal("connected account must not be banned")
+	}
+
+	// Banned with a future expiry => banned until that time.
+	future := time.Now().Add(30 * time.Minute)
+	_ = repo.UpsertSessionStatus(ctx, "333", "banned", "too many", &future)
+	until, banned := c.BanState("333")
+	if !banned || until.Before(time.Now()) {
+		t.Fatalf("account with future ban expiry must be banned, got until=%v banned=%v", until, banned)
+	}
+
+	// Banned but expiry already passed => not banned.
+	past := time.Now().Add(-time.Minute)
+	_ = repo.UpsertSessionStatus(ctx, "444", "banned", "old", &past)
+	if _, banned := c.BanState("444"); banned {
+		t.Fatal("account whose ban expiry has passed must not be banned")
+	}
+
+	// Banned with unknown duration (nil expiry) => held for the default hold
+	// from updated_at (just now), so still banned.
+	_ = repo.UpsertSessionStatus(ctx, "555", "banned", "unknown duration", nil)
+	if _, banned := c.BanState("555"); !banned {
+		t.Fatal("banned account with unknown duration must be held for the default hold")
+	}
 }
 
 func TestSessionStatusUpsertAndList(t *testing.T) {

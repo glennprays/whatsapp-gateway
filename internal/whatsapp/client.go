@@ -79,6 +79,7 @@ type (
 		UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
 		SessionInventory(ctx context.Context) ([]waDomain.SessionInventoryItem, error)
 		GetOneSession(ctx context.Context, phone string) (*waDomain.SessionInventoryItem, error)
+		BanState(phoneNumber string) (time.Time, bool)
 	}
 )
 
