@@ -93,6 +93,7 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		}
 
 		jid := client.Store.ID.String()
+		clients.SetJID(phoneNumber, jid) // keep the cache warm for teardown events
 
 		// Capture into per-session in-memory buffer before any further
 		// processing so both queue and direct paths feed the same source.
@@ -220,14 +221,21 @@ func connectFailurePayload(phoneNumber, jid string, v *events.ConnectFailure) ma
 	return p
 }
 
-// sessionJID resolves an account's device JID, or "" when the in-memory client
-// isn't paired yet (so a lifecycle webhook that can't be addressed is skipped).
+// sessionJID resolves an account's device JID. It reads the live client's
+// Store.ID exactly once (avoiding a TOCTOU nil-deref while whatsmeow nils it out
+// during logout) and caches the result; when the live client is mid-teardown
+// (Store.ID already nil) it falls back to the last-known cached JID so a
+// logout/ban webhook can still be addressed. "" only when never paired.
 func sessionJID(phoneNumber string) string {
 	client := clients.Get(phoneNumber)
-	if client == nil || client.Store == nil || client.Store.ID == nil {
-		return ""
+	if client != nil && client.Store != nil {
+		if id := client.Store.ID; id != nil { // single read: no check-then-deref race
+			jid := id.String()
+			clients.SetJID(phoneNumber, jid)
+			return jid
+		}
 	}
-	return client.Store.ID.String()
+	return clients.JID(phoneNumber)
 }
 
 // dispatch fans a pre-built lifecycle event out to every matching subscription.

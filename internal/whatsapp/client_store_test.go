@@ -45,6 +45,26 @@ func TestClientStore_GetSetDelete(t *testing.T) {
 	}
 }
 
+func TestClientStore_JIDCacheSurvivesClientDelete(t *testing.T) {
+	cs := NewClientStore()
+
+	// Empty and no-op cases.
+	if got := cs.JID("123"); got != "" {
+		t.Fatalf("expected empty JID for unknown account, got %q", got)
+	}
+	cs.SetJID("123", "") // empty JID must not be cached
+	if got := cs.JID("123"); got != "" {
+		t.Fatalf("empty SetJID must be a no-op, got %q", got)
+	}
+
+	// A warmed JID must survive the client being evicted (the logout race).
+	cs.SetJID("123", "628111@s.whatsapp.net")
+	cs.Delete("123")
+	if got := cs.JID("123"); got != "628111@s.whatsapp.net" {
+		t.Fatalf("cached JID must survive client eviction, got %q", got)
+	}
+}
+
 func TestClientStore_ConcurrentAccess(t *testing.T) {
 	cs := NewClientStore()
 	var wg sync.WaitGroup
