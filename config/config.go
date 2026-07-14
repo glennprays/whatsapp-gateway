@@ -70,6 +70,9 @@ type Config struct {
 	// the ROOT path. Empty secret keeps the whole plane unregistered (404, dark
 	// by default); when set, requests need Authorization: Bearer <secret>.
 	AdminAPISecret string `mapstructure:"ADMIN_API_SECRET" default:""`
+	// MetricsEnabled toggles /metrics independently; it still requires
+	// ADMIN_API_SECRET to be set to be reachable (same bearer-gated plane).
+	MetricsEnabled bool `mapstructure:"METRICS_ENABLED" default:"false"`
 
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`

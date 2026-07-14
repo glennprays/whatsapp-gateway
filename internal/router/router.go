@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
 	"github.com/glennprays/whatsapp-gateway/internal/handler"
 	admin_handler "github.com/glennprays/whatsapp-gateway/internal/handler/admin"
+	"github.com/glennprays/whatsapp-gateway/internal/metrics"
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/gofiber/fiber/v2"
@@ -174,7 +176,32 @@ func SetupRouter(
 		adminGrp := app.Group("/admin", adminAuth)
 		adminGrp.Get("/sessions", adminHandler.Sessions)
 		adminGrp.Get("/sessions/:phone", adminHandler.Session)
+
+		// /metrics is gated independently by METRICS_ENABLED but still lives
+		// behind the same admin bearer (and is unreachable without the secret).
+		if cfg.MetricsEnabled {
+			metrics.SetSessionsSource(func() map[string]int { return tallyStates(manager) })
+			app.Get("/metrics", adminAuth, metrics.Handler())
+		}
 	}
 
 	return app
+}
+
+// tallyStates buckets the per-instance session inventory by state for the
+// sessions gauge. Computed on every scrape (never labelled by phone number).
+func tallyStates(manager whatsapp.Manager) map[string]int {
+	states := map[string]int{
+		"connected": 0, "disconnected": 0, "never_paired": 0, "logged_out": 0, "banned": 0,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	inv, err := manager.SessionInventory(ctx, "metrics")
+	if err != nil || inv == nil {
+		return states
+	}
+	for _, s := range inv.Sessions {
+		states[s.State]++
+	}
+	return states
 }

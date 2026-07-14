@@ -16,6 +16,7 @@ import (
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/internal/metrics"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
@@ -242,6 +243,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 
 			// Send message.queued webhook
 			uc.sendQueuedWebhook(ctx, traceID, job)
+			metrics.RecordSend(job.Type, "queue", nil)
 
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
@@ -273,6 +275,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message, msgCtx)
+	metrics.RecordSend("text", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -380,6 +383,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 			// Send message.queued webhook
 			uc.sendQueuedWebhook(ctx, traceID, job)
+			metrics.RecordSend(job.Type, "queue", nil)
 
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
@@ -392,6 +396,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 	// Direct mode (or fallback): immediate send
 	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce, msgCtx)
+	metrics.RecordSend("image", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send image message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -496,6 +501,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce, msgCtx)
+	metrics.RecordSend("audio", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send audio message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -589,6 +595,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce, msgCtx)
+	metrics.RecordSend("video", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send video message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -686,6 +693,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption, msgCtx)
+	metrics.RecordSend("document", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send document message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -766,6 +774,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address, msgCtx)
+	metrics.RecordSend("location", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
@@ -848,6 +857,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount, msgCtx)
+	metrics.RecordSend("poll", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
@@ -934,6 +944,7 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 
 	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType, msgCtx)
+	metrics.RecordSend("sticker", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err

@@ -8,6 +8,7 @@ import (
 
 	customLog "github.com/glennprays/log"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	"github.com/glennprays/whatsapp-gateway/internal/metrics"
 	"github.com/glennprays/whatsapp-gateway/internal/utils"
 	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow"
@@ -222,6 +223,7 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 
 	// Send webhook
 	err = h.sender.Send(ctx, webhook.Url, webhook.HmacSecret, payload)
+	metrics.RecordWebhook("direct", string(domainQueue.EventMessageIncoming), err)
 	if err != nil {
 		h.logger.Error(traceID, "Failed to deliver webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+webhook.Url, nil, customLog.Error(err))
 	} else {
