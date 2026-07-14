@@ -1,8 +1,10 @@
 package whatsapp
 
-// ContactCheckRequest represents a request to validate a recipient.
+// ContactCheckRequest represents a request to validate a recipient. Accepts
+// `chat` (canonical) or the legacy `msisdn` alias; at least one is required.
 type ContactCheckRequest struct {
-	Msisdn string `json:"msisdn" query:"msisdn" form:"msisdn" binding:"required"`
+	Chat   string `json:"chat" query:"chat" form:"chat" binding:"omitempty"`
+	Msisdn string `json:"msisdn" query:"msisdn" form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
 }
 
 // ContactCheckResponse is the result of an IsOnWhatsApp lookup.

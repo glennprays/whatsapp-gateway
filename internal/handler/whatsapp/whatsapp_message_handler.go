@@ -415,8 +415,8 @@ func (h *WhatsappMessageHandler) CheckNumber(c *fiber.Ctx) error {
 		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
-	if req.Msisdn == "" {
-		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, errors.New("msisdn query param is required")))
+	if req.Msisdn == "" && req.Chat == "" {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, errors.New("chat (or msisdn) query param is required")))
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 

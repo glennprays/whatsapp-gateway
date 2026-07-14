@@ -20,6 +20,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow/types"
 )
 
 const (
@@ -75,32 +76,46 @@ func validateMediaMime(kind, detectedMime string) error {
 }
 
 // validJIDServers are the WhatsApp address spaces a recipient may target.
+// `broadcast` is intentionally excluded: whatsmeow does not support sending to
+// non-status broadcast lists, so we reject it early (400) instead of letting it
+// fail late as a confusing 500.
 var validJIDServers = map[string]bool{
 	"s.whatsapp.net": true, // individual user
 	"g.us":           true, // group
 	"lid":            true, // privacy-preserving linked id
-	"broadcast":      true, // broadcast / status list
 }
 
-// validateRecipient trims and normalizes a recipient identifier into a JID.
+// resolveChat resolves the canonical recipient JID from a request's `chat`
+// field (preferred) or the legacy `msisdn` alias — chat wins when both are set.
 // A bare phone number (optionally with +, spaces or dashes) becomes
-// "<digits>@s.whatsapp.net"; a value already in JID form must use a known
-// server. Empty or otherwise invalid input returns a 400-mapped domain error
-// instead of letting whatsmeow fail later with a confusing 500
-// ("can't send message to unknown server").
-func validateRecipient(msisdn string) (string, error) {
-	v := strings.TrimSpace(msisdn)
+// "<digits>@s.whatsapp.net". A value already in JID form must use a known
+// server (s.whatsapp.net, g.us, lid) with a digits-only user; any device/agent
+// suffix is stripped and the server is lowercased to the canonical non-AD form.
+// Empty or otherwise invalid input returns a 400-mapped domain error instead of
+// letting whatsmeow fail later with a confusing 500.
+func resolveChat(chat, msisdn string) (string, error) {
+	v := strings.TrimSpace(chat)
+	if v == "" {
+		v = strings.TrimSpace(msisdn)
+	}
 	if v == "" {
 		return "", errDomain.NewError(errDomain.ErrBadRequest,
-			errors.New("recipient (msisdn) is required"))
+			errors.New("chat (or msisdn) is required"))
 	}
 
-	if user, server, found := strings.Cut(v, "@"); found {
-		if user == "" || !validJIDServers[server] {
+	if strings.ContainsRune(v, '@') {
+		jid, err := types.ParseJID(v)
+		if err != nil || !isAllDigits(jid.User) {
 			return "", errDomain.NewError(errDomain.ErrBadRequest,
-				fmt.Errorf("invalid recipient %q", msisdn))
+				fmt.Errorf("invalid recipient %q", v))
 		}
-		return v, nil
+		server := strings.ToLower(jid.Server)
+		if !validJIDServers[server] {
+			return "", errDomain.NewError(errDomain.ErrBadRequest,
+				fmt.Errorf("invalid recipient %q", v))
+		}
+		// Canonical non-AD form: user@server with device/agent stripped.
+		return jid.User + "@" + server, nil
 	}
 
 	// Bare number: keep digits only, then attach the individual-user server.
@@ -112,9 +127,22 @@ func validateRecipient(msisdn string) (string, error) {
 	}, strings.TrimPrefix(v, "+"))
 	if digits == "" {
 		return "", errDomain.NewError(errDomain.ErrBadRequest,
-			fmt.Errorf("invalid recipient %q", msisdn))
+			fmt.Errorf("invalid recipient %q", v))
 	}
 	return digits + "@s.whatsapp.net", nil
+}
+
+// isAllDigits reports whether s is non-empty and contains only ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // WhatsappMessageUsecase handles message operations business logic
@@ -158,7 +186,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendTextMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -261,7 +289,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	fileHeader *multipart.FileHeader,
 	isViewOnce bool,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -369,7 +397,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	req waDomain.SendAudioMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -454,7 +482,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	req waDomain.SendVideoMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -538,7 +566,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	req waDomain.SendDocumentMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -625,7 +653,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendLocationMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -691,7 +719,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendPollMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -765,7 +793,7 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	req waDomain.SendStickerMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -841,7 +869,7 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
@@ -850,7 +878,7 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	// Sender is optional: omit it when reacting to your own outgoing message.
 	var senderJID string
 	if strings.TrimSpace(req.SenderMsisdn) != "" {
-		senderJID, rErr = validateRecipient(req.SenderMsisdn)
+		senderJID, rErr = resolveChat("", req.SenderMsisdn)
 		if rErr != nil {
 			return rErr
 		}
@@ -879,7 +907,7 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageDeleteRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
@@ -904,7 +932,7 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
@@ -935,7 +963,7 @@ func (uc *WhatsappMessageUsecase) CheckNumber(
 	traceID, phoneNumber string,
 	req waDomain.ContactCheckRequest,
 ) (waDomain.ContactCheckResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return waDomain.ContactCheckResponse{}, err
 	}

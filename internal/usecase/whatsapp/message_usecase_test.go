@@ -8,32 +8,45 @@ import (
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 )
 
-func TestValidateRecipient(t *testing.T) {
+func TestResolveChat(t *testing.T) {
 	cases := []struct {
 		name    string
-		in      string
+		chat    string
+		msisdn  string
 		want    string
 		wantErr bool
 	}{
-		{"empty", "", "", true},
-		{"whitespace only", "   ", "", true},
-		{"bare number", "6281910481554", "6281910481554@s.whatsapp.net", false},
-		{"plus and spaces", "+62 819 1048 1554", "6281910481554@s.whatsapp.net", false},
-		{"dashes", "62-819-1048-1554", "6281910481554@s.whatsapp.net", false},
-		{"full user jid", "6281910481554@s.whatsapp.net", "6281910481554@s.whatsapp.net", false},
-		{"group jid", "120363012345678901@g.us", "120363012345678901@g.us", false},
-		{"lid jid", "12345@lid", "12345@lid", false},
-		{"unknown server", "6281910481554@example.com", "", true},
-		{"empty user with server", "@s.whatsapp.net", "", true},
-		{"non-numeric bare", "not-a-number", "", true},
+		// Requiredness (both empty).
+		{"both empty", "", "", "", true},
+		{"whitespace only", "   ", "  ", "", true},
+		// msisdn fallback (chat empty) — legacy behavior preserved.
+		{"msisdn bare number", "", "6281910481554", "6281910481554@s.whatsapp.net", false},
+		{"msisdn plus and spaces", "", "+62 819 1048 1554", "6281910481554@s.whatsapp.net", false},
+		{"msisdn dashes", "", "62-819-1048-1554", "6281910481554@s.whatsapp.net", false},
+		// chat forms.
+		{"chat bare number", "6281910481554", "", "6281910481554@s.whatsapp.net", false},
+		{"chat pn jid", "6281910481554@s.whatsapp.net", "", "6281910481554@s.whatsapp.net", false},
+		{"chat group jid", "120363012345678901@g.us", "", "120363012345678901@g.us", false},
+		{"chat lid jid", "12345@lid", "", "12345@lid", false},
+		// chat wins over msisdn (precedence).
+		{"chat wins over msisdn", "120363012345678901@g.us", "6281910481554", "120363012345678901@g.us", false},
+		// Normalization: device/agent suffix stripped, server lowercased.
+		{"device suffix stripped", "6281910481554:2@s.whatsapp.net", "", "6281910481554@s.whatsapp.net", false},
+		{"uppercase server", "6281910481554@S.WHATSAPP.NET", "", "6281910481554@s.whatsapp.net", false},
+		// Rejections.
+		{"unknown server", "6281910481554@example.com", "", "", true},
+		{"broadcast dropped", "1234567890@broadcast", "", "", true},
+		{"empty user with server", "@s.whatsapp.net", "", "", true},
+		{"non-numeric user jid", "12ab34@s.whatsapp.net", "", "", true},
+		{"non-numeric bare", "not-a-number", "", "", true},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := validateRecipient(c.in)
+			got, err := resolveChat(c.chat, c.msisdn)
 			if c.wantErr {
 				if err == nil {
-					t.Fatalf("expected error for %q, got nil (result %q)", c.in, got)
+					t.Fatalf("expected error for chat=%q msisdn=%q, got nil (result %q)", c.chat, c.msisdn, got)
 				}
 				var de errDomain.Error
 				if !errors.As(err, &de) || de.ServiceError() != errDomain.ErrBadRequest {
@@ -42,10 +55,10 @@ func TestValidateRecipient(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", c.in, err)
+				t.Fatalf("unexpected error for chat=%q msisdn=%q: %v", c.chat, c.msisdn, err)
 			}
 			if got != c.want {
-				t.Errorf("validateRecipient(%q) = %q, want %q", c.in, got, c.want)
+				t.Errorf("resolveChat(%q, %q) = %q, want %q", c.chat, c.msisdn, got, c.want)
 			}
 		})
 	}
