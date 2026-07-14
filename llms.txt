@@ -54,8 +54,13 @@ Response:
 curl -X POST http://localhost:3000/api/v1/message/text \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"msisdn": "6289876543210", "message": "Hello!"}'
+  -d '{"chat": "6289876543210", "message": "Hello!"}'
 ```
+
+> **Recipient addressing:** every message/contact endpoint takes `chat` (canonical) or the
+> deprecated `msisdn` alias; `chat` wins when both are set. `chat` accepts a bare phone number,
+> a user JID (`@s.whatsapp.net`), a group JID (`@g.us`) — so you can message groups — or a `@lid`
+> (best-effort; not guaranteed dialable). Send responses echo the resolved canonical `chat`.
 
 ### Step 3: Login to WhatsApp
 

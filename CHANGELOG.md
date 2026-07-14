@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Unified `chat` recipient** on every send/message/contact-check request. `chat` accepts a bare phone number, a user JID (`@s.whatsapp.net`), a group JID (`@g.us`), or a `@lid`, so groups are now addressable. Send responses echo the resolved canonical `chat` JID. First step of the automation-platform plan (`docs/plan/`).
+
+### Changed
+- `msisdn` is now a **deprecated back-compat alias** for `chat` (still fully supported; `chat` wins when both are set). Recipient resolution funnels through `resolveChat`, which strips device/agent JID suffixes, lowercases the server, requires a digits-only user, and rejects `broadcast`/unknown servers early with a `400` instead of a late `500`.
+- `openapi.yaml`: `chat` added to all request bodies + send responses; `msisdn` marked deprecated and dropped from `required`; version → `0.12.0`.
+
 ## [0.11.1] - 2026-07-05
 
 ### Docs (no code change; refreshes the in-image OpenAPI spec + docs UI site)

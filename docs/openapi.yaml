@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.11.1
+  version: 0.12.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -94,10 +94,15 @@ components:
     SendMessageTextRequest:
       type: object
       properties:
-        msisdn::
-          type: string 
-        description: The recipient's Personal ID or Group ID.
-        example: "6281234567890@us.c"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
+          example: "6281234567890@us.c"
         message:
           type: string
           description: The text message to send.
@@ -113,12 +118,21 @@ components:
           type: string
           description: The ID of the sent message.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: The resolved canonical recipient JID.
+          example: "6281234567890@s.whatsapp.net"
     SendMessageImageRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         image:
           type: string
@@ -133,7 +147,6 @@ components:
           description: Whether the image should be sent as view once.
           example: false
       required:
-        - msisdn
         - image
     SendMessageQueuedResponse:
       type: object
@@ -146,12 +159,21 @@ components:
           type: string
           description: The ID of the queued job.
           example: "job_1234567890"
+        chat:
+          type: string
+          description: The resolved canonical recipient JID.
+          example: "6281234567890@s.whatsapp.net"
     SendMessageLocationRequest:
       type: object
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         latitude:
           type: number
@@ -170,15 +192,19 @@ components:
           description: Optional address of the location.
           example: "Jakarta, Indonesia"
       required:
-        - msisdn
         - latitude
         - longitude
     SendMessagePollRequest:
       type: object
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         question:
           type: string
@@ -197,29 +223,37 @@ components:
           default: 1
           example: 1
       required:
-        - msisdn
         - question
         - options
     SendMessageStickerRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         sticker:
           type: string
           format: binary
           description: The sticker file to send.
       required:
-        - msisdn
         - sticker
     SendMessageAudioRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         audio:
           type: string
@@ -237,14 +271,18 @@ components:
           description: Whether the audio should be sent as view once.
           example: false
       required:
-        - msisdn
         - audio
     SendMessageVideoRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         video:
           type: string
@@ -263,14 +301,18 @@ components:
           description: Whether the video should be sent as view once.
           example: false
       required:
-        - msisdn
         - video
     SendMessageDocumentRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         document:
           type: string
@@ -286,7 +328,6 @@ components:
           description: Optional caption. Wrapped so it renders reliably across clients.
           example: "Invoice for July"
       required:
-        - msisdn
         - document
     ContactCheckResponse:
       type: object
@@ -314,9 +355,14 @@ components:
           type: string
           description: The ID of the message to delete.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
     MessageEditRequest:
       type: object
@@ -325,9 +371,14 @@ components:
           type: string
           description: The ID of the message to edit.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         new_message:
           type: string
@@ -340,9 +391,14 @@ components:
           type: string
           description: The ID of the message to react to.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         emoji:
           type: string
@@ -702,10 +758,18 @@ paths:
         status, and verified business name if any. Also warms the LID<->PN
         cache, reducing send fragility.
       parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical recipient (see chat field). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
         - name: msisdn
           in: query
-          required: true
-          description: The phone number or JID to validate.
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat. Provide chat OR msisdn (at least one is required)."
           schema:
             type: string
             example: "6281234567890"

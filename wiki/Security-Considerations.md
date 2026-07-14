@@ -203,6 +203,18 @@ Implement comprehensive logging:
   - Consider IP whitelisting for documentation access
   - Monitor access to documentation endpoints
 
+### 8. Recipient Addressing
+
+- **Pass E.164 numbers only.** The gateway does **not** normalize national-format or
+  leading-zero numbers (e.g. `0812…`, `00812…`) — it has no caller-country context and will
+  address them literally, delivering to the wrong number. Normalizing to E.164 is the wrapping
+  backend's responsibility (consistent with "the gateway must be wrapped").
+- **`@lid` is best-effort.** A `@lid` recipient (a privacy-preserving linked id, e.g. from a
+  group participant) is **not guaranteed dialable** — delivery works only when a signal
+  session / PN mapping already exists. Do not treat a `@lid` as a phone number.
+- The `chat` field accepts group JIDs (`@g.us`); ensure your access control (below) authorizes
+  the account for the groups it sends into.
+
 ## Encryption and Data Protection
 
 ### HMAC Master Key
