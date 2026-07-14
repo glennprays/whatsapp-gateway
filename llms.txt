@@ -249,6 +249,7 @@ For complete API documentation, including all endpoints, request/response schema
 | Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both counted against the interim action cap |
 | Contact | `GET /contact/check?chat=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name), `GET /contact/` (list synced contacts; paginated limit/offset; local store, never 404 on empty), `GET /contact/info?chat=` (server profile: status/picture_id/verified_name/device_count; cached+budgeted), `GET /contact/avatar?chat=&preview=` (avatar URL+id for a user OR group; ETag via If-None-Match → 304; 404 none / 403 hidden) |
 | Group | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
+| Community | `GET /community/subgroups?chat=<@g.us>` (list a community's linked sub-groups; empty list if none, not an error), `GET /community/participants?chat=<@g.us>` (all participants across the community's linked groups; each participant's primary JID only) — both server reads, cached + per-account read budget; a non-community group returns 400/403/404 |
 | Health | `GET /health`, `GET /health/live`, `GET /health/ready` |
 
 ## Error Responses

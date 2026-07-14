@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.19.0
+  version: 0.20.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -30,6 +30,8 @@ tags:
     description: Endpoints for validating and listing contacts.
   - name: Group
     description: Endpoints for reading the account's WhatsApp groups.
+  - name: Community
+    description: Endpoints for reading a community's sub-groups and participants.
 
 components:
   parameters:
@@ -640,6 +642,47 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GroupParticipantItem'
+    SubGroupItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The sub-group's @g.us JID.
+          example: "120363111111111111@g.us"
+        name:
+          type: string
+          example: "Announcements"
+        is_default_sub_group:
+          type: boolean
+          description: The community's default/announcement group.
+          example: true
+    SubGroupListResponse:
+      type: object
+      properties:
+        sub_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubGroupItem'
+        count:
+          type: integer
+          example: 3
+    CommunityParticipantItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The participant's primary JID (@lid or @s.whatsapp.net).
+          example: "1122334455@lid"
+    CommunityParticipantsResponse:
+      type: object
+      properties:
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunityParticipantItem'
+        count:
+          type: integer
+          example: 42
     ContactInfoResponse:
       type: object
       properties:
@@ -1254,6 +1297,78 @@ paths:
           description: The account is not a participant of that group.
         '404':
           description: The group does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /community/subgroups:
+    get:
+      tags:
+        - Community
+      summary: List a community's sub-groups
+      description: >
+        Lists the groups linked under a community (whatsmeow GetSubGroups, a
+        server IQ). chat must be the community's @g.us JID. Short-TTL cached and
+        metered by the per-account read budget (429 when exhausted). A community
+        with zero sub-groups returns an empty list, not an error; a chat that is
+        a group but not a community returns 400/404.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The community's sub-groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubGroupListResponse'
+        '400':
+          description: chat is missing, is not a group JID, or is not a community.
+        '403':
+          description: The account is not authorized to read that community.
+        '404':
+          description: The community does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /community/participants:
+    get:
+      tags:
+        - Community
+      summary: List all community participants
+      description: >
+        Lists every participant across a community's linked groups (whatsmeow
+        GetLinkedGroupsParticipants, a server IQ). Returns each participant's
+        primary JID (@lid or @s.whatsapp.net). chat must be the community's
+        @g.us JID. Cached + metered by the per-account read budget like other
+        server reads.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The community's participants.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityParticipantsResponse'
+        '400':
+          description: chat is missing, is not a group JID, or is not a community.
+        '403':
+          description: The account is not authorized to read that community.
+        '404':
+          description: The community does not exist.
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
       security:
