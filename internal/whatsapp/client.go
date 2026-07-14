@@ -60,6 +60,22 @@ type (
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
+		// Group & community mutations (Phase E).
+		CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error)
+		LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error
+		UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error)
+		SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error
+		SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error
+		SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error
+		SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error
+		SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error)
+		GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error)
+		JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error)
+		GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error)
+		GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error)
+		UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error)
+		LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
+		UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
 		SessionInventory(ctx context.Context) ([]waDomain.SessionInventoryItem, error)
 		GetOneSession(ctx context.Context, phone string) (*waDomain.SessionInventoryItem, error)
 	}
@@ -169,23 +185,27 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 	if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
 		return errDomain.NewError(errDomain.ErrForbidden, err)
 	}
-	// GetSubGroups / GetLinkedGroupsParticipants return a raw *whatsmeow.IQError
-	// (they don't wrap in ErrGroupNotFound like getGroupInfo), so the sentinel
-	// checks above miss them. Map by the server's IQ code instead. This branch
-	// runs AFTER the sentinel checks so a wrapped ErrGroupNotFound still wins.
-	var iqErr *whatsmeow.IQError
-	if errors.As(err, &iqErr) {
-		switch iqErr.Code {
-		case 400, 405, 406:
-			return errDomain.NewError(errDomain.ErrBadRequest, err)
-		case 401, 403:
-			return errDomain.NewError(errDomain.ErrForbidden, err)
-		case 404:
-			return errDomain.NewError(errDomain.ErrNotFound, err)
-		case 419, 429:
-			return errDomain.NewError(errDomain.ErrTooManyRequests, err)
-		}
-		// Unknown code (0/500/…) falls through to ErrInternalFailure below.
+	// Group-mutation named sentinels (each wraps an IQError; matched first so the
+	// specific human message wins — status is identical to the raw-code fallback).
+	if errors.Is(err, whatsmeow.ErrInvalidImageFormat) {
+		return errDomain.NewError(errDomain.ErrBadRequest, errors.New("group photo must be a JPEG"))
+	}
+	if errors.Is(err, whatsmeow.ErrInviteLinkRevoked) {
+		return errDomain.NewError(errDomain.ErrGone, err)
+	}
+	if errors.Is(err, whatsmeow.ErrInviteLinkInvalid) {
+		return errDomain.NewError(errDomain.ErrBadRequest, err)
+	}
+	if errors.Is(err, whatsmeow.ErrGroupInviteLinkUnauthorized) {
+		return errDomain.NewError(errDomain.ErrForbidden, err)
+	}
+	// Raw *whatsmeow.IQError fallback: the mutation calls (CreateGroup,
+	// UpdateGroupParticipants, Set*, Link/UnlinkGroup) and reads (GetSubGroups,
+	// GetLinkedGroupsParticipants) return a bare IQError instead of wrapping it in
+	// ErrGroupNotFound. Map by the server's IQ code. Runs AFTER the sentinel
+	// checks so a wrapped ErrGroupNotFound still wins.
+	if mapped, ok := mapIQError(err); ok {
+		return mapped
 	}
 	// Recipient problems (e.g. "can't send message to unknown server") are
 	// caller input errors, not server faults — surface as 400, not 500.
@@ -193,6 +213,34 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
 	}
 	return errDomain.NewError(errDomain.ErrInternalFailure, err)
+}
+
+// mapIQError maps a raw *whatsmeow.IQError to a domain error by its server IQ
+// code, returning ok=false when err is not an IQError so callers can fall
+// through to other checks. An authenticated caller lacking a group role (401/403)
+// is a 403 (never a 401). 410 (gone) → ErrGone; 409/423 (conflict/locked) →
+// ErrConflict; 419/429 (resource/rate limit) → ErrTooManyRequests.
+func mapIQError(err error) (error, bool) {
+	var iq *whatsmeow.IQError
+	if !errors.As(err, &iq) {
+		return nil, false
+	}
+	switch iq.Code {
+	case 400, 405, 406:
+		return errDomain.NewError(errDomain.ErrBadRequest, err), true
+	case 401, 403:
+		return errDomain.NewError(errDomain.ErrForbidden, err), true
+	case 404:
+		return errDomain.NewError(errDomain.ErrNotFound, err), true
+	case 409, 423:
+		return errDomain.NewError(errDomain.ErrConflict, err), true
+	case 410:
+		return errDomain.NewError(errDomain.ErrGone, err), true
+	case 419, 429:
+		return errDomain.NewError(errDomain.ErrTooManyRequests, err), true
+	default:
+		return errDomain.NewError(errDomain.ErrInternalFailure, err), true
+	}
 }
 
 // isRecipientError reports whether a whatsmeow send error is caused by a bad
@@ -429,6 +477,16 @@ func (c *client) GetGroupInfo(ctx context.Context, traceID string, phoneNumber s
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 
+	return toGroupInfoResponse(g), nil
+}
+
+// toGroupInfoResponse projects a whatsmeow *types.GroupInfo into the domain DTO.
+// Shared by GetGroupInfo, CreateGroup, and the invite-link preview so the
+// projection lives in one place.
+func toGroupInfoResponse(g *types.GroupInfo) *waDomain.GroupInfoResponse {
+	if g == nil {
+		return nil
+	}
 	participants := make([]waDomain.GroupParticipantItem, 0, len(g.Participants))
 	for _, p := range g.Participants {
 		participants = append(participants, waDomain.GroupParticipantItem{
@@ -455,7 +513,38 @@ func (c *client) GetGroupInfo(ctx context.Context, traceID string, phoneNumber s
 		IsCommunity:      g.IsParent,
 		IsEphemeral:      g.IsEphemeral,
 		Participants:     participants,
-	}, nil
+	}
+}
+
+// participantResults maps whatsmeow's per-participant outcome slice into the
+// canonical domain result. Error==0 is a success; Error!=0 with an AddRequest is
+// a privacy-blocked add converted to an invite (not yet a member); Error!=0
+// without one is a hard per-participant failure. A batch mutation returns a
+// nil error with these mixed outcomes — never fail the whole call for one item.
+func participantResults(ps []types.GroupParticipant) []waDomain.ParticipantResult {
+	out := make([]waDomain.ParticipantResult, 0, len(ps))
+	for _, p := range ps {
+		r := waDomain.ParticipantResult{
+			JID: p.JID.String(),
+			LID: jidStringOrEmpty(p.LID),
+		}
+		switch {
+		case p.Error == 0:
+			r.Status = "ok"
+		case p.AddRequest != nil:
+			r.Status = "invited"
+			r.Code = p.Error
+			r.Invite = &waDomain.ParticipantInvite{
+				Code:      p.AddRequest.Code,
+				ExpiresAt: p.AddRequest.Expiration,
+			}
+		default:
+			r.Status = "failed"
+			r.Code = p.Error
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // ListSubGroups returns the groups linked under a community (whatsmeow
@@ -523,6 +612,328 @@ func (c *client) ListCommunityParticipants(ctx context.Context, traceID string, 
 		items = append(items, waDomain.CommunityParticipantItem{JID: j.String()})
 	}
 	return items, nil
+}
+
+// loggedInClient returns the account's live client, or a 404 (no client) / 401
+// (not logged in) domain error. Shared by the link-based group methods that take
+// a raw invite code (no group JID to parse).
+func (c *client) loggedInClient(phoneNumber string) (*whatsmeow.Client, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+	return cli, nil
+}
+
+// groupClient returns the account's live client plus the parsed group JID,
+// enforcing the same nil→404 / not-logged-in→401 / non-@g.us→400 guards the read
+// path uses. Defense in depth: the usecase already required @g.us upstream.
+func (c *client) groupClient(phoneNumber string, groupJID string) (*whatsmeow.Client, types.JID, error) {
+	cli, err := c.loggedInClient(phoneNumber)
+	if err != nil {
+		return nil, types.JID{}, err
+	}
+	jid, err := types.ParseJID(groupJID)
+	if err != nil || jid.Server != types.GroupServer {
+		return nil, types.JID{}, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a group JID (@g.us): %q", groupJID))
+	}
+	return cli, jid, nil
+}
+
+// parseUserJIDs parses each participant string into a JID. The usecase already
+// normalized/validated these (via resolveChat), so a parse failure here is a 400.
+func parseUserJIDs(list []string) ([]types.JID, error) {
+	out := make([]types.JID, 0, len(list))
+	for _, s := range list {
+		jid, err := types.ParseJID(s)
+		if err != nil {
+			return nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid participant %q", s))
+		}
+		out = append(out, jid)
+	}
+	return out, nil
+}
+
+// isSelfJID reports whether jid is the account's own number (PN, matched against
+// Store.ID for @s.whatsapp.net) or own linked id (matched against Store.LID for
+// @lid). Backs the remove/promote/demote self-guard's LID case.
+func isSelfJID(cli *whatsmeow.Client, jid types.JID) bool {
+	if cli == nil || cli.Store == nil {
+		return false
+	}
+	if id := cli.Store.ID; id != nil && id.User == jid.User && jid.Server == types.DefaultUserServer {
+		return true
+	}
+	if lid := cli.Store.LID; lid.User != "" && lid.User == jid.User && jid.Server == types.HiddenUserServer {
+		return true
+	}
+	return false
+}
+
+// CreateGroup creates a group (or community when isCommunity). The account's own
+// JID is added implicitly by the server; each participant's add outcome (ok /
+// invited / failed) rides back in Results.
+func (c *client) CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error) {
+	cli, err := c.loggedInClient(phoneNumber)
+	if err != nil {
+		return nil, err
+	}
+	participants, err := parseUserJIDs(participantJIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	req := whatsmeow.ReqCreateGroup{
+		Name:                        name,
+		Participants:                participants,
+		GroupParent:                 types.GroupParent{IsParent: isCommunity},
+		GroupAnnounce:               types.GroupAnnounce{IsAnnounce: isAnnounce},
+		GroupLocked:                 types.GroupLocked{IsLocked: isLocked},
+		GroupMembershipApprovalMode: types.GroupMembershipApprovalMode{IsJoinApprovalRequired: isJoinApproval},
+	}
+	if linkedParentJID != "" {
+		pjid, err := types.ParseJID(linkedParentJID)
+		if err != nil || pjid.Server != types.GroupServer {
+			return nil, errDomain.NewError(errDomain.ErrBadRequest,
+				fmt.Errorf("linked_parent_jid must be a group JID (@g.us): %q", linkedParentJID))
+		}
+		req.GroupLinkedParent = types.GroupLinkedParent{LinkedParentJID: pjid}
+	}
+
+	info, err := cli.CreateGroup(ctx, req)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return &waDomain.CreateGroupResponse{
+		GroupJID:  info.JID.String(),
+		GroupInfo: toGroupInfoResponse(info),
+		Results:   participantResults(info.Participants),
+	}, nil
+}
+
+// LeaveGroup removes the account from a group. Allowed for non-admins.
+func (c *client) LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return err
+	}
+	if err := cli.LeaveGroup(ctx, jid); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// UpdateGroupParticipants adds/removes/promotes/demotes members. Per-participant
+// failures ride back in the result slice (nil error); a self remove/promote/
+// demote is rejected as a 400 (use LeaveGroup instead).
+func (c *client) UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error) {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return nil, err
+	}
+	participants, err := parseUserJIDs(participantJIDs)
+	if err != nil {
+		return nil, err
+	}
+	if action != string(whatsmeow.ParticipantChangeAdd) {
+		for _, p := range participants {
+			if isSelfJID(cli, p) {
+				return nil, errDomain.NewError(errDomain.ErrBadRequest,
+					errors.New("use POST /group/leave to remove yourself"))
+			}
+		}
+	}
+	res, err := cli.UpdateGroupParticipants(ctx, jid, participants, whatsmeow.ParticipantChange(action))
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return participantResults(res), nil
+}
+
+// SetGroupAnnounce toggles announce mode (only admins can send).
+func (c *client) SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return err
+	}
+	if err := cli.SetGroupAnnounce(ctx, jid, announce); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// SetGroupLocked toggles locked mode (only admins can edit group info).
+func (c *client) SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return err
+	}
+	if err := cli.SetGroupLocked(ctx, jid, locked); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// SetGroupName updates the group name (subject).
+func (c *client) SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return err
+	}
+	if err := cli.SetGroupName(ctx, jid, name); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// SetGroupTopic updates the group topic (description). Passing empty previous/new
+// IDs lets whatsmeow fetch the current topic ID and generate a new one itself.
+func (c *client) SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return err
+	}
+	if err := cli.SetGroupTopic(ctx, jid, "", "", topic); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// SetGroupPhoto sets (or, with a nil photo, removes) the group picture. Returns
+// the new picture ID, or "remove" when the photo was cleared.
+func (c *client) SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error) {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return "", err
+	}
+	id, err := cli.SetGroupPhoto(ctx, jid, photo)
+	if err != nil {
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return id, nil
+}
+
+// GetGroupInviteLink returns the group's invite link, revoking and regenerating
+// it first when reset is true. Requires admin (401/403 → 403).
+func (c *client) GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error) {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return "", err
+	}
+	link, err := cli.GetGroupInviteLink(ctx, jid, reset)
+	if err != nil {
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return link, nil
+}
+
+// JoinGroupWithLink joins a group by invite code (a full chat.whatsapp.com link
+// or a bare code — whatsmeow strips the prefix). Returns the resulting JID (the
+// group, or a membership-approval request; whatsmeow does not expose which).
+func (c *client) JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error) {
+	cli, err := c.loggedInClient(phoneNumber)
+	if err != nil {
+		return "", err
+	}
+	jid, err := cli.JoinGroupWithLink(ctx, code)
+	if err != nil {
+		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return jid.String(), nil
+}
+
+// GetGroupInfoFromLink previews a group from an invite code without joining.
+func (c *client) GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error) {
+	cli, err := c.loggedInClient(phoneNumber)
+	if err != nil {
+		return nil, err
+	}
+	g, err := cli.GetGroupInfoFromLink(ctx, code)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return toGroupInfoResponse(g), nil
+}
+
+// GetGroupRequestParticipants lists a group's pending join requests. Requires admin.
+func (c *client) GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error) {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return nil, err
+	}
+	reqs, err := cli.GetGroupRequestParticipants(ctx, jid)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	items := make([]waDomain.GroupJoinRequestItem, 0, len(reqs))
+	for _, r := range reqs {
+		item := waDomain.GroupJoinRequestItem{JID: r.JID.String()}
+		if !r.RequestedAt.IsZero() {
+			item.RequestedAt = r.RequestedAt.Format(time.RFC3339)
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// UpdateGroupRequestParticipants approves or rejects pending join requests.
+// Per-participant failures ride back in the result slice (nil error).
+func (c *client) UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error) {
+	cli, jid, err := c.groupClient(phoneNumber, groupJID)
+	if err != nil {
+		return nil, err
+	}
+	participants, err := parseUserJIDs(participantJIDs)
+	if err != nil {
+		return nil, err
+	}
+	action := whatsmeow.ParticipantChangeReject
+	if approve {
+		action = whatsmeow.ParticipantChangeApprove
+	}
+	res, err := cli.UpdateGroupRequestParticipants(ctx, jid, participants, action)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return participantResults(res), nil
+}
+
+// LinkSubGroup links a child group under a parent community. Requires admin on both.
+func (c *client) LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	cli, parent, err := c.groupClient(phoneNumber, parentJID)
+	if err != nil {
+		return err
+	}
+	child, err := types.ParseJID(childJID)
+	if err != nil || child.Server != types.GroupServer {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("child_jid must be a group JID (@g.us): %q", childJID))
+	}
+	if err := cli.LinkGroup(ctx, parent, child); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
+}
+
+// UnlinkSubGroup removes a child group from a parent community.
+func (c *client) UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	cli, parent, err := c.groupClient(phoneNumber, parentJID)
+	if err != nil {
+		return err
+	}
+	child, err := types.ParseJID(childJID)
+	if err != nil || child.Server != types.GroupServer {
+		return errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("child_jid must be a group JID (@g.us): %q", childJID))
+	}
+	if err := cli.UnlinkGroup(ctx, parent, child); err != nil {
+		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	return nil
 }
 
 // GetContactInfo returns a server-side profile lookup for one user (whatsmeow
