@@ -77,10 +77,11 @@ func (uc *WhatsappMessageUsecase) ListGroups(
 		})
 }
 
-// resolveGroupJID resolves chat and requires an explicit group/community JID
-// (@g.us). A bare number, user JID, or @lid is a 400 before any server call.
-func resolveGroupJID(chat string) (string, error) {
-	target, err := resolveChat(chat, "")
+// resolveGroupJID resolves chat (or the deprecated msisdn alias) and requires an
+// explicit group/community JID (@g.us). A bare number, user JID, or @lid is a
+// 400 before any server call.
+func resolveGroupJID(chat, msisdn string) (string, error) {
+	target, err := resolveChat(chat, msisdn)
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +99,7 @@ func (uc *WhatsappMessageUsecase) GetGroupInfo(
 	ctx context.Context,
 	traceID, phoneNumber, chat string,
 ) (*waDomain.GroupInfoResponse, error) {
-	target, err := resolveGroupJID(chat)
+	target, err := resolveGroupJID(chat, "")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +116,7 @@ func (uc *WhatsappMessageUsecase) ListSubGroups(
 	ctx context.Context,
 	traceID, phoneNumber, chat string,
 ) (*waDomain.SubGroupListResponse, error) {
-	target, err := resolveGroupJID(chat)
+	target, err := resolveGroupJID(chat, "")
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +138,7 @@ func (uc *WhatsappMessageUsecase) ListCommunityParticipants(
 	ctx context.Context,
 	traceID, phoneNumber, chat string,
 ) (*waDomain.CommunityParticipantsResponse, error) {
-	target, err := resolveGroupJID(chat)
+	target, err := resolveGroupJID(chat, "")
 	if err != nil {
 		return nil, err
 	}
