@@ -29,16 +29,16 @@ type IncomingEventMessage struct {
 
 // OutgoingMessageJob represents an outgoing message job
 type OutgoingMessageJob struct {
-	TraceID     string
-	JobID       string
-	PhoneNumber string
-	Type        string // "text", "image", "location", "poll", "sticker", "react", "delete", "edit"
-	To          string
-	Text        string
-	ImageData   string // base64 (image/sticker)
-	MimeType    string
-	Caption     string
-	IsViewOnce  bool
+	TraceID      string
+	JobID        string
+	PhoneNumber  string
+	Type         string // "text", "image", "location", "poll", "sticker", "react", "delete", "edit"
+	To           string
+	Text         string
+	ImageData    string // base64 (image/sticker)
+	MimeType     string
+	Caption      string
+	IsViewOnce   bool
 	MessageID    string // For react/delete/edit
 	Emoji        string // For react
 	SenderMsisdn string // For react: original message sender (empty = own message)
@@ -59,6 +59,12 @@ type OutgoingMessageJob struct {
 	Question        string
 	Options         []string
 	SelectableCount int
+
+	// Reply + mentions context (resolved JIDs)
+	ReplyToID     string
+	ReplyToSender string
+	ReplyToText   string
+	Mentions      []string
 
 	CreatedAt int64
 }

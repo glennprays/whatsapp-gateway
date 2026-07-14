@@ -6,11 +6,32 @@ package whatsapp
 // When both are set, `chat` wins. At least one is required (enforced in
 // resolveChat, not via struct binding, so `chat`-only requests validate).
 
+// MessageContext carries the optional reply + mentions metadata attached to a
+// send. It is caller-supplied (storeless per ADR/decision #5): a reply quotes an
+// existing message by id + author, with the quoted preview text supplied by the
+// caller. Mentions are the recipients to @-tag. All fields resolved to canonical
+// JIDs by the usecase before reaching the client.
+type MessageContext struct {
+	ReplyToID     string   // quoted message id (StanzaID)
+	ReplyToSender string   // quoted message author JID (Participant)
+	ReplyToText   string   // caller-supplied quoted preview text (optional)
+	Mentions      []string // JIDs to @-mention
+}
+
+// IsEmpty reports whether there is no reply and no mentions to attach.
+func (m *MessageContext) IsEmpty() bool {
+	return m == nil || (m.ReplyToID == "" && len(m.Mentions) == 0)
+}
+
 // SendTextMessageRequest represents a text message send request
 type SendTextMessageRequest struct {
-	Chat    string `json:"chat" binding:"omitempty"`
-	Msisdn  string `json:"msisdn" binding:"omitempty"` // deprecated: alias for chat
-	Message string `json:"message" binding:"required"`
+	Chat          string   `json:"chat" binding:"omitempty"`
+	Msisdn        string   `json:"msisdn" binding:"omitempty"` // deprecated: alias for chat
+	Message       string   `json:"message" binding:"required"`
+	ReplyToID     string   `json:"reply_to_id,omitempty"`     // quote this message id
+	ReplyToSender string   `json:"reply_to_sender,omitempty"` // author of the quoted message (number/JID)
+	ReplyToText   string   `json:"reply_to_text,omitempty"`   // optional quoted preview text
+	Mentions      []string `json:"mentions,omitempty"`        // numbers/JIDs to @-mention
 }
 
 // SendImageMessageRequest represents an image message send request

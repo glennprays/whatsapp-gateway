@@ -47,7 +47,7 @@ type (
 		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
-		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
+		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
@@ -578,6 +578,29 @@ func (c *client) SendChatPresence(ctx context.Context, traceID string, phoneNumb
 	return nil
 }
 
+// buildContextInfo turns the caller-supplied reply + mentions metadata into a
+// whatsmeow ContextInfo, or nil when there is nothing to attach. Replies are
+// storeless (decision #5): the quoted preview is whatever text the caller
+// supplies. Fields are expected to already be canonical JIDs (resolved upstream).
+func buildContextInfo(msgCtx *waDomain.MessageContext) *waE2E.ContextInfo {
+	if msgCtx.IsEmpty() {
+		return nil
+	}
+	ci := &waE2E.ContextInfo{}
+	if msgCtx.ReplyToID != "" {
+		ci.StanzaID = proto.String(msgCtx.ReplyToID)
+		if msgCtx.ReplyToSender != "" {
+			ci.Participant = proto.String(msgCtx.ReplyToSender)
+		}
+		// Quoted preview: caller-supplied text (may be empty).
+		ci.QuotedMessage = &waE2E.Message{Conversation: proto.String(msgCtx.ReplyToText)}
+	}
+	if len(msgCtx.Mentions) > 0 {
+		ci.MentionedJID = msgCtx.Mentions
+	}
+	return ci
+}
+
 // jidStringOrEmpty returns the JID string, or "" for the zero JID (so empty
 // optional fields are omitted rather than rendered as "@s.whatsapp.net").
 func jidStringOrEmpty(j types.JID) string {
@@ -636,7 +659,7 @@ func (c *client) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumb
 	return nil
 }
 
-func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error) {
+func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -651,8 +674,18 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	msg := &waE2E.Message{
-		Conversation: proto.String(message),
+	// Plain text uses Conversation; a reply or mentions require ExtendedTextMessage
+	// so a ContextInfo can be attached.
+	var msg *waE2E.Message
+	if ci := buildContextInfo(msgCtx); ci != nil {
+		msg = &waE2E.Message{
+			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				Text:        proto.String(message),
+				ContextInfo: ci,
+			},
+		}
+	} else {
+		msg = &waE2E.Message{Conversation: proto.String(message)}
 	}
 
 	resp, err := cli.SendMessage(ctx, toJID, msg)

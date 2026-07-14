@@ -13,6 +13,7 @@ import (
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
@@ -96,7 +97,12 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	switch job.Type {
 	case "text":
-		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text)
+		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text, &waDomain.MessageContext{
+			ReplyToID:     job.ReplyToID,
+			ReplyToSender: job.ReplyToSender,
+			ReplyToText:   job.ReplyToText,
+			Mentions:      job.Mentions,
+		})
 	case "image":
 		imageBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {

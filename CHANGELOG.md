@@ -6,6 +6,7 @@ All notable changes to this project are documented here. Versions follow
 ## [Unreleased]
 
 ### Added
+- **Replies & mentions on text sends** — `POST /api/message/text` now accepts `reply_to_id` + `reply_to_sender` (+ optional `reply_to_text` for the quoted preview) to quote a message, and `mentions[]` (numbers/JIDs) to @-tag recipients. Storeless per design (caller supplies the quoted context); a reply/mention switches the wire message to `ExtendedTextMessage` with a `ContextInfo`. Works in both direct and queue modes. (Media sends get the same fields next.)
 - **`POST /api/message/read`** — mark messages as read (blue ticks) for a chat: `{chat, message_ids[], sender?}`. `sender` (the message author) is required for group chats. Exactly one whatsmeow receipt type is used, avoiding its multi-type panic.
 - **`POST /api/chat/presence`** — typing indicator: `{chat, state}` where `state` is `composing` (typing…), `recording` (voice note; sent as composing+audio), or `paused`. The indicator auto-expires client-side, so an explicit `paused` is optional.
 - **Interim per-account action cap** on mark-read / typing (and reusable for react) — reuses the existing limiter under an `action:` key so conversation actions can't be spammed until roadmap #2 pacing lands. Over-budget returns `429`.

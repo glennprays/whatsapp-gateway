@@ -200,19 +200,28 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// Check if queue is enabled and healthy
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "text",
-			To:          req.Msisdn,
-			Text:        req.Message,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "text",
+			To:            req.Msisdn,
+			Text:          req.Message,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -263,7 +272,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, errors.New(fmt.Sprintf("Rate limit exceeded. Retry after %.0f seconds", res.RetryAfter.Seconds())))
 	}
 
-	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message)
+	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message, msgCtx)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

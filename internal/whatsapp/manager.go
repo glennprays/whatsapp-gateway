@@ -37,7 +37,7 @@ type (
 		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
-		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
+		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
@@ -223,14 +223,14 @@ func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNum
 	return m.Client.DeleteWebhookURL(ctx, traceID, phoneNumber)
 }
 
-func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error) {
+func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending text message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendTextMessage(ctx, traceID, phoneNumber, to, message)
+	messageID, err := m.Client.SendTextMessage(ctx, traceID, phoneNumber, to, message, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", masked),

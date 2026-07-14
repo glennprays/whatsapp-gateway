@@ -79,6 +79,35 @@ func (uc *WhatsappMessageUsecase) SendChatPresence(
 	return uc.whatsappManager.SendChatPresence(ctx, traceID, phoneNumber, target, state, media)
 }
 
+// buildMessageContext resolves the caller-supplied reply + mentions metadata
+// into canonical JIDs. Returns a non-nil (possibly empty) context so callers can
+// pass it straight through. reply_to_sender and each mention are resolved via
+// resolveChat (number → user JID); an invalid one is a 400.
+func (uc *WhatsappMessageUsecase) buildMessageContext(replyToID, replyToSender, replyToText string, mentions []string) (*waDomain.MessageContext, error) {
+	mc := &waDomain.MessageContext{
+		ReplyToID:   strings.TrimSpace(replyToID),
+		ReplyToText: replyToText,
+	}
+	if s := strings.TrimSpace(replyToSender); s != "" {
+		jid, err := resolveChat(s, "")
+		if err != nil {
+			return nil, err
+		}
+		mc.ReplyToSender = jid
+	}
+	for _, m := range mentions {
+		if strings.TrimSpace(m) == "" {
+			continue
+		}
+		jid, err := resolveChat(m, "")
+		if err != nil {
+			return nil, err
+		}
+		mc.Mentions = append(mc.Mentions, jid)
+	}
+	return mc, nil
+}
+
 // resolvePresenceState maps the API's state to whatsmeow's (ChatPresence,
 // ChatPresenceMedia). "recording" is composing with audio media.
 func resolvePresenceState(s string) (state, media string, err error) {
