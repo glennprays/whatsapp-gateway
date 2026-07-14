@@ -134,7 +134,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 	case "location":
 		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress, jobMessageContext(job))
 	case "poll":
-		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount)
+		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount, jobMessageContext(job))
 	case "sticker":
 		stickerBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {

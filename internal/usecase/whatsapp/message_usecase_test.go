@@ -35,6 +35,21 @@ func TestSendImage_InvalidMention400(t *testing.T) {
 	assertBadRequest(t, err)
 }
 
+// Poll is the JSON path: an invalid mention must 400 before the (nil)
+// queue/limiter/manager is touched — guards buildMessageContext ordering ahead
+// of the queue branch.
+func TestSendPoll_InvalidMention400(t *testing.T) {
+	uc := &WhatsappMessageUsecase{}
+	_, _, err := uc.SendPollMessage(context.Background(), "trace", "628111",
+		waDomain.SendPollMessageRequest{
+			Chat:     "6282222222222",
+			Question: "q",
+			Options:  []string{"a", "b"},
+			Mentions: []string{"@@@bad@@@"},
+		})
+	assertBadRequest(t, err)
+}
+
 func TestResolveChat(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -43,7 +43,7 @@ type (
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
-		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
@@ -381,14 +381,14 @@ func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phone
 	return messageID, nil
 }
 
-func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending poll message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount)
+	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send poll message", nil,
 			customLog.String("phone_number", masked),

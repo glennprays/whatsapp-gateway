@@ -95,6 +95,10 @@ type SendPollMessageRequest struct {
 	Question        string   `json:"question" binding:"required"`
 	Options         []string `json:"options" binding:"required"`
 	SelectableCount int      `json:"selectable_count,omitempty"`
+	ReplyToID       string   `json:"reply_to_id,omitempty"`     // quote this message id
+	ReplyToSender   string   `json:"reply_to_sender,omitempty"` // author of the quoted message (number/JID)
+	ReplyToText     string   `json:"reply_to_text,omitempty"`   // optional quoted preview text
+	Mentions        []string `json:"mentions,omitempty"`        // numbers/JIDs to @-mention
 }
 
 // SendStickerMessageRequest represents a sticker message send request

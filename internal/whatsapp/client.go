@@ -53,7 +53,7 @@ type (
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
-		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
@@ -1084,7 +1084,7 @@ func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneN
 	return resp.ID, nil
 }
 
-func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -1106,6 +1106,13 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 	}
 
 	msg := cli.BuildPollCreation(question, options, selectableCount)
+
+	// Attach reply/mentions to the poll body only. Never touch
+	// msg.MessageContextInfo — it carries the poll's MessageSecret used to
+	// decrypt votes; overwriting it makes the poll unvotable.
+	if msg.PollCreationMessage != nil {
+		msg.PollCreationMessage.ContextInfo = buildContextInfo(msgCtx)
+	}
 
 	resp, err := cli.SendMessage(ctx, toJID, msg)
 	if err != nil {

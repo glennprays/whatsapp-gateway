@@ -802,6 +802,11 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 		}
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
@@ -813,6 +818,10 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 			Question:        req.Question,
 			Options:         req.Options,
 			SelectableCount: req.SelectableCount,
+			ReplyToID:       msgCtx.ReplyToID,
+			ReplyToSender:   msgCtx.ReplyToSender,
+			ReplyToText:     msgCtx.ReplyToText,
+			Mentions:        msgCtx.Mentions,
 			CreatedAt:       time.Now().Unix(),
 		}
 
@@ -838,7 +847,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
 	}
 
-	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount)
+	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount, msgCtx)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
