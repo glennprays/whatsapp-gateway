@@ -55,6 +55,7 @@ type (
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
+		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -577,6 +578,18 @@ func (m *manager) GetContactInfo(ctx context.Context, traceID string, phoneNumbe
 	info, err := m.Client.GetContactInfo(ctx, traceID, phoneNumber, userJID)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to get contact info", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error) {
+	info, err := m.Client.GetAvatar(ctx, traceID, phoneNumber, targetJID, preview, existingID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get avatar", nil,
 			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
 			customLog.Error(err),
 		)

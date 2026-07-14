@@ -45,3 +45,14 @@ type ContactInfoResponse struct {
 	DeviceCount  int    `json:"device_count"`
 	LID          string `json:"lid,omitempty"`
 }
+
+// AvatarResponse is a chat's (user or group) profile picture. The URL is a
+// time-limited WhatsApp CDN link the caller downloads directly. ID doubles as
+// the ETag: pass it back via If-None-Match to get a 304 when unchanged.
+type AvatarResponse struct {
+	JID        string `json:"jid"`
+	URL        string `json:"url"`
+	ID         string `json:"id"`
+	Type       string `json:"type"` // "image" (full res) or "preview" (thumbnail)
+	DirectPath string `json:"direct_path,omitempty"`
+}

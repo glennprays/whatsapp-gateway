@@ -41,6 +41,7 @@ type (
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
+		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
@@ -466,6 +467,48 @@ func (c *client) GetContactInfo(ctx context.Context, traceID string, phoneNumber
 		resp.VerifiedName = info.VerifiedName.Details.GetVerifiedName()
 	}
 	return resp, nil
+}
+
+// GetAvatar returns a chat's profile picture info (whatsmeow
+// GetProfilePictureInfo, a server IQ). A (nil, nil) return means the picture is
+// unchanged relative to existingID — the usecase turns that into a 304. Absent
+// / hidden pictures map to 404 / 403 via mapWhatsmeowErr sentinels.
+//
+// ponytail: IsCommunity defaults false, so a community *parent* avatar may need
+// a dedicated flag later; regular groups and users work as-is.
+func (c *client) GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	jid, err := types.ParseJID(targetJID)
+	if err != nil {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", targetJID))
+	}
+
+	info, err := cli.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{
+		Preview:    preview,
+		ExistingID: existingID,
+	})
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+	if info == nil {
+		// ExistingID matched the current picture — unchanged.
+		return nil, nil
+	}
+
+	return &waDomain.AvatarResponse{
+		JID:        jid.String(),
+		URL:        info.URL,
+		ID:         info.ID,
+		Type:       info.Type,
+		DirectPath: info.DirectPath,
+	}, nil
 }
 
 // jidStringOrEmpty returns the JID string, or "" for the zero JID (so empty

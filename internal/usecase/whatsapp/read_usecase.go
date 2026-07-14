@@ -117,3 +117,33 @@ func (uc *WhatsappMessageUsecase) GetContactInfo(
 			return uc.whatsappManager.GetContactInfo(ctx, traceID, phoneNumber, target)
 		})
 }
+
+// GetAvatar returns a chat's (user or group) profile picture. A (nil, nil)
+// return means "unchanged" — the handler turns it into a 304. When the caller
+// supplies existingID (from a prior ETag), the cache is bypassed and WhatsApp is
+// queried directly for a freshness check (still charged against the budget);
+// otherwise the result is cached like other server-hitting reads.
+func (uc *WhatsappMessageUsecase) GetAvatar(
+	ctx context.Context,
+	traceID, phoneNumber, chat, msisdn string,
+	preview bool,
+	existingID string,
+) (*waDomain.AvatarResponse, error) {
+	target, err := resolveChat(chat, msisdn)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingID != "" {
+		if err := uc.spendReadBudget(ctx, phoneNumber); err != nil {
+			return nil, err
+		}
+		return uc.whatsappManager.GetAvatar(ctx, traceID, phoneNumber, target, preview, existingID)
+	}
+
+	cacheKey := fmt.Sprintf("avatar:%s:%s:%t", phoneNumber, target, preview)
+	return queryWithBudget(uc, ctx, phoneNumber, cacheKey,
+		func() (*waDomain.AvatarResponse, error) {
+			return uc.whatsappManager.GetAvatar(ctx, traceID, phoneNumber, target, preview, "")
+		})
+}

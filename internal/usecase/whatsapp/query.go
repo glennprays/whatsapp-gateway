@@ -68,10 +68,8 @@ func queryWithBudget[T any](
 		}
 	}
 
-	res, berr := uc.queryBudget.Allow(ctx, phoneNumber)
-	if berr == nil && !res.Allowed {
-		return zero, errDomain.NewError(errDomain.ErrTooManyRequests,
-			fmt.Errorf("read query budget exceeded; retry after %ds", int(res.RetryAfter.Seconds())+1))
+	if err := uc.spendReadBudget(ctx, phoneNumber); err != nil {
+		return zero, err
 	}
 
 	v, err := fn()
@@ -80,6 +78,19 @@ func queryWithBudget[T any](
 	}
 	uc.queryCache.set(cacheKey, v)
 	return v, nil
+}
+
+// spendReadBudget charges one per-account read token and returns a 429
+// (ErrTooManyRequests) domain error when the budget is exhausted. Used both by
+// queryWithBudget (cache-miss path) and by reads that bypass the cache (e.g. an
+// avatar freshness check via If-None-Match).
+func (uc *WhatsappMessageUsecase) spendReadBudget(ctx context.Context, phoneNumber string) error {
+	res, err := uc.queryBudget.Allow(ctx, phoneNumber)
+	if err == nil && !res.Allowed {
+		return errDomain.NewError(errDomain.ErrTooManyRequests,
+			fmt.Errorf("read query budget exceeded; retry after %ds", int(res.RetryAfter.Seconds())+1))
+	}
+	return nil
 }
 
 // newQueryBudget builds the per-account read budget limiter from config.

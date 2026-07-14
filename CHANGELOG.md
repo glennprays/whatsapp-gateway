@@ -15,6 +15,7 @@ All notable changes to this project are documented here. Versions follow
 - **`GET /api/group/info?chat=<@g.us>`** — full detail of one group incl. the participant roster (jid/phone/lid + admin flags). Requires a group JID and account membership. Cached + budgeted.
 - **`GET /api/contact/info?chat=`** — server-side profile lookup for one user (status text, current picture id, verified business name, linked-device count, lid). Cached + budgeted.
 - **whatsmeow error sentinels mapped via `errors.Is`** (not substring): `ErrGroupNotFound`/`ErrProfilePictureNotSet` → `404`, `ErrNotInGroup`/`ErrProfilePictureUnauthorized` → `403`.
+- **`GET /api/contact/avatar?chat=`** — a chat's (user or group) profile picture: a time-limited CDN URL plus its id. `?preview=true` for the thumbnail. Tri-state — `404` (no picture), `403` (hidden from you), `200` otherwise. The id doubles as an `ETag`: send it back via `If-None-Match` to get `304 Not Modified` when unchanged (the freshness check bypasses the cache but still spends read budget). Cached + budgeted like other server reads.
 
 ### Changed
 - `msisdn` is now a **deprecated back-compat alias** for `chat` (still fully supported; `chat` wins when both are set). Recipient resolution funnels through `resolveChat`, which strips device/agent JID suffixes, lowercases the server, requires a digits-only user, and rejects `broadcast`/unknown servers early with a `400` instead of a late `500`.

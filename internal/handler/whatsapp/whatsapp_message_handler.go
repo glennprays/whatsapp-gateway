@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	customLog "github.com/glennprays/log"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
@@ -493,6 +494,31 @@ func (h *WhatsappMessageHandler) GetContactInfo(c *fiber.Ctx) error {
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) GetAvatar(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	preview := c.QueryBool("preview", false)
+	// If-None-Match carries a prior avatar ETag; strip the quotes WhatsApp's id lacks.
+	existingID := strings.Trim(c.Get("If-None-Match"), `"`)
+
+	resp, err := h.whatsappMessageUsecase.GetAvatar(c.Context(), traceID, phoneNumber, c.Query("chat"), c.Query("msisdn"), preview, existingID)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	if resp == nil {
+		// Unchanged relative to the caller's ETag.
+		return c.SendStatus(http.StatusNotModified)
+	}
+	c.Set("ETag", `"`+resp.ID+`"`)
 	return c.Status(http.StatusOK).JSON(resp)
 }
 
