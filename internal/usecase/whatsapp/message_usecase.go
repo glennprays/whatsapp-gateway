@@ -620,6 +620,11 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// Default the visible file name from the upload when the caller omits it.
 	if req.FileName == "" {
 		req.FileName = fileHeader.Filename
@@ -649,16 +654,20 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "document",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(docBytes),
-			MimeType:    mimeType,
-			FileName:    req.FileName,
-			Caption:     req.Caption,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "document",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(docBytes),
+			MimeType:      mimeType,
+			FileName:      req.FileName,
+			Caption:       req.Caption,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -676,7 +685,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption)
+	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption, msgCtx)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send document message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

@@ -128,10 +128,14 @@ type SendVideoMessageRequest struct {
 
 // SendDocumentMessageRequest represents a document (file) message send request.
 type SendDocumentMessageRequest struct {
-	Chat     string `form:"chat" binding:"omitempty"`
-	Msisdn   string `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
-	Caption  string `form:"caption" binding:"omitempty"`
-	FileName string `form:"file_name" binding:"omitempty"`
+	Chat          string   `form:"chat" binding:"omitempty"`
+	Msisdn        string   `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
+	Caption       string   `form:"caption" binding:"omitempty"`
+	FileName      string   `form:"file_name" binding:"omitempty"`
+	ReplyToID     string   `form:"reply_to_id" binding:"omitempty"`     // quote this message id
+	ReplyToSender string   `form:"reply_to_sender" binding:"omitempty"` // author of the quoted message (number/JID)
+	ReplyToText   string   `form:"reply_to_text" binding:"omitempty"`   // optional quoted preview text
+	Mentions      []string `form:"mentions" binding:"omitempty"`        // numbers/JIDs to @-mention (repeated form field)
 }
 
 // SendMessageResponse represents a successful message send response

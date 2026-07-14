@@ -41,7 +41,7 @@ type (
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
-		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
+		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -329,7 +329,7 @@ func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
-func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error) {
+func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending document message", nil,
 		customLog.String("phone_number", masked),
@@ -337,7 +337,7 @@ func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phone
 		customLog.String("file_name", fileName),
 	)
 
-	messageID, err := m.Client.SendDocumentMessage(ctx, traceID, phoneNumber, to, docBytes, mimeType, fileName, caption)
+	messageID, err := m.Client.SendDocumentMessage(ctx, traceID, phoneNumber, to, docBytes, mimeType, fileName, caption, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send document message", nil,
 			customLog.String("phone_number", masked),

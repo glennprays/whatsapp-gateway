@@ -129,7 +129,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode document data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption)
+			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption, jobMessageContext(job))
 		}
 	case "location":
 		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
