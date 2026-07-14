@@ -59,6 +59,16 @@ type Config struct {
 	ReadQueryBudget          int64 `mapstructure:"READ_QUERY_BUDGET" default:"30"`
 	ReadQueryWindowSeconds   int64 `mapstructure:"READ_QUERY_WINDOW_SECONDS" default:"60"`
 
+	// Group & community management (Phase E). The master toggle stays ON, but the
+	// high-ban-risk bulk/mass vectors (bulk participant add, join-via-link) default
+	// OFF until outbound pacing (#2) lands. With GroupManagementEnabled=false the
+	// entire mutation/invite/requests/community surface is unregistered (404);
+	// reads (GET /group/, /group/info, /community/*) stay up.
+	GroupManagementEnabled         bool `mapstructure:"GROUP_MANAGEMENT_ENABLED" default:"true"`
+	GroupAddParticipantsEnabled    bool `mapstructure:"GROUP_ADD_PARTICIPANTS_ENABLED" default:"false"`
+	GroupMaxParticipantsPerRequest int  `mapstructure:"GROUP_MAX_PARTICIPANTS_PER_REQUEST" default:"256"`
+	GroupJoinViaLinkEnabled        bool `mapstructure:"GROUP_JOIN_VIA_LINK_ENABLED" default:"false"`
+
 	// Send idempotency: an optional Idempotency-Key header dedupes sends via a
 	// DB-backed (phone, key) table. TTL bounds how long a completed response is
 	// replayable; PendingTimeout lets a retry take over a row left pending by a
