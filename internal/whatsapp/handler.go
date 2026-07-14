@@ -130,6 +130,58 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 
 		// Direct mode (or fallback): deliver webhook asynchronously
 		h.asyncDeliverWebhook(traceID, phoneNumber, jid, v)
+
+	case *events.LoggedOut:
+		// whatsmeow deletes (or will delete) the device row; record status
+		// first so the account still surfaces as logged_out, then evict the
+		// dead in-memory client. No webhook emitted here (roadmap #1's job).
+		h.recordSessionStatus(phoneNumber, "logged_out", loggedOutReason(v), nil)
+		clients.Delete(phoneNumber)
+
+	case *events.TemporaryBan:
+		var exp *time.Time
+		if v.Expire > 0 {
+			t := time.Now().Add(v.Expire)
+			exp = &t
+		}
+		h.recordSessionStatus(phoneNumber, "banned", v.String(), exp)
+		clients.Delete(phoneNumber)
+
+	case *events.ConnectFailure:
+		if v.Reason.IsLoggedOut() {
+			h.recordSessionStatus(phoneNumber, "logged_out", v.Reason.String(), nil)
+			clients.Delete(phoneNumber)
+		} else {
+			// Transient/other failure: record but do NOT evict so whatsmeow's
+			// auto-reconnect can recover the same client object.
+			h.recordSessionStatus(phoneNumber, "disconnected", "connect_failure:"+v.Reason.String(), nil)
+		}
+
+	case *events.StreamReplaced:
+		// Another process took the socket; our client is dead. Evict; do not
+		// disconnect (already gone).
+		h.recordSessionStatus(phoneNumber, "disconnected", "stream_replaced", nil)
+		clients.Delete(phoneNumber)
+	}
+}
+
+// loggedOutReason describes why a LoggedOut event fired: the connect-failure
+// reason when triggered on connect, else a stream error.
+func loggedOutReason(v *events.LoggedOut) string {
+	if v.OnConnect {
+		return v.Reason.String()
+	}
+	return "stream_error"
+}
+
+// recordSessionStatus persists a lifecycle state on its own bounded context.
+// Failures are logged, never propagated: whatsmeow event handlers cannot return
+// errors, and the caller still evicts the client so it stops looking alive.
+func (h *handler) recordSessionStatus(phoneNumber, state, reason string, banExpiresAt *time.Time) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.repository.UpsertSessionStatus(ctx, phoneNumber, state, reason, banExpiresAt); err != nil {
+		h.logger.Error("", "Failed to persist session status for "+MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 	}
 }
 
