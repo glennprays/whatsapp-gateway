@@ -15,7 +15,28 @@ func runMigrations(db *sql.DB) error {
 	if err := runIdempotencyKeysMigrations(db); err != nil {
 		return err
 	}
+	if err := runSessionStatusMigrations(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+// runSessionStatusMigrations creates the table that records per-account session
+// lifecycle state derived from whatsmeow events. Deliberately NO foreign key to
+// whatsmeow_device: whatsmeow deletes the device row on logout, but a
+// logged_out/banned record must survive so operators can still see why a
+// session is gone. Dialect-neutral DDL (SQLite + Postgres).
+func runSessionStatusMigrations(db *sql.DB) error {
+	query := `
+    CREATE TABLE IF NOT EXISTS session_status (
+        phone_number   TEXT PRIMARY KEY,
+        state          TEXT NOT NULL,
+        reason         TEXT,
+        ban_expires_at TIMESTAMP,
+        updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`
+	_, err := db.ExecContext(context.Background(), query)
+	return err
 }
 
 func runDeviceWebhooksMigrations(db *sql.DB) error {

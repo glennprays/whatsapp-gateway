@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 )
@@ -16,6 +17,8 @@ type WhatsAppRepository interface {
 	GetWebhook(ctx context.Context, jid string) (*waDomain.Webhook, error)
 	GetWebhookByPhone(ctx context.Context, phoneNumber string) (*waDomain.Webhook, string, error)
 	DeleteWebhook(ctx context.Context, jid string) error
+	UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error
+	ListSessionStatuses(ctx context.Context) (map[string]waDomain.SessionStatus, error)
 }
 
 func NewWhatsappRepository(db *sql.DB) WhatsAppRepository {
@@ -89,4 +92,52 @@ func (r *whatsAppRepository) GetWebhookByPhone(ctx context.Context, phoneNumber 
 func (r *whatsAppRepository) DeleteWebhook(ctx context.Context, jid string) error {
 	_, err := r.DB.ExecContext(ctx, "DELETE FROM device_webhooks WHERE jid = $1", jid)
 	return err
+}
+
+// UpsertSessionStatus records the latest lifecycle state for an account. Keyed
+// by bare phone number (repo convention: no normalization). Portable upsert
+// (SQLite modernc + Postgres). banExpiresAt is nil except for temporary bans.
+func (r *whatsAppRepository) UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error {
+	_, err := r.DB.ExecContext(ctx, `
+		INSERT INTO session_status (phone_number, state, reason, ban_expires_at, updated_at)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		ON CONFLICT (phone_number)
+		DO UPDATE SET state = EXCLUDED.state, reason = EXCLUDED.reason,
+			ban_expires_at = EXCLUDED.ban_expires_at, updated_at = CURRENT_TIMESTAMP
+	`, phone, state, reason, banExpiresAt)
+	return err
+}
+
+// ListSessionStatuses returns every persisted status keyed by bare phone number.
+func (r *whatsAppRepository) ListSessionStatuses(ctx context.Context) (map[string]waDomain.SessionStatus, error) {
+	rows, err := r.DB.QueryContext(ctx, "SELECT phone_number, state, reason, ban_expires_at, updated_at FROM session_status")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]waDomain.SessionStatus)
+	for rows.Next() {
+		var phone string
+		var state string
+		var reason sql.NullString
+		var banExpiresAt sql.NullTime
+		var updatedAt sql.NullTime
+		if err := rows.Scan(&phone, &state, &reason, &banExpiresAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		s := waDomain.SessionStatus{State: state}
+		if reason.Valid {
+			s.Reason = reason.String
+		}
+		if banExpiresAt.Valid {
+			t := banExpiresAt.Time
+			s.BanExpiresAt = &t
+		}
+		if updatedAt.Valid {
+			s.UpdatedAt = updatedAt.Time
+		}
+		out[phone] = s
+	}
+	return out, rows.Err()
 }
