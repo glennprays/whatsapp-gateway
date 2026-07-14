@@ -13,12 +13,12 @@ import (
 )
 
 // newGroupUsecase builds a usecase carrying only the config gate flags plus a
-// limiter/cache — enough to exercise the group guards, which must all fire
-// before the (nil) manager is touched.
+// cache — enough to exercise the group guards, which must all fire before the
+// (nil) manager is touched. pacer is nil (pace is a no-op), so the guards, not
+// pacing, are what these tests assert.
 func newGroupUsecase(cfg *config.Config) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
 		config:      cfg,
-		limiter:     ratelimiter.NewMemoryLimiter(ratelimiter.Config{Limit: 1000, Window: time.Minute, Prefix: "test:action:"}),
 		queryCache:  newTTLCache(time.Minute),
 		queryBudget: ratelimiter.NewMemoryLimiter(ratelimiter.Config{Limit: 1000, Window: time.Minute, Prefix: "test:rq:"}),
 	}

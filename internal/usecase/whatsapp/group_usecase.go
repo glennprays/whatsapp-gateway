@@ -107,7 +107,11 @@ func (uc *WhatsappMessageUsecase) CreateGroup(
 			return nil, err
 		}
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	paceN := int64(1)
+	if len(participants) > 0 {
+		paceN = int64(len(participants))
+	}
+	if err := uc.pace(ctx, phoneNumber, "", paceN); err != nil {
 		return nil, err
 	}
 	return uc.whatsappManager.CreateGroup(ctx, traceID, phoneNumber, name, participants,
@@ -127,7 +131,7 @@ func (uc *WhatsappMessageUsecase) LeaveGroup(
 	if err != nil {
 		return err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.LeaveGroup(ctx, traceID, phoneNumber, target)
@@ -160,7 +164,11 @@ func (uc *WhatsappMessageUsecase) UpdateGroupParticipants(
 	if action == "add" && !uc.config.GroupAddParticipantsEnabled {
 		return nil, errDomain.NewError(errDomain.ErrForbidden, errors.New("adding participants is disabled"))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	paceN := int64(1)
+	if action == "add" {
+		paceN = int64(len(participants))
+	}
+	if err := uc.pace(ctx, phoneNumber, target, paceN); err != nil {
 		return nil, err
 	}
 	results, err := uc.whatsappManager.UpdateGroupParticipants(ctx, traceID, phoneNumber, target, action, participants)
@@ -189,7 +197,7 @@ func (uc *WhatsappMessageUsecase) SetGroupSettings(
 		return nil, errDomain.NewError(errDomain.ErrBadRequest,
 			errors.New("no settings supplied (announce and/or locked)"))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	applied := make([]string, 0, 2)
@@ -229,7 +237,7 @@ func (uc *WhatsappMessageUsecase) SetGroupName(
 		return errDomain.NewError(errDomain.ErrBadRequest,
 			fmt.Errorf("name exceeds maximum length of %d characters", maxGroupNameLen))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.SetGroupName(ctx, traceID, phoneNumber, target, name)
@@ -253,7 +261,7 @@ func (uc *WhatsappMessageUsecase) SetGroupTopic(
 		return errDomain.NewError(errDomain.ErrBadRequest,
 			fmt.Errorf("topic exceeds maximum length of %d characters", maxGroupTopicLen))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.SetGroupTopic(ctx, traceID, phoneNumber, target, req.Topic)
@@ -291,7 +299,7 @@ func (uc *WhatsappMessageUsecase) SetGroupPhoto(
 	if http.DetectContentType(data) != "image/jpeg" {
 		return nil, errDomain.NewError(errDomain.ErrBadRequest, errors.New("group photo must be a JPEG"))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	pictureID, err := uc.whatsappManager.SetGroupPhoto(ctx, traceID, phoneNumber, target, data)
@@ -314,7 +322,7 @@ func (uc *WhatsappMessageUsecase) RemoveGroupPhoto(
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	if _, err := uc.whatsappManager.SetGroupPhoto(ctx, traceID, phoneNumber, target, nil); err != nil {
@@ -336,7 +344,7 @@ func (uc *WhatsappMessageUsecase) GetGroupInviteLink(
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	link, err := uc.whatsappManager.GetGroupInviteLink(ctx, traceID, phoneNumber, target, false)
@@ -359,7 +367,7 @@ func (uc *WhatsappMessageUsecase) ResetGroupInviteLink(
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	link, err := uc.whatsappManager.GetGroupInviteLink(ctx, traceID, phoneNumber, target, true)
@@ -405,7 +413,7 @@ func (uc *WhatsappMessageUsecase) JoinGroup(
 	if code == "" {
 		return nil, errDomain.NewError(errDomain.ErrBadRequest, errors.New("code is required"))
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, "", 1); err != nil {
 		return nil, err
 	}
 	jid, err := uc.whatsappManager.JoinGroupWithLink(ctx, traceID, phoneNumber, code)
@@ -460,7 +468,7 @@ func (uc *WhatsappMessageUsecase) UpdateJoinRequests(
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	results, err := uc.whatsappManager.UpdateGroupRequestParticipants(ctx, traceID, phoneNumber, target, participants, action == "approve")
@@ -488,7 +496,7 @@ func (uc *WhatsappMessageUsecase) LinkSubGroup(
 	if err != nil {
 		return err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, parent, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.LinkSubGroup(ctx, traceID, phoneNumber, parent, child)
@@ -511,7 +519,7 @@ func (uc *WhatsappMessageUsecase) UnlinkSubGroup(
 	if err != nil {
 		return err
 	}
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, parent, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.UnlinkSubGroup(ctx, traceID, phoneNumber, parent, childJID)

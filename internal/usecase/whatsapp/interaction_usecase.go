@@ -9,21 +9,6 @@ import (
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 )
 
-// spendActionBudget applies the interim per-account cap on conversation actions
-// (mark-read, typing, react) until roadmap #2 pacing lands. It reuses the
-// existing outbound limiter under a distinct `action:` key namespace so actions
-// get their own bucket without touching the message budget.
-//
-// ponytail: interim best-effort cap; replaced by proper outbound pacing (#2).
-func (uc *WhatsappMessageUsecase) spendActionBudget(ctx context.Context, phoneNumber string) error {
-	res, err := uc.limiter.Allow(ctx, "action:"+phoneNumber)
-	if err == nil && !res.Allowed {
-		return errDomain.NewError(errDomain.ErrTooManyRequests,
-			fmt.Errorf("action rate limit exceeded; retry after %ds", int(res.RetryAfter.Seconds())+1))
-	}
-	return nil
-}
-
 // MarkRead marks messages in a chat as read (blue ticks). Group chats require
 // the message author in req.Sender. Counts against the interim action cap.
 func (uc *WhatsappMessageUsecase) MarkRead(
@@ -50,7 +35,7 @@ func (uc *WhatsappMessageUsecase) MarkRead(
 		}
 	}
 
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.MarkRead(ctx, traceID, phoneNumber, target, sender, req.MessageIDs)
@@ -73,7 +58,7 @@ func (uc *WhatsappMessageUsecase) SendChatPresence(
 		return err
 	}
 
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return err
 	}
 	return uc.whatsappManager.SendChatPresence(ctx, traceID, phoneNumber, target, state, media)

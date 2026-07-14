@@ -79,7 +79,7 @@ func InitializeApp() (*App, func(), error) {
 		return nil, nil, err
 	}
 	pacer := ProvideOutboundPacer(configConfig, manager, limiter)
-	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig, limiter, pacer)
+	whatsappMessageUsecase := whatsapp_usecase.ProvideWhatsappMessageUsecase(manager, logger, messageQueue, jobRepository, whatsAppRepository, webhookSender, configConfig, pacer)
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
 	storageHandler := storage2.ProvideStorageHandler(storageStorage)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler, storageHandler)

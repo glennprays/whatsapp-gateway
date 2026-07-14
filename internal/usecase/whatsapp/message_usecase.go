@@ -155,7 +155,6 @@ type WhatsappMessageUsecase struct {
 	whatsappRepo    whatsapp.WhatsAppRepository
 	webhookSender   *whatsapp.WebhookSender
 	config          *config.Config
-	limiter         ratelimiter.Limiter
 	pacer           *ratelimiter.Pacer  // outbound pacer (supersedes the interim action cap)
 	queryCache      *ttlCache           // short-TTL cache for server-hitting reads
 	queryBudget     ratelimiter.Limiter // per-account read budget (spent on cache miss)
@@ -170,7 +169,6 @@ func NewWhatsappMessageUsecase(
 	whatsappRepo whatsapp.WhatsAppRepository,
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
-	limiter ratelimiter.Limiter,
 	pacer *ratelimiter.Pacer,
 ) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
@@ -181,7 +179,6 @@ func NewWhatsappMessageUsecase(
 		whatsappRepo:    whatsappRepo,
 		webhookSender:   webhookSender,
 		config:          cfg,
-		limiter:         limiter,
 		pacer:           pacer,
 		queryCache:      newTTLCache(time.Duration(cfg.ReadQueryCacheTTLSeconds) * time.Second),
 		queryBudget:     newQueryBudget(cfg.ReadQueryBudget, cfg.ReadQueryWindowSeconds),
@@ -279,23 +276,8 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		uc.logger.Error(traceID, "Rate limiter error", map[string]interface{}{
-			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
-		}, customLog.Error(err))
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-
-	if !res.Allowed {
-		uc.logger.Warn(traceID, "Rate limit exceeded", map[string]interface{}{
-			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
-			"limit":        res.Limit,
-			"retry_after":  res.RetryAfter.Seconds(),
-			"reset_after":  res.ResetAfter.Seconds(),
-			"remaining":    res.Remaining,
-		})
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, errors.New(fmt.Sprintf("Rate limit exceeded. Retry after %.0f seconds", res.RetryAfter.Seconds())))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message, msgCtx)
@@ -789,12 +771,8 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address, msgCtx)
@@ -872,12 +850,8 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount, msgCtx)
@@ -959,12 +933,8 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType, msgCtx)
@@ -1003,8 +973,8 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 		return err
 	}
 
-	// Reactions are conversation actions — counted against the interim action cap.
-	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+	// Reactions are conversation actions — paced like any outbound op.
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
 		return err
 	}
 
@@ -1033,6 +1003,10 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 	}
 	req.Msisdn = to
 
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.DeleteMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to delete message", nil,
@@ -1059,6 +1033,10 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	req.Msisdn = to
 
 	if err := validateLength(req.NewMessage, "new_message", maxTextMessageLen); err != nil {
+		return err
+	}
+
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
 		return err
 	}
 
