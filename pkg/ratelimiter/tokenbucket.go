@@ -60,6 +60,11 @@ func (t *TokenBucketLimiter) Allow(ctx context.Context, key string) (Result, err
 	return t.AllowN(ctx, key, 1)
 }
 
+// Burst is the (clamped) bucket capacity. A request for more than this many
+// tokens can never be satisfied, so callers can fail such a request fast rather
+// than block waiting for tokens that will never accrue.
+func (t *TokenBucketLimiter) Burst() float64 { return t.burst }
+
 // AllowN refills the bucket by the elapsed time (capped at burst) and deducts n
 // tokens if available. When short it does NOT deduct and reports how long until
 // n tokens would be available in RetryAfter, so a pacer can sleep exactly that

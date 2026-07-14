@@ -29,14 +29,15 @@ type PacerConfig struct {
 // A ban gate (read-through of the persisted session-status ban) short-circuits
 // everything while an account is temporarily banned.
 type Pacer struct {
-	enabled   bool
-	mode      string
-	account   Limiter // token bucket, key = phone
-	recipient Limiter // fixed-window reject, key = phone+":"+recipient
-	fallback  Limiter // disabled-mode legacy reject
-	maxWait   time.Duration
-	jitter    time.Duration
-	banUntil  func(phone string) (time.Time, bool)
+	enabled      bool
+	mode         string
+	account      Limiter // token bucket, key = phone
+	accountBurst float64 // effective bucket capacity; n>burst is never satisfiable
+	recipient    Limiter // fixed-window reject, key = phone+":"+recipient
+	fallback     Limiter // disabled-mode legacy reject
+	maxWait      time.Duration
+	jitter       time.Duration
+	banUntil     func(phone string) (time.Time, bool)
 
 	sleep func(ctx context.Context, d time.Duration) error // test seam
 	now   func() time.Time                                 // test seam
@@ -57,18 +58,20 @@ func NewPacer(cfg PacerConfig, banUntil func(string) (time.Time, bool)) *Pacer {
 	if cfg.RecipientLimit > 0 && cfg.RecipientWindow > 0 {
 		recipient = NewMemoryLimiter(Config{Limit: cfg.RecipientLimit, Window: cfg.RecipientWindow, Prefix: "rcpt:"})
 	}
+	account := NewTokenBucketLimiter(TokenBucketConfig{Rate: cfg.AccountRate, Burst: cfg.AccountBurst, Prefix: "acct:"})
 	return &Pacer{
-		enabled:   cfg.Enabled,
-		mode:      mode,
-		account:   NewTokenBucketLimiter(TokenBucketConfig{Rate: cfg.AccountRate, Burst: cfg.AccountBurst, Prefix: "acct:"}),
-		recipient: recipient,
-		fallback:  cfg.Fallback,
-		maxWait:   cfg.MaxWait,
-		jitter:    cfg.Jitter,
-		banUntil:  banUntil,
-		sleep:     defaultSleep,
-		now:       time.Now,
-		rnd:       rand.New(rand.NewSource(time.Now().UnixNano())),
+		enabled:      cfg.Enabled,
+		mode:         mode,
+		account:      account,
+		accountBurst: account.Burst(), // effective (clamped) capacity
+		recipient:    recipient,
+		fallback:     cfg.Fallback,
+		maxWait:      cfg.MaxWait,
+		jitter:       cfg.Jitter,
+		banUntil:     banUntil,
+		sleep:        defaultSleep,
+		now:          time.Now,
+		rnd:          rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -92,7 +95,22 @@ func (p *Pacer) Wait(ctx context.Context, phone, recipient string, n int64) erro
 		}
 	}
 
-	// 2. Per-recipient hard cap — reject, never paced.
+	// A request larger than the account burst can never accrue enough tokens —
+	// fail fast with a 429 instead of blocking the whole MaxWait then rejecting
+	// anyway (and before spending any recipient budget on a doomed op). Callers
+	// pace one op at a time (n=1), so this only guards against future misuse.
+	if float64(n) > p.accountBurst {
+		return &RateLimitError{RetryAfter: 0, Limit: int64(p.accountBurst)}
+	}
+
+	// 2. Per-recipient hard cap — reject, never paced. Checked before the account
+	// wait so repeat-to-one-recipient (the #1 ban trigger) is rejected fast rather
+	// than blocked-then-sent.
+	// ponytail: this consumes the recipient slot before the account bucket, so a
+	// send that later times out on the account wait burns one slot it never used.
+	// The effect is transient (self-heals within RecipientWindow) and bounded by
+	// the cap; a peek-then-commit (or refund on account failure) is the upgrade
+	// path if that transient over-count is ever proven to matter.
 	if p.recipient != nil && recipient != "" {
 		res, err := p.recipient.AllowN(ctx, phone+":"+recipient, n)
 		if err != nil {
@@ -120,10 +138,7 @@ func (p *Pacer) Wait(ctx context.Context, phone, recipient string, n int64) erro
 		if remaining <= 0 {
 			return &RateLimitError{RetryAfter: res.RetryAfter}
 		}
-		wait := res.RetryAfter + p.randJitter()
-		if wait > remaining {
-			wait = remaining
-		}
+		wait := min(res.RetryAfter+p.randJitter(), remaining)
 		if err := p.sleep(ctx, wait); err != nil {
 			return err // context cancelled: return promptly, no leaked goroutine
 		}

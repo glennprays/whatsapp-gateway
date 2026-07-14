@@ -118,6 +118,33 @@ func TestPacer_PerRecipientHardCapNotPaced(t *testing.T) {
 	}
 }
 
+func TestPacer_UnsatisfiableNFailsFast(t *testing.T) {
+	cfg := baseCfg()
+	cfg.AccountBurst = 5
+	cfg.AccountRate = 1
+	cfg.MaxWait = 30 * time.Second
+	cfg.RecipientLimit = 1 // a single recipient slot, to prove it is not spent
+	cfg.RecipientWindow = 60 * time.Second
+	p, _, waited := newTestPacer(t, cfg, nil)
+	ctx := context.Background()
+
+	// n larger than the burst can never accrue: reject immediately instead of
+	// pacing out the whole MaxWait (the old bug hung 30s then 429'd anyway).
+	err := p.Wait(ctx, "p1", "r1", 6)
+	var rl *RateLimitError
+	if !asRateLimit(err, &rl) {
+		t.Fatalf("n>burst should fail fast with *RateLimitError, got %v", err)
+	}
+	if len(*waited) != 0 {
+		t.Fatalf("n>burst must not pace/sleep, slept %v", *waited)
+	}
+	// The guard runs before the recipient step, so the doomed op did not burn the
+	// recipient's only slot — a real single send still clears.
+	if err := p.Wait(ctx, "p1", "r1", 1); err != nil {
+		t.Fatalf("recipient slot must be intact after a doomed n>burst op, got %v", err)
+	}
+}
+
 func TestPacer_BanGate(t *testing.T) {
 	clkBase := time.Unix(2_000_000, 0)
 	banned := true
@@ -165,7 +192,7 @@ func TestPacer_DisabledNoFallback_NoLimiting(t *testing.T) {
 	cfg.Enabled = false // no Fallback
 	p, _, _ := newTestPacer(t, cfg, nil)
 	ctx := context.Background()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if err := p.Wait(ctx, "p1", "r1", 1); err != nil {
 			t.Fatalf("disabled+no-fallback should never limit, failed at %d: %v", i, err)
 		}

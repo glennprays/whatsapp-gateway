@@ -107,11 +107,10 @@ func (uc *WhatsappMessageUsecase) CreateGroup(
 			return nil, err
 		}
 	}
-	paceN := int64(1)
-	if len(participants) > 0 {
-		paceN = int64(len(participants))
-	}
-	if err := uc.pace(ctx, phoneNumber, "", paceN); err != nil {
+	// One server call regardless of roster size: pace as a single op, not per
+	// participant (n>burst would be permanently unsatisfiable — the batch is
+	// already bounded by GROUP_MAX_PARTICIPANTS_PER_REQUEST).
+	if err := uc.pace(ctx, phoneNumber, "", 1); err != nil {
 		return nil, err
 	}
 	return uc.whatsappManager.CreateGroup(ctx, traceID, phoneNumber, name, participants,
@@ -164,11 +163,9 @@ func (uc *WhatsappMessageUsecase) UpdateGroupParticipants(
 	if action == "add" && !uc.config.GroupAddParticipantsEnabled {
 		return nil, errDomain.NewError(errDomain.ErrForbidden, errors.New("adding participants is disabled"))
 	}
-	paceN := int64(1)
-	if action == "add" {
-		paceN = int64(len(participants))
-	}
-	if err := uc.pace(ctx, phoneNumber, target, paceN); err != nil {
+	// One server call regardless of roster size: pace as a single op (see
+	// CreateGroup) — the batch is bounded by GROUP_MAX_PARTICIPANTS_PER_REQUEST.
+	if err := uc.pace(ctx, phoneNumber, target, 1); err != nil {
 		return nil, err
 	}
 	results, err := uc.whatsappManager.UpdateGroupParticipants(ctx, traceID, phoneNumber, target, action, participants)
