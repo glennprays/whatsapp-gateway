@@ -17,6 +17,8 @@ The matrix is intended to give solution architects and integrators a clear view 
 | Send Document / File           | Yes       | Any mimetype; caption + file name |
 | Send Location / Poll / Sticker | Yes       | Static location, polls, stickers |
 | React / Edit / Delete          | Yes       | Message actions |
+| Mark as Read (blue ticks)      | Yes       | `POST /message/read`; `sender` required for groups; interim action cap |
+| Typing Indicator               | Yes       | `POST /chat/presence` (composing / recording / paused); interim action cap |
 | Recipient Validation           | Yes       | `GET /contact/check` (IsOnWhatsApp) |
 | Receive Incoming Text          | Yes       | Delivered via webhook |
 | Receive Incoming Media         | Yes       | Image/audio/video/document/sticker/contact/location/poll |

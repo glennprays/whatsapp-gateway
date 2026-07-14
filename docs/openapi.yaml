@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.16.0
+  version: 0.17.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -541,6 +541,49 @@ components:
         direct_path:
           type: string
           example: "/v/t61.../avatar.jpg"
+    MarkReadRequest:
+      type: object
+      properties:
+        chat:
+          type: string
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat."
+          deprecated: true
+          example: "6281234567890"
+        message_ids:
+          type: array
+          items:
+            type: string
+          description: IDs of the messages to mark as read.
+          example: ["3EB0C767D26A1D8A2C1B", "3EB0C767D26A1D8A2C1C"]
+        sender:
+          type: string
+          description: The message author (required for group chats).
+          example: "6289999999999@s.whatsapp.net"
+      required:
+        - message_ids
+    ChatPresenceRequest:
+      type: object
+      properties:
+        chat:
+          type: string
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat."
+          deprecated: true
+          example: "6281234567890"
+        state:
+          type: string
+          enum: [composing, recording, paused]
+          description: "composing = typing…, recording = voice note, paused = cleared."
+          example: "composing"
+      required:
+        - state
     MessageDeleteRequest:
       type: object
       properties:
@@ -1167,6 +1210,56 @@ paths:
           description: The target has no profile picture set.
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /message/read:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Mark messages as read
+      description: >
+        Marks one or more messages in a chat as read (blue ticks). For a group
+        chat, `sender` (the message author's number/JID) is required so the
+        receipt is attributed. Counts against the interim per-account action cap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkReadRequest'
+      responses:
+        '200':
+          description: Messages marked as read.
+        '400':
+          description: Missing message_ids, or a group chat without sender.
+        '429':
+          description: Action rate limit exceeded; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /chat/presence:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Set the typing indicator
+      description: >
+        Sets the chat presence (typing indicator). `state` is `composing`
+        (typing…), `recording` (recording a voice note; sent as composing +
+        audio), or `paused`. The indicator auto-expires client-side after a few
+        seconds, so an explicit `paused` is optional. Counts against the interim
+        per-account action cap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatPresenceRequest'
+      responses:
+        '200':
+          description: Presence sent.
+        '400':
+          description: Invalid or missing state.
+        '429':
+          description: Action rate limit exceeded; retry after the indicated delay.
       security:
         - accountBearerAuth: []
   /session/reconnect:
