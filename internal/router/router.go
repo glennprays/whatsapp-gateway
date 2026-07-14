@@ -159,7 +159,8 @@ func SetupRouter(
 	initWebhookRoutes(api, h, authMw)
 	initMessageRoutes(api, h, authMw, idempotencyMw)
 	initContactRoutes(api, h, authMw)
-	initGroupRoutes(api, h, authMw)
+	initGroupRoutes(api, h, authMw, cfg)
+	initCommunityRoutes(api, h, authMw, cfg)
 	initChatRoutes(api, h, authMw)
 
 	// Register storage routes
