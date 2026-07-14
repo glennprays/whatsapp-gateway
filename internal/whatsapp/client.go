@@ -41,6 +41,8 @@ type (
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
+		ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error)
+		ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
@@ -164,6 +166,24 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 	}
 	if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
 		return errDomain.NewError(errDomain.ErrForbidden, err)
+	}
+	// GetSubGroups / GetLinkedGroupsParticipants return a raw *whatsmeow.IQError
+	// (they don't wrap in ErrGroupNotFound like getGroupInfo), so the sentinel
+	// checks above miss them. Map by the server's IQ code instead. This branch
+	// runs AFTER the sentinel checks so a wrapped ErrGroupNotFound still wins.
+	var iqErr *whatsmeow.IQError
+	if errors.As(err, &iqErr) {
+		switch iqErr.Code {
+		case 400, 405, 406:
+			return errDomain.NewError(errDomain.ErrBadRequest, err)
+		case 401, 403:
+			return errDomain.NewError(errDomain.ErrForbidden, err)
+		case 404:
+			return errDomain.NewError(errDomain.ErrNotFound, err)
+		case 419, 429:
+			return errDomain.NewError(errDomain.ErrTooManyRequests, err)
+		}
+		// Unknown code (0/500/…) falls through to ErrInternalFailure below.
 	}
 	// Recipient problems (e.g. "can't send message to unknown server") are
 	// caller input errors, not server faults — surface as 400, not 500.
@@ -434,6 +454,73 @@ func (c *client) GetGroupInfo(ctx context.Context, traceID string, phoneNumber s
 		IsEphemeral:      g.IsEphemeral,
 		Participants:     participants,
 	}, nil
+}
+
+// ListSubGroups returns the groups linked under a community (whatsmeow
+// GetSubGroups, a server IQ). Requires a community @g.us JID; a non-community
+// group or absence maps to 400/403/404 via the mapWhatsmeowErr IQError branch.
+func (c *client) ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	jid, err := types.ParseJID(communityJID)
+	if err != nil || jid.Server != types.GroupServer {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a community JID (@g.us): %q", communityJID))
+	}
+
+	subs, err := cli.GetSubGroups(ctx, jid)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+
+	items := make([]waDomain.SubGroupItem, 0, len(subs))
+	for _, s := range subs {
+		if s == nil {
+			continue
+		}
+		items = append(items, waDomain.SubGroupItem{
+			JID:               s.JID.String(),
+			Name:              s.Name,
+			IsDefaultSubGroup: s.IsDefaultSubGroup,
+		})
+	}
+	return items, nil
+}
+
+// ListCommunityParticipants returns every participant across a community's
+// linked groups (whatsmeow GetLinkedGroupsParticipants, a server IQ). Requires a
+// community @g.us JID; errors map via the mapWhatsmeowErr IQError branch.
+func (c *client) ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+
+	jid, err := types.ParseJID(communityJID)
+	if err != nil || jid.Server != types.GroupServer {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a community JID (@g.us): %q", communityJID))
+	}
+
+	members, err := cli.GetLinkedGroupsParticipants(ctx, jid)
+	if err != nil {
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+	}
+
+	items := make([]waDomain.CommunityParticipantItem, 0, len(members))
+	for _, j := range members {
+		items = append(items, waDomain.CommunityParticipantItem{JID: j.String()})
+	}
+	return items, nil
 }
 
 // GetContactInfo returns a server-side profile lookup for one user (whatsmeow

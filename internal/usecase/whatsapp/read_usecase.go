@@ -77,6 +77,20 @@ func (uc *WhatsappMessageUsecase) ListGroups(
 		})
 }
 
+// resolveGroupJID resolves chat and requires an explicit group/community JID
+// (@g.us). A bare number, user JID, or @lid is a 400 before any server call.
+func resolveGroupJID(chat string) (string, error) {
+	target, err := resolveChat(chat, "")
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasSuffix(target, "@"+groupServerSuffix) {
+		return "", errDomain.NewError(errDomain.ErrBadRequest,
+			fmt.Errorf("chat must be a group/community JID (@g.us), got %q", target))
+	}
+	return target, nil
+}
+
 // GetGroupInfo returns the full detail of one group. The chat must resolve to a
 // group JID (@g.us); anything else is a 400. Cached + budgeted like other
 // server-hitting reads.
@@ -84,17 +98,57 @@ func (uc *WhatsappMessageUsecase) GetGroupInfo(
 	ctx context.Context,
 	traceID, phoneNumber, chat string,
 ) (*waDomain.GroupInfoResponse, error) {
-	target, err := resolveChat(chat, "")
+	target, err := resolveGroupJID(chat)
 	if err != nil {
 		return nil, err
-	}
-	if !strings.HasSuffix(target, "@"+groupServerSuffix) {
-		return nil, errDomain.NewError(errDomain.ErrBadRequest,
-			fmt.Errorf("chat must be a group (@g.us), got %q", target))
 	}
 	return queryWithBudget(uc, ctx, phoneNumber, "groupinfo:"+phoneNumber+":"+target,
 		func() (*waDomain.GroupInfoResponse, error) {
 			return uc.whatsappManager.GetGroupInfo(ctx, traceID, phoneNumber, target)
+		})
+}
+
+// ListSubGroups returns the groups linked under a community. The chat must
+// resolve to a community JID (@g.us); anything else is a 400. Cached + budgeted
+// like other server-hitting reads.
+func (uc *WhatsappMessageUsecase) ListSubGroups(
+	ctx context.Context,
+	traceID, phoneNumber, chat string,
+) (*waDomain.SubGroupListResponse, error) {
+	target, err := resolveGroupJID(chat)
+	if err != nil {
+		return nil, err
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "subgroups:"+phoneNumber+":"+target,
+		func() (*waDomain.SubGroupListResponse, error) {
+			items, err := uc.whatsappManager.ListSubGroups(ctx, traceID, phoneNumber, target)
+			if err != nil {
+				return nil, err
+			}
+			sort.Slice(items, func(i, j int) bool { return items[i].JID < items[j].JID })
+			return &waDomain.SubGroupListResponse{SubGroups: items, Count: len(items)}, nil
+		})
+}
+
+// ListCommunityParticipants returns every participant across a community's
+// linked groups. The chat must resolve to a community JID (@g.us); anything else
+// is a 400. Cached + budgeted like other server-hitting reads.
+func (uc *WhatsappMessageUsecase) ListCommunityParticipants(
+	ctx context.Context,
+	traceID, phoneNumber, chat string,
+) (*waDomain.CommunityParticipantsResponse, error) {
+	target, err := resolveGroupJID(chat)
+	if err != nil {
+		return nil, err
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "communityparts:"+phoneNumber+":"+target,
+		func() (*waDomain.CommunityParticipantsResponse, error) {
+			items, err := uc.whatsappManager.ListCommunityParticipants(ctx, traceID, phoneNumber, target)
+			if err != nil {
+				return nil, err
+			}
+			sort.Slice(items, func(i, j int) bool { return items[i].JID < items[j].JID })
+			return &waDomain.CommunityParticipantsResponse{Participants: items, Count: len(items)}, nil
 		})
 }
 

@@ -44,3 +44,33 @@ type GroupInfoResponse struct {
 	IsEphemeral      bool                   `json:"is_ephemeral"`
 	Participants     []GroupParticipantItem `json:"participants"`
 }
+
+// SubGroupItem is one linked group under a community (whatsmeow
+// types.GroupLinkTarget). The default sub-group is the community's
+// announcement group.
+type SubGroupItem struct {
+	JID               string `json:"jid"` // the sub-group's @g.us JID
+	Name              string `json:"name,omitempty"`
+	IsDefaultSubGroup bool   `json:"is_default_sub_group"`
+}
+
+// SubGroupListResponse is a community's linked sub-groups. Count always equals
+// len(SubGroups).
+type SubGroupListResponse struct {
+	SubGroups []SubGroupItem `json:"sub_groups"`
+	Count     int            `json:"count"`
+}
+
+// CommunityParticipantItem is one member across the community's linked groups.
+// whatsmeow returns only the primary JID (@lid or @s.whatsapp.net); no PN/LID
+// split.
+type CommunityParticipantItem struct {
+	JID string `json:"jid"`
+}
+
+// CommunityParticipantsResponse is every participant across the community's
+// linked groups. Count always equals len(Participants).
+type CommunityParticipantsResponse struct {
+	Participants []CommunityParticipantItem `json:"participants"`
+	Count        int                        `json:"count"`
+}

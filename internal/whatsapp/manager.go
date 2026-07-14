@@ -54,6 +54,8 @@ type (
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
 		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
+		ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error)
+		ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error)
 		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
@@ -574,6 +576,30 @@ func (m *manager) GetGroupInfo(ctx context.Context, traceID string, phoneNumber 
 		return nil, err
 	}
 	return info, nil
+}
+
+func (m *manager) ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error) {
+	items, err := m.Client.ListSubGroups(ctx, traceID, phoneNumber, communityJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list subgroups", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error) {
+	items, err := m.Client.ListCommunityParticipants(ctx, traceID, phoneNumber, communityJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list community participants", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
 }
 
 func (m *manager) GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error) {

@@ -481,6 +481,38 @@ func (h *WhatsappMessageHandler) GetGroupInfo(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(resp)
 }
 
+func (h *WhatsappMessageHandler) ListSubGroups(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.ListSubGroups(c.Context(), traceID, phoneNumber, c.Query("chat"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) ListCommunityParticipants(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.ListCommunityParticipants(c.Context(), traceID, phoneNumber, c.Query("chat"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
 func (h *WhatsappMessageHandler) GetContactInfo(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)

@@ -84,6 +84,24 @@ func TestGetGroupInfo_RejectsNonGroupChat(t *testing.T) {
 	}
 }
 
+func TestCommunityReads_RejectNonGroupChat(t *testing.T) {
+	// Both community reads must reject a non-@g.us chat with 400 via the shared
+	// resolveGroupJID guard, before ever touching the (nil) manager.
+	badChats := []string{"6282222222222", "6282222222222@s.whatsapp.net", "1122334455@lid"}
+	for _, chat := range badChats {
+		t.Run("subgroups/"+chat, func(t *testing.T) {
+			uc := newTestUsecase(time.Minute, 100)
+			_, err := uc.ListSubGroups(context.Background(), "trace", "628111", chat)
+			assertBadRequest(t, err)
+		})
+		t.Run("participants/"+chat, func(t *testing.T) {
+			uc := newTestUsecase(time.Minute, 100)
+			_, err := uc.ListCommunityParticipants(context.Background(), "trace", "628111", chat)
+			assertBadRequest(t, err)
+		})
+	}
+}
+
 func TestGetContactInfo_RejectsGroupChat(t *testing.T) {
 	uc := newTestUsecase(time.Minute, 100)
 	_, err := uc.GetContactInfo(context.Background(), "trace", "628111", "120363000000000000@g.us", "")
