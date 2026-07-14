@@ -10,4 +10,5 @@ func initContactRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Au
 	contactGroup := r.Group("/contact")
 	contactGroup.Use(authMw.JWTAuthentication())
 	contactGroup.Get("/check", h.WhatsappMessageHandler.CheckNumber)
+	contactGroup.Get("/", h.WhatsappMessageHandler.ListContacts)
 }

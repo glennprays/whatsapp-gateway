@@ -36,14 +36,15 @@ type (
 		LoginStatus(traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
 		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
-	CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
+		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
+		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
-	SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
-	SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
-	SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
+		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
+		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
@@ -289,6 +290,43 @@ func (c *client) CheckNumber(ctx context.Context, traceID string, phoneNumber st
 		}
 	}
 	return out, nil
+}
+
+// ListContacts returns the account's locally-synced contacts from the whatsmeow
+// store. It performs no network call; the store reflects synced state, so an
+// empty or partial map is returned as-is (the usecase adds metadata). Pagination
+// happens in the usecase layer.
+func (c *client) ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error) {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+	if !cli.IsLoggedIn() {
+		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
+	}
+	if cli.Store == nil || cli.Store.Contacts == nil {
+		return nil, errDomain.NewError(errDomain.ErrConflict, errors.New("session store not ready"))
+	}
+
+	contacts, err := cli.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		if errors.Is(err, store.ErrDeviceDeleted) {
+			return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
+		}
+		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to list contacts: %w", err))
+	}
+
+	items := make([]waDomain.ContactListItem, 0, len(contacts))
+	for jid, info := range contacts {
+		items = append(items, waDomain.ContactListItem{
+			JID:          jid.String(),
+			PushName:     info.PushName,
+			FullName:     info.FullName,
+			FirstName:    info.FirstName,
+			BusinessName: info.BusinessName,
+		})
+	}
+	return items, nil
 }
 
 func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {

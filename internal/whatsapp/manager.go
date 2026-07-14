@@ -51,6 +51,7 @@ type (
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
+		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		GetClientStore() *ClientStore
 	}
 )
@@ -531,6 +532,18 @@ func (m *manager) CheckNumber(ctx context.Context, traceID string, phoneNumber s
 		return waDomain.ContactCheckResponse{}, err
 	}
 	return resp, nil
+}
+
+func (m *manager) ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error) {
+	items, err := m.Client.ListContacts(ctx, traceID, phoneNumber)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list contacts", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

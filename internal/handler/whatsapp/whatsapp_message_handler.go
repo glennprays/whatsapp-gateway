@@ -429,6 +429,25 @@ func (h *WhatsappMessageHandler) CheckNumber(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(resp)
 }
 
+func (h *WhatsappMessageHandler) ListContacts(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	limit := c.QueryInt("limit", 0)
+	offset := c.QueryInt("offset", 0)
+
+	resp, err := h.whatsappMessageUsecase.ListContacts(c.Context(), traceID, phoneNumber, limit, offset)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
 func (h *WhatsappMessageHandler) GetJobStatus(c *fiber.Ctx) error {
 	traceID := middleware.GetTraceID(c)
 	phoneNumber, ok := utils.MustGetPhoneNumber(c)
