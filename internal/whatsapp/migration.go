@@ -9,6 +9,9 @@ func runMigrations(db *sql.DB) error {
 	if err := runDeviceWebhooksMigrations(db); err != nil {
 		return err
 	}
+	if err := runDeviceWebhookSubscriptionsMigrations(db); err != nil {
+		return err
+	}
 	if err := runMessageJobsMigrations(db); err != nil {
 		return err
 	}
@@ -48,6 +51,39 @@ func runDeviceWebhooksMigrations(db *sql.DB) error {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );`
+	_, err := db.ExecContext(context.Background(), query)
+	return err
+}
+
+// runDeviceWebhookSubscriptionsMigrations creates the multi-URL subscription
+// table and seeds it, once, from the legacy single-row device_webhooks table:
+// each existing webhook becomes one subscription with an empty events filter
+// (= all events), preserving today's "one URL receives everything" behavior.
+//
+// The seed is guarded by NOT EXISTS so it only runs while the target table is
+// still empty. Without that guard the INSERT...SELECT would re-copy every
+// frozen device_webhooks row on every startup and resurrect subscriptions a
+// user has since deleted (device_webhooks is kept for rollback and never
+// pruned). ON CONFLICT DO NOTHING keeps it safe if the two ever race.
+//
+// Portable DDL (SQLite 3.24+/Postgres 9.5+): no placeholders, no arrays.
+func runDeviceWebhookSubscriptionsMigrations(db *sql.DB) error {
+	query := `
+    CREATE TABLE IF NOT EXISTS device_webhook_subscriptions (
+        jid         TEXT NOT NULL REFERENCES whatsmeow_device(jid) ON DELETE CASCADE,
+        url         TEXT NOT NULL,
+        hmac_secret TEXT NOT NULL DEFAULT '',
+        events      TEXT NOT NULL DEFAULT '',
+        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (jid, url)
+    );
+
+    INSERT INTO device_webhook_subscriptions (jid, url, hmac_secret, events)
+    SELECT jid, webhook_url, hmac_secret, ''
+    FROM device_webhooks
+    WHERE NOT EXISTS (SELECT 1 FROM device_webhook_subscriptions)
+    ON CONFLICT (jid, url) DO NOTHING;`
 	_, err := db.ExecContext(context.Background(), query)
 	return err
 }

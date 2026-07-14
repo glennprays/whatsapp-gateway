@@ -13,10 +13,18 @@ type whatsAppRepository struct {
 }
 
 type WhatsAppRepository interface {
+	// Legacy single-row webhook (kept for rollback; no longer used by dispatch).
 	SetWebhook(ctx context.Context, jid string, webhookURL string, hmacSecret string) error
 	GetWebhook(ctx context.Context, jid string) (*waDomain.Webhook, error)
 	GetWebhookByPhone(ctx context.Context, phoneNumber string) (*waDomain.Webhook, string, error)
 	DeleteWebhook(ctx context.Context, jid string) error
+
+	// Multi-URL / per-event subscriptions.
+	SetWebhookSubscription(ctx context.Context, jid, url, hmacSecret, events string) error
+	GetWebhookSubscriptions(ctx context.Context, jid string) ([]waDomain.WebhookSubscription, error)
+	DeleteWebhookSubscription(ctx context.Context, jid, url string) error
+	DeleteAllWebhookSubscriptions(ctx context.Context, jid string) error
+
 	UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error
 	ListSessionStatuses(ctx context.Context) (map[string]waDomain.SessionStatus, error)
 }
@@ -91,6 +99,63 @@ func (r *whatsAppRepository) GetWebhookByPhone(ctx context.Context, phoneNumber 
 
 func (r *whatsAppRepository) DeleteWebhook(ctx context.Context, jid string) error {
 	_, err := r.DB.ExecContext(ctx, "DELETE FROM device_webhooks WHERE jid = $1", jid)
+	return err
+}
+
+// SetWebhookSubscription upserts one (jid, url) subscription. Re-posting the
+// same URL edits its hmac/events filter. hmacSecret is stored encrypted (” =
+// no secret); events is the comma-separated catalog subset (” = all events).
+func (r *whatsAppRepository) SetWebhookSubscription(ctx context.Context, jid, url, hmacSecret, events string) error {
+	_, err := r.DB.ExecContext(ctx, `
+		INSERT INTO device_webhook_subscriptions (jid, url, hmac_secret, events)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (jid, url)
+		DO UPDATE SET hmac_secret = EXCLUDED.hmac_secret, events = EXCLUDED.events, updated_at = CURRENT_TIMESTAMP
+	`, jid, url, hmacSecret, events)
+	return err
+}
+
+// GetWebhookSubscriptions returns every subscription for a jid, oldest first
+// (url tie-break) so the back-compat "first subscription" is deterministic.
+func (r *whatsAppRepository) GetWebhookSubscriptions(ctx context.Context, jid string) ([]waDomain.WebhookSubscription, error) {
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT url, hmac_secret, events
+		FROM device_webhook_subscriptions
+		WHERE jid = $1
+		ORDER BY created_at, url
+	`, jid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subs []waDomain.WebhookSubscription
+	for rows.Next() {
+		var url string
+		var hmacSecret sql.NullString
+		var events sql.NullString
+		if err := rows.Scan(&url, &hmacSecret, &events); err != nil {
+			return nil, err
+		}
+		s := waDomain.WebhookSubscription{Url: url}
+		if hmacSecret.Valid {
+			s.HmacSecret = hmacSecret.String
+		}
+		if events.Valid {
+			s.Events = events.String
+		}
+		subs = append(subs, s)
+	}
+	return subs, rows.Err()
+}
+
+func (r *whatsAppRepository) DeleteWebhookSubscription(ctx context.Context, jid, url string) error {
+	_, err := r.DB.ExecContext(ctx, "DELETE FROM device_webhook_subscriptions WHERE jid = $1 AND url = $2", jid, url)
+	return err
+}
+
+func (r *whatsAppRepository) DeleteAllWebhookSubscriptions(ctx context.Context, jid string) error {
+	_, err := r.DB.ExecContext(ctx, "DELETE FROM device_webhook_subscriptions WHERE jid = $1", jid)
 	return err
 }
 

@@ -29,6 +29,18 @@ func (m *mockSessionRepo) GetWebhookByPhone(ctx context.Context, phone string) (
 	return nil, "", nil
 }
 func (m *mockSessionRepo) DeleteWebhook(ctx context.Context, jid string) error { return nil }
+func (m *mockSessionRepo) SetWebhookSubscription(ctx context.Context, jid, url, hmacSecret, events string) error {
+	return nil
+}
+func (m *mockSessionRepo) GetWebhookSubscriptions(ctx context.Context, jid string) ([]waDomain.WebhookSubscription, error) {
+	return nil, nil
+}
+func (m *mockSessionRepo) DeleteWebhookSubscription(ctx context.Context, jid, url string) error {
+	return nil
+}
+func (m *mockSessionRepo) DeleteAllWebhookSubscriptions(ctx context.Context, jid string) error {
+	return nil
+}
 func (m *mockSessionRepo) UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error {
 	m.called, m.phone, m.state, m.reason, m.banExp = true, phone, state, reason, banExpiresAt
 	return nil

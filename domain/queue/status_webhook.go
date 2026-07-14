@@ -1,5 +1,7 @@
 package queue
 
+import "strings"
+
 // StatusWebhookEvent represents the type of status event
 type StatusWebhookEvent string
 
@@ -13,6 +15,38 @@ const (
 	// EventMessageIncoming indicates an incoming message was received
 	EventMessageIncoming StatusWebhookEvent = "message.incoming"
 )
+
+// WebhookEventCatalog is the single source of truth for every webhook event a
+// subscription may filter on. A subscription's events field is validated
+// against this set before it is stored. The session.* entries are appended by
+// the generic event-system change (roadmap #1).
+var WebhookEventCatalog = map[string]struct{}{
+	string(EventMessageIncoming): {},
+	string(EventMessageQueued):   {},
+	string(EventMessageSent):     {},
+	string(EventMessageFailed):   {},
+}
+
+// IsKnownEvent reports whether e is a recognized webhook event type.
+func IsKnownEvent(e string) bool {
+	_, ok := WebhookEventCatalog[e]
+	return ok
+}
+
+// EventMatches reports whether a subscription with the given comma-separated
+// events filter should receive event. An empty filter means "all events"
+// (matches the legacy single-URL-gets-everything behavior).
+func EventMatches(subEvents, event string) bool {
+	if strings.TrimSpace(subEvents) == "" {
+		return true
+	}
+	for _, e := range strings.Split(subEvents, ",") {
+		if strings.TrimSpace(e) == event {
+			return true
+		}
+	}
+	return false
+}
 
 // StatusWebhookPayload represents the webhook payload for message status updates
 type StatusWebhookPayload struct {
