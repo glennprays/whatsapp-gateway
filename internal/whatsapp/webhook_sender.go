@@ -93,11 +93,16 @@ func (ws *WebhookSender) Send(ctx context.Context, url string, encryptedHmacSecr
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Decrypt HMAC secret
-	hmacSecret, err := ws.cipher.Decrypt(encryptedHmacSecret)
-	if err != nil {
-		ws.logger.Error("", "Failed to decrypt HMAC secret", nil, customLog.Error(err))
-		return fmt.Errorf("failed to decrypt HMAC secret: %w", err)
+	// Decrypt HMAC secret. An empty stored secret means the subscription is
+	// unsigned: sign with an empty key (identical to decrypting the legacy
+	// ciphertext-of-"" that pre-multi-URL webhooks stored).
+	hmacSecret := ""
+	if encryptedHmacSecret != "" {
+		hmacSecret, err = ws.cipher.Decrypt(encryptedHmacSecret)
+		if err != nil {
+			ws.logger.Error("", "Failed to decrypt HMAC secret", nil, customLog.Error(err))
+			return fmt.Errorf("failed to decrypt HMAC secret: %w", err)
+		}
 	}
 
 	// Generate HMAC-SHA256 signature

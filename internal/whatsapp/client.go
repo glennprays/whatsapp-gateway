@@ -36,7 +36,7 @@ type (
 		LoginPairCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error)
 		LoginStatus(traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
-		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
+		ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error)
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
 		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
 		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
@@ -47,8 +47,9 @@ type (
 		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
 		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
 		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
-		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
-		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
+		SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
+		DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error
+		DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
@@ -1110,49 +1111,61 @@ func jidStringOrEmpty(j types.JID) string {
 	return j.String()
 }
 
-func (c *client) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
+func (c *client) ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return nil, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	webhookURL, err := c.repository.GetWebhook(ctx, cli.Store.ID.String())
+	subs, err := c.repository.GetWebhookSubscriptions(ctx, cli.Store.ID.String())
 	if err != nil {
-		c.logger.Error(traceID, fmt.Sprintf("Failed to get webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+		c.logger.Error(traceID, fmt.Sprintf("Failed to list webhook subscriptions for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
-	if webhookURL == nil {
-		return nil, nil
-	}
-
-	return &webhookURL.Url, nil
+	return subs, nil
 }
 
-func (c *client) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
+func (c *client) SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	err := c.repository.SetWebhook(ctx, cli.Store.ID.String(), webhook.Url, webhook.HmacSecret)
+	events := strings.Join(webhook.Events, ",")
+	err := c.repository.SetWebhookSubscription(ctx, cli.Store.ID.String(), webhook.Url, webhook.HmacSecret, events)
 	if err != nil {
-		c.logger.Error(traceID, fmt.Sprintf("Failed to set webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+		c.logger.Error(traceID, fmt.Sprintf("Failed to set webhook subscription for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 
 	return nil
 }
 
-func (c *client) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
+func (c *client) DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
 	}
 
-	err := c.repository.DeleteWebhook(ctx, cli.Store.ID.String())
+	err := c.repository.DeleteWebhookSubscription(ctx, cli.Store.ID.String(), url)
 	if err != nil {
-		c.logger.Error(traceID, fmt.Sprintf("Failed to delete webhook URL for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+		c.logger.Error(traceID, fmt.Sprintf("Failed to delete webhook subscription for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
+		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	}
+
+	return nil
+}
+
+func (c *client) DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error {
+	cli := clients.Get(phoneNumber)
+	if cli == nil {
+		return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
+
+	err := c.repository.DeleteAllWebhookSubscriptions(ctx, cli.Store.ID.String())
+	if err != nil {
+		c.logger.Error(traceID, fmt.Sprintf("Failed to delete webhook subscriptions for %s", MaskedPhoneNumber(phoneNumber)), nil, customLog.Error(err))
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
 

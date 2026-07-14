@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -34,9 +35,10 @@ type (
 		LoginStatus(ctx context.Context, traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
 		Reconnect(ctx context.Context, traceID string, phoneNumber string) error
-		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
-		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
-		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
+		ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error)
+		SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
+		DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error
+		DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
@@ -178,30 +180,29 @@ func (m *manager) LoginPairCode(ctx context.Context, traceID string, phoneNumber
 	return m.Client.LoginPairCode(ctx, traceID, phoneNumber)
 }
 
-func (m *manager) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
-	return m.Client.GetWebhookURL(ctx, traceID, phoneNumber)
+func (m *manager) ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error) {
+	return m.Client.ListWebhookSubscriptions(ctx, traceID, phoneNumber)
 }
 
-func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
+func (m *manager) SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
 	masked := MaskedPhoneNumber(phoneNumber)
-	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
-	if err != nil {
-		m.Logger.Error(traceID, "Failed to get login status", nil,
-			customLog.String("phone_number", masked),
-			customLog.Error(err),
-		)
-		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	if err := m.webhookLoginGate(traceID, phoneNumber, "set"); err != nil {
+		return err
 	}
 
-	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot set webhook URL: client not logged in", nil,
-			customLog.String("phone_number", masked),
-		)
-		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
+	// Validate the events filter against the catalog before any DB write (and
+	// before the DNS-hitting URL check). Omitted/empty events = all events.
+	for _, e := range webhook.Events {
+		if !domainQueue.IsKnownEvent(strings.TrimSpace(e)) {
+			m.Logger.Error(traceID, "Unknown webhook event type", nil,
+				customLog.String("phone_number", masked),
+				customLog.String("event", e),
+			)
+			return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("unknown event type: %s", e))
+		}
 	}
 
-	err = utils.ValidateURL(webhook.Url)
-	if err != nil {
+	if err := utils.ValidateURL(webhook.Url); err != nil {
 		m.Logger.Error(traceID, "Invalid webhook URL", nil,
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
@@ -209,19 +210,39 @@ func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
 	}
 
-	encryptedHmacSecret, err := m.Cipher.Encrypt(webhook.HmacSecret)
-	if err != nil {
-		m.Logger.Error(traceID, "Failed to encrypt HMAC secret", nil,
-			customLog.String("phone_number", masked),
-			customLog.Error(err),
-		)
-		return err
+	// Store an empty secret as-is (no ciphertext); the sender treats "" as an
+	// unsigned webhook. Only a user-supplied secret is encrypted at rest.
+	if webhook.HmacSecret != "" {
+		encryptedHmacSecret, err := m.Cipher.Encrypt(webhook.HmacSecret)
+		if err != nil {
+			m.Logger.Error(traceID, "Failed to encrypt HMAC secret", nil,
+				customLog.String("phone_number", masked),
+				customLog.Error(err),
+			)
+			return err
+		}
+		webhook.HmacSecret = encryptedHmacSecret
 	}
-	webhook.HmacSecret = encryptedHmacSecret
-	return m.Client.SetWebhookURL(ctx, traceID, phoneNumber, webhook)
+	return m.Client.SetWebhookSubscription(ctx, traceID, phoneNumber, webhook)
 }
 
-func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
+func (m *manager) DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error {
+	if err := m.webhookLoginGate(traceID, phoneNumber, "delete"); err != nil {
+		return err
+	}
+	return m.Client.DeleteWebhookSubscription(ctx, traceID, phoneNumber, url)
+}
+
+func (m *manager) DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error {
+	if err := m.webhookLoginGate(traceID, phoneNumber, "delete"); err != nil {
+		return err
+	}
+	return m.Client.DeleteAllWebhookSubscriptions(ctx, traceID, phoneNumber)
+}
+
+// webhookLoginGate enforces the shared "client must be logged in" precondition
+// for webhook mutations, returning 409(401) when not logged in.
+func (m *manager) webhookLoginGate(traceID, phoneNumber, action string) error {
 	masked := MaskedPhoneNumber(phoneNumber)
 	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
 	if err != nil {
@@ -231,15 +252,13 @@ func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNum
 		)
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
-
 	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot delete webhook URL: client not logged in", nil,
+		m.Logger.Error(traceID, "Cannot "+action+" webhook: client not logged in", nil,
 			customLog.String("phone_number", masked),
 		)
 		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
 	}
-
-	return m.Client.DeleteWebhookURL(ctx, traceID, phoneNumber)
+	return nil
 }
 
 func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error) {
