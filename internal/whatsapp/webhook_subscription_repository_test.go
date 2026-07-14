@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,7 +24,7 @@ func newWebhookSubsTestDB(t *testing.T) *sql.DB {
 	if err := runDeviceWebhooksMigrations(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := runDeviceWebhookSubscriptionsMigrations(db); err != nil {
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -131,11 +132,11 @@ func TestWebhookSubscriptionMigrationPreservesData(t *testing.T) {
 	}
 
 	// First migration: backfill.
-	if err := runDeviceWebhookSubscriptionsMigrations(db); err != nil {
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
 		t.Fatalf("migration 1: %v", err)
 	}
 	// Second migration: must be a no-op (idempotent).
-	if err := runDeviceWebhookSubscriptionsMigrations(db); err != nil {
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
 		t.Fatalf("migration 2: %v", err)
 	}
 
@@ -149,5 +150,155 @@ func TestWebhookSubscriptionMigrationPreservesData(t *testing.T) {
 	got := subs[0]
 	if got.Url != "https://legacy.example/hook" || got.HmacSecret != "ENC-LEGACY" || got.Events != "" {
 		t.Fatalf("backfill did not preserve data: %+v", got)
+	}
+}
+
+// TestWebhookSubscriptionSeedRunsOnce proves the one-time backfill does NOT
+// resurrect a subscription the operator deleted after upgrade, even when the
+// delete leaves the subscriptions table globally empty and the process
+// restarts (re-runs migrations).
+func TestWebhookSubscriptionSeedRunsOnce(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE whatsmeow_device (jid TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runDeviceWebhooksMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	const jid = "628333@s.whatsapp.net"
+	if _, err := db.Exec(`INSERT INTO whatsmeow_device (jid) VALUES (?)`, jid); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWhatsappRepository(db)
+	if err := repo.SetWebhook(context.Background(), jid, "https://old.example/hook", "ENC"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upgrade: backfill seeds the subscription.
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if n := countSubs(t, db, jid); n != 1 {
+		t.Fatalf("after seed want 1 subscription, got %d", n)
+	}
+
+	// Operator deletes it (empties the subscriptions table; device_webhooks is
+	// frozen and never pruned).
+	if err := repo.DeleteAllWebhookSubscriptions(context.Background(), jid); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart re-runs migrations: the marker must keep the seed from resurrecting
+	// the deleted subscription.
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	if n := countSubs(t, db, jid); n != 0 {
+		t.Fatalf("deleted subscription was resurrected: want 0, got %d", n)
+	}
+}
+
+// TestWebhookSubscriptionSurvivesDeviceDelete proves the subscriptions table has
+// no FK to whatsmeow_device: deleting the device row (as whatsmeow does on
+// logout) must NOT cascade the subscription away, so the session.logged_out
+// webhook dispatch can still read it. Foreign keys are enforced here so the
+// legacy device_webhooks FK cascade actually fires.
+func TestWebhookSubscriptionSurvivesDeviceDelete(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE whatsmeow_device (jid TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runDeviceWebhooksMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := runDeviceWebhookSubscriptionsMigrations(db, nil); err != nil {
+		t.Fatal(err)
+	}
+	const jid = "628444@s.whatsapp.net"
+	if _, err := db.Exec(`INSERT INTO whatsmeow_device (jid) VALUES (?)`, jid); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWhatsappRepository(db)
+	if err := repo.SetWebhookSubscription(context.Background(), jid, "https://a.example/hook", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// whatsmeow deletes the device row on logout.
+	if _, err := db.Exec(`DELETE FROM whatsmeow_device WHERE jid = ?`, jid); err != nil {
+		t.Fatal(err)
+	}
+	if n := countSubs(t, db, jid); n != 1 {
+		t.Fatalf("subscription must survive device deletion (no cascade), got %d rows", n)
+	}
+}
+
+// TestWebhookSubscriptionMigrationNormalizesLegacySecret proves the backfill
+// decrypts legacy secrets so a no-secret webhook (stored as Encrypt("")) becomes
+// an empty column (has_hmac=false), while a real secret is preserved.
+func TestWebhookSubscriptionMigrationNormalizesLegacySecret(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE whatsmeow_device (jid TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runDeviceWebhooksMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+
+	cipher := cipherx.NewCipher("0123456789abcdef0123456789abcdef") // 32 bytes
+	encEmpty, err := cipher.Encrypt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encReal, err := cipher.Encrypt("s3cr3t")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewWhatsappRepository(db)
+	const noSecretJID = "628555@s.whatsapp.net"
+	const secretJID = "628666@s.whatsapp.net"
+	for _, jid := range []string{noSecretJID, secretJID} {
+		if _, err := db.Exec(`INSERT INTO whatsmeow_device (jid) VALUES (?)`, jid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The legacy manager encrypted unconditionally, so even a no-secret webhook
+	// has a non-empty ciphertext at rest.
+	if err := repo.SetWebhook(context.Background(), noSecretJID, "https://n.example/hook", encEmpty); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetWebhook(context.Background(), secretJID, "https://s.example/hook", encReal); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runDeviceWebhookSubscriptionsMigrations(db, cipher); err != nil {
+		t.Fatalf("migration: %v", err)
+	}
+
+	noSecretSubs, _ := repo.GetWebhookSubscriptions(context.Background(), noSecretJID)
+	if len(noSecretSubs) != 1 || noSecretSubs[0].HmacSecret != "" {
+		t.Fatalf("legacy no-secret webhook must normalize to empty (has_hmac=false), got %+v", noSecretSubs)
+	}
+	secretSubs, _ := repo.GetWebhookSubscriptions(context.Background(), secretJID)
+	if len(secretSubs) != 1 || secretSubs[0].HmacSecret != encReal {
+		t.Fatalf("legacy real secret must be preserved verbatim, got %+v", secretSubs)
 	}
 }

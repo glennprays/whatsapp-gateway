@@ -105,7 +105,7 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 
 	client := NewClient(container, config, repository, logger)
 
-	err := runMigrations(db)
+	err := runMigrations(db, cp)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to run database migrations", nil, customLog.Error(err))
 		return nil, fmt.Errorf("database migrations: %w", err)

@@ -3,13 +3,15 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+
+	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 )
 
-func runMigrations(db *sql.DB) error {
+func runMigrations(db *sql.DB, cipher *cipherx.Cipher) error {
 	if err := runDeviceWebhooksMigrations(db); err != nil {
 		return err
 	}
-	if err := runDeviceWebhookSubscriptionsMigrations(db); err != nil {
+	if err := runDeviceWebhookSubscriptionsMigrations(db, cipher); err != nil {
 		return err
 	}
 	if err := runMessageJobsMigrations(db); err != nil {
@@ -56,21 +58,29 @@ func runDeviceWebhooksMigrations(db *sql.DB) error {
 }
 
 // runDeviceWebhookSubscriptionsMigrations creates the multi-URL subscription
-// table and seeds it, once, from the legacy single-row device_webhooks table:
-// each existing webhook becomes one subscription with an empty events filter
-// (= all events), preserving today's "one URL receives everything" behavior.
+// table and seeds it, exactly once, from the legacy single-row device_webhooks
+// table: each existing webhook becomes one subscription with an empty events
+// filter (= all events), preserving today's "one URL receives everything".
 //
-// The seed is guarded by NOT EXISTS so it only runs while the target table is
-// still empty. Without that guard the INSERT...SELECT would re-copy every
-// frozen device_webhooks row on every startup and resurrect subscriptions a
-// user has since deleted (device_webhooks is kept for rollback and never
-// pruned). ON CONFLICT DO NOTHING keeps it safe if the two ever race.
+// Deliberately NO foreign key to whatsmeow_device (mirroring session_status).
+// whatsmeow deletes the device row on logout; an ON DELETE CASCADE here would
+// race the session.logged_out webhook and cascade-wipe the very subscriptions
+// its dispatch must read. Keeping the rows also lets webhook config survive a
+// re-pair with the same JID.
 //
-// Portable DDL (SQLite 3.24+/Postgres 9.5+): no placeholders, no arrays.
-func runDeviceWebhookSubscriptionsMigrations(db *sql.DB) error {
-	query := `
+// The backfill is gated by a persistent schema_seed_markers row, NOT by the
+// target table being empty: an emptiness guard re-seeds (resurrects) a webhook
+// the operator deleted after upgrade, every time the subscriptions table later
+// goes empty (single-account / delete-all). The marker makes it run once, ever.
+// Legacy secrets are decrypt-normalized so a no-secret webhook (stored as
+// Encrypt("")) reports has_hmac=false like a freshly created one.
+//
+// Portable DDL (SQLite 3.24+/Postgres 9.5+): $N placeholders, no arrays.
+func runDeviceWebhookSubscriptionsMigrations(db *sql.DB, cipher *cipherx.Cipher) error {
+	ctx := context.Background()
+	ddl := `
     CREATE TABLE IF NOT EXISTS device_webhook_subscriptions (
-        jid         TEXT NOT NULL REFERENCES whatsmeow_device(jid) ON DELETE CASCADE,
+        jid         TEXT NOT NULL,
         url         TEXT NOT NULL,
         hmac_secret TEXT NOT NULL DEFAULT '',
         events      TEXT NOT NULL DEFAULT '',
@@ -79,12 +89,64 @@ func runDeviceWebhookSubscriptionsMigrations(db *sql.DB) error {
         PRIMARY KEY (jid, url)
     );
 
-    INSERT INTO device_webhook_subscriptions (jid, url, hmac_secret, events)
-    SELECT jid, webhook_url, hmac_secret, ''
-    FROM device_webhooks
-    WHERE NOT EXISTS (SELECT 1 FROM device_webhook_subscriptions)
-    ON CONFLICT (jid, url) DO NOTHING;`
-	_, err := db.ExecContext(context.Background(), query)
+    CREATE TABLE IF NOT EXISTS schema_seed_markers (
+        name       TEXT PRIMARY KEY,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
+		return err
+	}
+
+	// Run the one-time backfill only if the marker is absent.
+	var seeded int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM schema_seed_markers WHERE name = 'device_webhooks_backfill'`).Scan(&seeded); err != nil {
+		return err
+	}
+	if seeded > 0 {
+		return nil
+	}
+
+	// Read all legacy rows first, then close the cursor before inserting: the
+	// SQLite dev DB runs on a single connection, so an open cursor would
+	// deadlock a concurrent INSERT.
+	type legacyWebhook struct{ jid, url, secret string }
+	rows, err := db.QueryContext(ctx, `SELECT jid, webhook_url, hmac_secret FROM device_webhooks`)
+	if err != nil {
+		return err
+	}
+	var pending []legacyWebhook
+	for rows.Next() {
+		var l legacyWebhook
+		if err := rows.Scan(&l.jid, &l.url, &l.secret); err != nil {
+			rows.Close()
+			return err
+		}
+		// A legacy no-secret webhook was stored as Encrypt(""); normalize it to
+		// "" so has_hmac is honest. A real secret keeps its ciphertext at rest.
+		if cipher != nil && l.secret != "" {
+			if plain, derr := cipher.Decrypt(l.secret); derr != nil || plain == "" {
+				l.secret = ""
+			}
+		}
+		pending = append(pending, l)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, l := range pending {
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO device_webhook_subscriptions (jid, url, hmac_secret, events)
+             VALUES ($1, $2, $3, '') ON CONFLICT (jid, url) DO NOTHING`,
+			l.jid, l.url, l.secret); err != nil {
+			return err
+		}
+	}
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO schema_seed_markers (name) VALUES ('device_webhooks_backfill') ON CONFLICT (name) DO NOTHING`)
 	return err
 }
 
