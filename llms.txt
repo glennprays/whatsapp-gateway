@@ -230,6 +230,16 @@ Event catalog:
 - `message.queued` - Message queued for sending
 - `message.sent` - Message successfully sent
 - `message.failed` - Message failed to send
+- `session.logged_out` - Account unpaired (fields: `on_connect`, `reason`, `reason_text`)
+- `session.banned` - Temporary ban (fields: `code`, `reason_text`, `expires_in`)
+- `session.connect_failure` - Connect failure (fields: `reason`, `reason_text`, `message`)
+- `session.connected` - Session connected to WhatsApp
+- `session.disconnected` - Session disconnected (fires on every reconnect cycle)
+- `session.replaced` - Socket taken over by another client with the same session
+
+All webhooks share a flat envelope (`event`, `phone_number`, `jid`, `timestamp`)
+with per-event fields at the top level. `session.*` are NOT gated by
+`WEBHOOK_STATUS_EVENTS_ENABLED` (that flag only gates `message.queued/sent/failed`).
 
 Managing subscriptions:
 - `GET /webhook` → `{ "url": "<first subscription or empty>", "subscriptions": [ { "url", "events": [...], "has_hmac" } ] }`. The `url` field is retained for back-compat; the HMAC secret is **never** returned (only `has_hmac`).

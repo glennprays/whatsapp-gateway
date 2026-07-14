@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.23.0
+  version: 0.24.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -137,12 +137,14 @@ components:
           type: array
           items:
             type: string
-            enum: [message.incoming, message.queued, message.sent, message.failed]
+            enum: [message.incoming, message.queued, message.sent, message.failed,
+                   session.logged_out, session.banned, session.connect_failure,
+                   session.connected, session.disconnected, session.replaced]
           description: >
             Event types this subscription receives. Omit or leave empty to
             receive all events (matches the legacy single-URL behavior). An
             unknown value is rejected with 400.
-          example: ["message.incoming", "message.sent"]
+          example: ["message.incoming", "session.logged_out"]
     WebhookSubscription:
       type: object
       properties:
@@ -159,6 +161,67 @@ components:
           type: boolean
           description: Whether a signing secret is configured (the secret itself is never returned).
           example: true
+    WebhookEnvelope:
+      type: object
+      description: >
+        The flat outbound webhook shape delivered to your subscription URL,
+        signed with `X-Webhook-Signature: sha256=<hex>` when the subscription has
+        a secret. Every payload carries `event` at the top level plus per-event
+        fields (message.incoming keeps its message fields top-level for
+        zero-break back-compat).
+      properties:
+        event:
+          type: string
+          description: The event type (see the WebhookRegisterRequest events enum).
+          example: session.logged_out
+        phone_number:
+          type: string
+          example: "628123456789"
+        jid:
+          type: string
+          example: "628123456789@s.whatsapp.net"
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix seconds.
+          example: 1737000000
+    WebhookSessionEvent:
+      allOf:
+        - $ref: '#/components/schemas/WebhookEnvelope'
+        - type: object
+          description: >
+            session.* lifecycle payloads. Field presence depends on the event:
+            session.logged_out → on_connect/reason/reason_text; session.banned →
+            code/reason_text/expires_in; session.connect_failure →
+            reason/reason_text/message; session.connected/disconnected/replaced →
+            no extra fields.
+          properties:
+            on_connect:
+              type: boolean
+              description: (session.logged_out) true if triggered by a connect failure.
+            reason:
+              type: integer
+              description: (session.logged_out / session.connect_failure) whatsmeow reason code.
+            reason_text:
+              type: string
+              description: 'Human-readable reason, formatted "<code>: <message>".'
+            message:
+              type: string
+              description: (session.connect_failure) raw failure message.
+            code:
+              type: integer
+              description: (session.banned) temp-ban reason code.
+            expires_in:
+              type: integer
+              description: (session.banned) seconds until the ban expires (0 if unknown).
+          example:
+            event: session.banned
+            phone_number: "628123456789"
+            jid: "628123456789@s.whatsapp.net"
+            timestamp: 1737000000
+            code: 104
+            reason_text: "104: you sent the same message to too many people"
+            expires_in: 86400
     SendMessageTextRequest:
       type: object
       properties:

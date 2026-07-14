@@ -311,7 +311,11 @@ An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`):
 Each account can register **multiple** webhook subscriptions, each with an
 optional per-subscription `events` filter (`POST /webhook` with `events: [...]`).
 An empty/omitted filter receives **all** events. Event catalog:
-`message.incoming`, `message.queued`, `message.sent`, `message.failed`.
+`message.incoming`, `message.queued`, `message.sent`, `message.failed`,
+`session.logged_out`, `session.banned`, `session.connect_failure`,
+`session.connected`, `session.disconnected`, `session.replaced`. The `session.*`
+lifecycle events are **not** gated by `WEBHOOK_STATUS_EVENTS_ENABLED` (that flag
+only gates the `message.queued/sent/failed` family).
 `GET /webhook` returns the legacy top-level `url` (first subscription) plus a
 `subscriptions[]` array (`url`, `events`, `has_hmac`); the HMAC secret is never
 returned. `DELETE /webhook` with no body clears all subscriptions; with
