@@ -66,8 +66,9 @@ curl -X POST http://localhost:3000/api/v1/message/text \
 > number or user JID is a 400). Batch mutations (add/remove/promote/demote, approve/reject) return
 > **200 partial success** with per-participant `results[]`, never an overall error for one bad member.
 > Ban-safety gates (default): the whole mutation surface is behind `GROUP_MANAGEMENT_ENABLED` (404 when
-> off); **bulk participant add** and **join-via-link (mass join)** are gated OFF (`GROUP_ADD_PARTICIPANTS_ENABLED`,
-> `GROUP_JOIN_VIA_LINK_ENABLED`) and return 403 until enabled.
+> off); **bulk participant add** and **join-via-link (mass join)** now default **enabled** (the outbound
+> pacer + ban gate cover the ban risk) but can be set to `false` (`GROUP_ADD_PARTICIPANTS_ENABLED`,
+> `GROUP_JOIN_VIA_LINK_ENABLED`) to hard-disable them and return 403.
 
 > **Replies & mentions (all sends):** every `POST /message/*` send (text, image, audio, video, document,
 > location, poll, sticker) accepts `reply_to_id` + `reply_to_sender` (+ optional `reply_to_text` for the
@@ -277,7 +278,7 @@ For complete API documentation, including all endpoints, request/response schema
 | Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
 | Webhooks | `GET /webhook` (list subscriptions; back-compat `url` + `subscriptions[]`), `POST /webhook` (upsert one subscription; `events?[]` filter, empty = all), `DELETE /webhook` (no body = all, `{url}` = one) |
 | Messaging | `POST /message/text`, `POST /message/image`, `POST /message/audio` (is_ptt = voice note), `POST /message/video` (caption/is_gif), `POST /message/document` (file_name/caption), `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message` (edit), `DELETE /message` |
-| Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both counted against the interim action cap |
+| Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both paced by the outbound pacer |
 | Contact | `GET /contact/check?chat=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name), `GET /contact/` (list synced contacts; paginated limit/offset; local store, never 404 on empty), `GET /contact/info?chat=` (server profile: status/picture_id/verified_name/device_count; cached+budgeted), `GET /contact/avatar?chat=&preview=` (avatar URL+id for a user OR group; ETag via If-None-Match → 304; 404 none / 403 hidden) |
 | Group (reads) | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
 | Group (mutations) | `POST /group/` (create group/community; add-on-create gated), `POST /group/leave`, `POST /group/participants` (`action`=add/remove/promote/demote; add gated; **200 partial success** with `results[]` — privacy-blocked add → invited, non-member promote → failed; self in remove/promote/demote → 400, use leave), `PATCH /group/settings` (announce/locked), `PATCH /group/name` (≤25), `PATCH /group/topic` (≤512), `PUT /group/photo` (multipart JPEG), `DELETE /group/photo`, `GET /group/invite` + `POST /group/invite/reset` (admin invite link), `GET /group/invite/info?code=` (preview, no join; 410 if revoked), `POST /group/join` (**mass-join, gated → 403**), `GET /group/requests` + `POST /group/requests` (list / approve-reject join requests; approve/reject is 200 partial success) — all gated by `GROUP_MANAGEMENT_ENABLED` (404 when off) |
@@ -364,14 +365,25 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 ### Rate limiting
 
+`OUTBOUND_PACE_*` is the **primary** outbound governor (per-account token-bucket pace + per-recipient hard cap + ban gate, applied to every outbound action in both direct and queue modes); `MESSAGE_RATE_LIMIT_*` is the **fallback** limiter, used only when `OUTBOUND_PACE_ENABLED=false`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REGISTER_RATE_LIMIT_ENABLED` | `true` | Toggle per-IP throttle on `POST /register` (in-process memory limiter) |
 | `REGISTER_RATE_LIMIT_REQUESTS` | `5` | Max registrations per IP per window |
 | `REGISTER_RATE_LIMIT_DURATION_SECONDS` | `60` | Register throttle window |
 | `MESSAGE_RATE_LIMIT_PROVIDER` | `memory` | `memory`, `redis`, or `noop` |
-| `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window |
-| `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length |
+| `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window (fallback limiter) |
+| `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length (fallback limiter) |
+| `OUTBOUND_PACE_ENABLED` | `true` | Master toggle for the outbound pacer; `false` bypasses it and falls back to `MESSAGE_RATE_LIMIT_*` |
+| `OUTBOUND_PACE_MODE` | `pace` | `pace` blocks/waits for a token; `reject` never waits (over-budget → immediate `429`) |
+| `OUTBOUND_PACE_RATE_PER_SECOND` | `1` | Sustained per-account token-bucket refill rate (tokens/sec) |
+| `OUTBOUND_PACE_BURST` | `5` | Token-bucket burst capacity |
+| `OUTBOUND_PACE_MAX_WAIT_SECONDS` | `30` | Max time a `pace`-mode call blocks for a token before `429` |
+| `OUTBOUND_PACE_JITTER_MS` | `250` | Extra random wait (ms) added to the pace deadline |
+| `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` | `10` | Per-recipient hard cap per window; over-cap → `429` (never paced) |
+| `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` | `60` | Per-recipient cap window |
+| `OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS` | `3600` | Fallback ban hold when a temporary ban carries no explicit `ban_expires_at` |
 
 ### Uploads
 

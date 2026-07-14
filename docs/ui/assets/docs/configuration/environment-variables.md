@@ -265,6 +265,76 @@ Register throttle window in seconds.
 Type: integer  
 Default: 60  
 
+## Outbound Pacing
+
+A single in-process **pacer** governs every outbound WhatsApp action — all `POST /message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations — in both direct and queue modes, in three ordered layers: a **ban gate** (429 while the account is under a WhatsApp temporary ban, auto-resume), a **per-recipient hard cap** (429, never paced), and a **per-account token-bucket pace** (blocks/waits in `pace` mode, or 429s immediately in `reject` mode). This is the **primary** outbound governor; `MESSAGE_RATE_LIMIT_*` is the **fallback**, used only when `OUTBOUND_PACE_ENABLED=false`. The pacer is per-instance (single-node), not distributed — a multi-instance deployment needs an external limiter or the queue for a cluster-wide ceiling.
+
+### OUTBOUND_PACE_ENABLED
+
+Master toggle for the outbound pacer. When `false`, the pacer is bypassed and sends fall back to the reject-only `MESSAGE_RATE_LIMIT_*` limiter.
+
+Type: boolean  
+Default: true  
+
+### OUTBOUND_PACE_MODE
+
+`pace` blocks/waits for a token (up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` + jitter) before returning `429`; `reject` never waits — an over-budget call is an immediate `429`.
+
+Type: string  
+Default: pace  
+Options:
+- pace
+- reject
+
+### OUTBOUND_PACE_RATE_PER_SECOND
+
+Sustained per-account token-bucket refill rate (tokens per second).
+
+Type: integer  
+Default: 1  
+
+### OUTBOUND_PACE_BURST
+
+Token-bucket burst capacity — how many actions can fire back-to-back before the sustained rate applies.
+
+Type: integer  
+Default: 5  
+
+### OUTBOUND_PACE_MAX_WAIT_SECONDS
+
+In `pace` mode, the maximum time a call blocks waiting for a token before giving up with `429`.
+
+Type: integer (seconds)  
+Default: 30  
+
+### OUTBOUND_PACE_JITTER_MS
+
+Upper bound of random jitter added to the pace wait/deadline, so sends don't align on exact tick boundaries.
+
+Type: integer (milliseconds)  
+Default: 250  
+
+### OUTBOUND_PACE_PER_RECIPIENT_REQUESTS
+
+Per-recipient hard cap — more than this many actions to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` is rejected with `429` (never paced/queued).
+
+Type: integer  
+Default: 10  
+
+### OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS
+
+The rolling window over which `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` is counted.
+
+Type: integer (seconds)  
+Default: 60  
+
+### OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS
+
+Fallback hold applied by the ban gate when a temporary ban carries no explicit `ban_expires_at` — outbound actions are `429`d for this long before auto-resuming.
+
+Type: integer (seconds)  
+Default: 3600  
+
 ## Upload Limits
 
 ### MAX_UPLOAD_BYTES
@@ -314,17 +384,17 @@ Default: true
 
 ### GROUP_ADD_PARTICIPANTS_ENABLED
 
-Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Adding people with no prior relationship is the classic ban trigger, so this defaults off.
+Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Now defaults **on** — the outbound pacer + ban gate cover the bulk-add ban risk this gate guarded as an interim measure; set it to `false` to hard-disable bulk add.
 
 Type: boolean  
-Default: false  
+Default: true  
 
 ### GROUP_JOIN_VIA_LINK_ENABLED
 
-Gates `POST /group/join`, the mass-join vector → `403` when off.
+Gates `POST /group/join`, the mass-join vector → `403` when off. Now defaults **on** — outbound pacing + the ban gate cover the mass-join ban risk; set it to `false` to hard-disable join-via-link.
 
 Type: boolean  
-Default: false  
+Default: true  
 
 ### GROUP_MAX_PARTICIPANTS_PER_REQUEST
 

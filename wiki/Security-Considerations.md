@@ -246,11 +246,13 @@ unless it has verified consent for the specific action.
 - **Master toggle, hidden when off.** `GROUP_MANAGEMENT_ENABLED` (default `true`) gates the entire
   mutation/invite/join-request/community surface. When `false` those routes are **not registered**
   → `404` (never `403`), so a disabled surface never confirms it exists. Reads stay up.
-- **Bulk add is gated OFF by default.** `GROUP_ADD_PARTICIPANTS_ENABLED` (default `false`) blocks
-  `POST /group/participants action=add` and add-on-create with `403`, **before** any server call.
-  Only enable it once your backend verifies the target actually consented to be added.
-- **Mass-join is gated OFF by default.** `GROUP_JOIN_VIA_LINK_ENABLED` (default `false`) blocks
-  `POST /group/join` with `403`. Enable only behind human/paced control.
+- **Bulk add and mass-join now default ON, covered by pacing.** `GROUP_ADD_PARTICIPANTS_ENABLED`
+  (default `true`) allows `POST /group/participants action=add` and add-on-create;
+  `GROUP_JOIN_VIA_LINK_ENABLED` (default `true`) allows `POST /group/join`. These bulk-op vectors
+  were previously gated off as an interim measure; the outbound pacer + ban gate (see below) now cap
+  their rate and halt them under a ban, so the gates default on. Set either to `false` to
+  **hard-disable** that vector (`403`, before any server call) — do so if your backend cannot verify
+  the target consented to be added or the join is human/paced.
 - **Batch cap.** `GROUP_MAX_PARTICIPANTS_PER_REQUEST` (default `256`) bounds a single batch; the
   gateway rejects oversized batches with `400` before hitting WhatsApp.
 - **Self-guard.** Removing/promoting/demoting your own number is rejected (`400`); use
@@ -258,6 +260,35 @@ unless it has verified consent for the specific action.
   privacy-blocked or non-member entry never masquerades as a whole-request success.
 - **Non-admin actions surface as `403`.** The server rejects admin-only mutations by a non-admin;
   the gateway maps that to `403` — do not retry-loop.
+
+### 11. Outbound Pacing & Ban Safety
+
+A single in-process **outbound pacer** governs **every** outbound WhatsApp action — all `POST
+/message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations
+— in **both** direct and queue modes. It is the primary defence against the send-rate patterns
+WhatsApp bans for, in three ordered layers:
+
+- **Ban gate (auto-resume).** While the account is under a WhatsApp temporary ban (read from the
+  persisted `session_status` store) every outbound action is rejected with `429` until the ban
+  expires; it resumes automatically. When no explicit `ban_expires_at` is known, a fallback hold of
+  `OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS` (default 3600) applies.
+- **Per-recipient hard cap.** More than `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` (default 10) actions
+  to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` (default 60) is
+  rejected with `429` — never paced or queued.
+- **Per-account token-bucket pace.** A sustained `OUTBOUND_PACE_RATE_PER_SECOND` (default 1/s) with
+  burst `OUTBOUND_PACE_BURST` (default 5). In `pace` mode (the default) an over-budget call
+  **blocks/waits** up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` (default 30) plus jitter for a token and
+  only `429`s if none frees up; in `reject` mode it `429`s immediately.
+
+This **replaces** the earlier best-effort per-account action cap that throttled mark-read/typing/
+react. It is also why the group bulk-add and join-via-link gates now default on — pacing plus the
+ban gate cover the bulk-op ban risk (both remain toggleable to `false` to hard-disable).
+
+> **The pacer is per gateway instance (single-node), not distributed.** Each node enforces its own
+> budget; a multi-instance deployment does **not** share one ceiling. For a cluster-wide outbound
+> limit, put an external limiter in front or route sends through the RabbitMQ queue. When
+> `OUTBOUND_PACE_ENABLED=false` the pacer is bypassed entirely and only the fallback reject-only
+> `MESSAGE_RATE_LIMIT_*` limiter applies.
 
 ## Encryption and Data Protection
 

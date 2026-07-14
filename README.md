@@ -150,7 +150,8 @@ Key configuration options in `.env`:
 
 ### Rate Limiting & Uploads
 - `REGISTER_RATE_LIMIT_ENABLED` / `REGISTER_RATE_LIMIT_REQUESTS` / `REGISTER_RATE_LIMIT_DURATION_SECONDS` - Per-IP throttle on `/register` (default: 5 per 60s)
-- `MESSAGE_RATE_LIMIT_REQUESTS` / `MESSAGE_RATE_LIMIT_DURATION_SECONDS` - Per-phone outbound message pacing
+- `OUTBOUND_PACE_*` - Primary outbound pacer for all sends (per-account pace + per-recipient cap + ban gate; per-instance, single-node)
+- `MESSAGE_RATE_LIMIT_REQUESTS` / `MESSAGE_RATE_LIMIT_DURATION_SECONDS` - Fallback outbound limiter, used only when `OUTBOUND_PACE_ENABLED=false`
 - `MAX_UPLOAD_BYTES` - Outbound media size cap (default: 16777216 = 16 MiB), with per-kind MIME allow-lists
 
 See `.env.example` for all available options.
