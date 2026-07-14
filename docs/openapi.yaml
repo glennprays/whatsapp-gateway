@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.13.0
+  version: 0.14.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -429,6 +429,82 @@ components:
         count:
           type: integer
           example: 12
+    GroupParticipantItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        phone_number:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        lid:
+          type: string
+          example: "1122334455@lid"
+        is_admin:
+          type: boolean
+          example: false
+        is_super_admin:
+          type: boolean
+          example: false
+    GroupInfoResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "120363000000000000@g.us"
+        name:
+          type: string
+          example: "Project Team"
+        topic:
+          type: string
+          example: "Release planning"
+        owner_jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        participant_count:
+          type: integer
+          example: 12
+        is_announce:
+          type: boolean
+          example: false
+        is_locked:
+          type: boolean
+          example: false
+        is_community:
+          type: boolean
+          example: false
+        is_ephemeral:
+          type: boolean
+          example: false
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupParticipantItem'
+    ContactInfoResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        status:
+          type: string
+          description: The user's "about" / status text.
+          example: "Available"
+        picture_id:
+          type: string
+          description: Current profile picture id (use with /contact/avatar for the image).
+          example: "1234567890"
+        verified_name:
+          type: string
+          example: "Acme Inc."
+        device_count:
+          type: integer
+          description: Number of linked devices.
+          example: 2
+        lid:
+          type: string
+          example: "1122334455@lid"
     MessageDeleteRequest:
       type: object
       properties:
@@ -916,6 +992,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GroupListResponse'
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/info:
+    get:
+      tags:
+        - Group
+      summary: Get one group's full detail
+      description: >
+        Returns a single group's full detail including its participant roster
+        (whatsmeow GetGroupInfo, a server IQ). Requires a group JID and that the
+        account is a participant. Cached + metered by the per-account read
+        budget.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The group's detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfoResponse'
+        '400':
+          description: chat is missing or is not a group JID.
+        '403':
+          description: The account is not a participant of that group.
+        '404':
+          description: The group does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /contact/info:
+    get:
+      tags:
+        - Contact
+      summary: Get a user's profile info
+      description: >
+        Returns a server-side profile lookup for one user (whatsmeow
+        GetUserInfo): status text, current picture id, verified business name,
+        and linked-device count. Cached + metered by the per-account read
+        budget. An unknown number yields a response with the JID only.
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical recipient (a user JID or bare number). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
+        - name: msisdn
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat. Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890"
+      responses:
+        '200':
+          description: The user's profile info.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfoResponse'
+        '400':
+          description: chat is missing or resolves to a group (use group/info).
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
       security:

@@ -28,7 +28,9 @@ The matrix is intended to give solution architects and integrators a clear view 
 | Capability                     | Supported | Notes |
 |--------------------------------|-----------|-------|
 | List Contacts                  | Yes       | `GET /contact/` — locally-synced address book, paginated (`limit`/`offset`); local read, never 404 on empty |
+| Contact Profile Info           | Yes       | `GET /contact/info?chat=` — status/picture-id/verified-name/device-count; server read, cached + budgeted |
 | List Joined Groups             | Yes       | `GET /group/` — lightweight group summaries; server read, short-TTL cached + per-account read budget |
+| Group Detail + Roster          | Yes       | `GET /group/info?chat=<@g.us>` — full detail + participants; `403` if not a member, `404` if absent |
 | Read Query Budget              | Yes       | Server-hitting reads metered per account (`READ_QUERY_*`); cache hits are free, `429` when the budget is spent |
 
 ## Rate Limiting & Queue
