@@ -23,6 +23,14 @@ The matrix is intended to give solution architects and integrators a clear view 
 | Delivery Status Tracking       | Yes       | Status updates available via webhook |
 | Message Retry (Outbound)       | Yes       | Controlled by queue mode and retry policy |
 
+## Directory & Read Surface
+
+| Capability                     | Supported | Notes |
+|--------------------------------|-----------|-------|
+| List Contacts                  | Yes       | `GET /contact/` — locally-synced address book, paginated (`limit`/`offset`); local read, never 404 on empty |
+| List Joined Groups             | Yes       | `GET /group/` — lightweight group summaries; server read, short-TTL cached + per-account read budget |
+| Read Query Budget              | Yes       | Server-hitting reads metered per account (`READ_QUERY_*`); cache hits are free, `429` when the budget is spent |
+
 ## Rate Limiting & Queue
 
 | Capability                     | Supported | Notes |

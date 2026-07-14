@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.12.0
+  version: 0.13.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -26,6 +26,10 @@ tags:
     description: Endpoints for handling WhatsApp webhooks and events.
   - name: Whatsapp Message
     description: Endpoints for managing WhatsApp chats and messages.
+  - name: Contact
+    description: Endpoints for validating and listing contacts.
+  - name: Group
+    description: Endpoints for reading the account's WhatsApp groups.
 
 components:
   schemas:
@@ -348,6 +352,83 @@ components:
           type: string
           description: The business verified name, if the number is a verified business.
           example: "Acme Inc."
+    ContactListItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        push_name:
+          type: string
+          example: "Alice"
+        full_name:
+          type: string
+          example: "Alice Tan"
+        first_name:
+          type: string
+          example: "Alice"
+        business_name:
+          type: string
+          example: "Acme Inc."
+    ContactListResponse:
+      type: object
+      properties:
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactListItem'
+        count:
+          type: integer
+          description: Items in this page.
+          example: 100
+        total:
+          type: integer
+          description: Total synced contacts.
+          example: 240
+        note:
+          type: string
+          description: Honest metadata about the synced-state of the store.
+    GroupListItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The group's @g.us JID.
+          example: "120363000000000000@g.us"
+        name:
+          type: string
+          example: "Project Team"
+        topic:
+          type: string
+          example: "Release planning"
+        owner_jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        participant_count:
+          type: integer
+          example: 12
+        is_announce:
+          type: boolean
+          description: Only admins can send.
+          example: false
+        is_locked:
+          type: boolean
+          description: Only admins can edit group info.
+          example: false
+        is_community:
+          type: boolean
+          description: This group is a community parent.
+          example: false
+    GroupListResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupListItem'
+        count:
+          type: integer
+          example: 12
     MessageDeleteRequest:
       type: object
       properties:
@@ -780,6 +861,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContactCheckResponse'
+      security:
+        - accountBearerAuth: []
+  /contact/:
+    get:
+      tags:
+        - Contact
+      summary: List synced contacts
+      description: >
+        Lists the account's locally-synced contacts (whatsmeow address book).
+        A pure local-store read — no network call and no read budget spent. The
+        store fills in after pairing and as the account is used, so an empty or
+        partial result is normal, not an error (never 404). Paginated over a
+        stable JID sort.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: "Page size (default 100, max 500)."
+          schema:
+            type: integer
+            example: 100
+        - name: offset
+          in: query
+          required: false
+          description: "Number of contacts to skip (default 0)."
+          schema:
+            type: integer
+            example: 0
+      responses:
+        '200':
+          description: A page of synced contacts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactListResponse'
+      security:
+        - accountBearerAuth: []
+  /group/:
+    get:
+      tags:
+        - Group
+      summary: List joined groups
+      description: >
+        Lists the account's joined groups as lightweight summaries (no
+        participant roster). This hits the WhatsApp server (GetJoinedGroups), so
+        it is short-TTL cached and metered by a per-account read budget: repeat
+        polls are served from cache, and an exhausted budget returns 429. The
+        full set is returned in one call (not paginated).
+      responses:
+        '200':
+          description: The account's joined groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
       security:
         - accountBearerAuth: []
   /session/reconnect:

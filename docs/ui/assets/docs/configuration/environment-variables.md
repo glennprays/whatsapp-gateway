@@ -276,6 +276,40 @@ Default: 16777216 (16 MiB)
 
 Image/sticker/audio/video uploads are also validated against a per-kind MIME allow-list; documents accept any mimetype. PTT voice notes opt out of MIME sniffing (opus/ogg is unidentifiable).
 
+## Read / Query Surface
+
+Server-hitting reads (joined groups, and later profiles/avatars) are short-TTL cached and metered by a per-account budget, so a polling caller can't trip WhatsApp anti-spam. A budget token is spent **only on a cache miss**; cache hits are free. Local-store reads (e.g. `GET /contact/`) are never metered.
+
+### READ_QUERY_CACHE_TTL_SECONDS
+
+How long a server-hitting read is cached before the next call re-fetches.
+
+Type: integer (seconds)  
+Default: 300  
+
+### READ_QUERY_BUDGET
+
+Maximum cache-miss reads per account per window before requests get `429 Too Many Requests` (with `Retry-After`).
+
+Type: integer  
+Default: 30  
+
+### READ_QUERY_WINDOW_SECONDS
+
+The rolling window over which `READ_QUERY_BUDGET` is counted.
+
+Type: integer (seconds)  
+Default: 60  
+
+## Graceful Shutdown
+
+### SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS
+
+Overall bound for cleanly disconnecting all WhatsApp clients on shutdown, before the database is closed. A hung client is skipped so shutdown never blocks past this.
+
+Type: integer (seconds)  
+Default: 10  
+
 ## RabbitMQ Configuration
 
 ### RABBITMQ_ENABLED

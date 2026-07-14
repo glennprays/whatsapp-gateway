@@ -218,6 +218,36 @@ The `/register` endpoint is throttled per client IP to prevent brute-forcing of 
 
 ---
 
+### Read / Query Surface Configuration
+
+Server-hitting reads (joined groups; later profiles/avatars) are short-TTL **cached** and metered by a **per-account budget** so a polling caller cannot trip WhatsApp anti-spam. A budget token is spent **only on a cache miss** — cache hits are free. Local-store reads (e.g. `GET /contact/`) are never metered.
+
+#### `READ_QUERY_CACHE_TTL_SECONDS`
+- **Description**: How long a server-hitting read stays cached before the next call re-fetches from WhatsApp.
+- **Type**: Integer (seconds)
+- **Default**: `300`
+
+#### `READ_QUERY_BUDGET`
+- **Description**: Maximum cache-miss reads per account per window before requests receive `429 Too Many Requests` (with `Retry-After`).
+- **Type**: Integer
+- **Default**: `30`
+
+#### `READ_QUERY_WINDOW_SECONDS`
+- **Description**: The rolling window over which `READ_QUERY_BUDGET` is counted.
+- **Type**: Integer (seconds)
+- **Default**: `60`
+
+---
+
+### Graceful Shutdown Configuration
+
+#### `SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS`
+- **Description**: Overall bound for cleanly disconnecting all WhatsApp clients on shutdown, **before** the database is closed. A hung client is skipped so shutdown never blocks past this bound.
+- **Type**: Integer (seconds)
+- **Default**: `10`
+
+---
+
 ## Security Best Practices
 
 1. **Never commit `.env` files**: Always use `.env.example` as a template
