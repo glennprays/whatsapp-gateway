@@ -24,7 +24,7 @@ All notable changes to this project are documented here. Versions follow
 
 ### Changed
 - `msisdn` is now a **deprecated back-compat alias** for `chat` (still fully supported; `chat` wins when both are set). Recipient resolution funnels through `resolveChat`, which strips device/agent JID suffixes, lowercases the server, requires a digits-only user, and rejects `broadcast`/unknown servers early with a `400` instead of a late `500`.
-- `openapi.yaml` / `llms.txt`: `chat` added to all request bodies + send responses; `msisdn` marked deprecated and dropped from `required`; read endpoints documented (`GET /contact/`, `GET /contact/info`, `GET /contact/avatar`, `GET /group/`, `GET /group/info`) with their schemas; `Idempotency-Key` header + `409`/`422` responses added to every `POST /message/*` send (reusable `IdempotencyKeyHeader` parameter); `POST /message/read` + `POST /chat/presence` documented with their schemas; `Contact`/`Group` tags added; version → `0.17.0`.
+- `openapi.yaml` / `llms.txt`: `chat` added to all request bodies + send responses; `msisdn` marked deprecated and dropped from `required`; read endpoints documented (`GET /contact/`, `GET /contact/info`, `GET /contact/avatar`, `GET /group/`, `GET /group/info`) with their schemas; `Idempotency-Key` header + `409`/`422` responses added to every `POST /message/*` send (reusable `IdempotencyKeyHeader` parameter); `POST /message/read` + `POST /chat/presence` documented with their schemas; `reply_to_*` + `mentions` added to the text-send schema; `Contact`/`Group` tags added; version → `0.18.0`.
 
 ## [0.11.1] - 2026-07-05
 

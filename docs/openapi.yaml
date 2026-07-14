@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.17.0
+  version: 0.18.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -126,6 +126,24 @@ components:
           type: string
           description: The text message to send.
           example: "Hello, this is a test message."
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention; include the matching @<number> token in `message` for it to render."
+          example: ["6281111111111"]
     SendMessageResponse:
       type: object
       properties:
