@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.20.0
+  version: 0.21.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -32,6 +32,14 @@ tags:
     description: Endpoints for reading the account's WhatsApp groups.
   - name: Community
     description: Endpoints for reading a community's sub-groups and participants.
+  - name: Admin
+    description: >
+      Operator-only, cross-tenant endpoints served at the ROOT path (not under
+      /api/v1). Bearer-gated by ADMIN_API_SECRET; unregistered (404) when unset.
+  - name: Metrics
+    description: >
+      Prometheus metrics at the ROOT path. Gated by METRICS_ENABLED and the admin
+      bearer.
 
 components:
   parameters:
@@ -1002,11 +1010,56 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IncomingMessage'
+    SessionInventoryItem:
+      type: object
+      description: Honest, per-instance view of one account (phone number masked).
+      properties:
+        phone_masked:
+          type: string
+          example: "62819104xxxx"
+        state:
+          type: string
+          enum: [connected, disconnected, never_paired, logged_out, banned]
+        source:
+          type: string
+          enum: [in-memory, store]
+        reason:
+          type: string
+        last_seen:
+          type: string
+          format: date-time
+        ban_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    SessionInventory:
+      type: object
+      properties:
+        instance:
+          type: string
+          description: Reporting node hostname (the inventory is per-instance).
+          example: gw-pod-7c9f
+        count:
+          type: integer
+          example: 2
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionInventoryItem'
+
   securitySchemes:
     accountBearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    adminBearer:
+      type: http
+      scheme: bearer
+      description: >
+        Operator-only admin plane. Set ADMIN_API_SECRET and send
+        `Authorization: Bearer <secret>`. When the secret is unset the entire
+        plane is unregistered and returns 404 (never a 401 that would confirm it
+        exists). Compared in constant time.
 
   responses:
     BadRequest:
@@ -2006,6 +2059,94 @@ paths:
       security:
         - accountBearerAuth: []
 
+  /admin/sessions:
+    get:
+      tags:
+        - Admin
+      x-root-path: true
+      summary: List session inventory (operator-only)
+      description: >
+        Per-instance inventory of every account this node knows about, merged
+        from the in-memory client set, the device store, and persisted lifecycle
+        status into honest states (connected / disconnected / never_paired /
+        logged_out / banned). Served at the ROOT path (NOT under /api/v1).
+        Bearer-gated by ADMIN_API_SECRET; when the secret is unset the route is
+        not registered and returns 404 (dark by default). Cross-tenant by design
+        (operator visibility); phone numbers are masked. The view is
+        per-instance — a device with no live client here may be live on another
+        node.
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Session inventory (empty node -> count 0, never an error).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInventory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Admin plane disabled (ADMIN_API_SECRET unset) or route absent.
+  /admin/sessions/{phone}:
+    get:
+      tags:
+        - Admin
+      x-root-path: true
+      summary: Get one account's session state (operator-only)
+      description: >
+        Single-account view by bare phone number (no normalization). Served at
+        the ROOT path; bearer-gated by ADMIN_API_SECRET (404 when unset).
+      security:
+        - adminBearer: []
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "6281910481554"
+      responses:
+        '200':
+          description: The account's merged session state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance:
+                    type: string
+                  session:
+                    $ref: '#/components/schemas/SessionInventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such account on this instance (or admin plane disabled).
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      x-root-path: true
+      summary: Prometheus metrics (operator-only)
+      description: >
+        Hand-rolled Prometheus text exposition. Served at the ROOT path; gated by
+        METRICS_ENABLED (default false) AND the admin bearer (unreachable without
+        ADMIN_API_SECRET). Series: `whatsapp_gateway_messages_total{type,mode,result}`,
+        `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, and
+        `whatsapp_gateway_sessions{state}` (gauge). Never labelled by phone number.
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Metrics disabled (METRICS_ENABLED false) or admin plane unset.
 webhooks:
   outgoingWebhook:
     post:

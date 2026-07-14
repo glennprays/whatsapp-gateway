@@ -264,6 +264,38 @@ Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A
 
 ---
 
+### Admin / Metrics Plane Configuration
+
+An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, and `GET /metrics`. It is **dark by default** — with no `ADMIN_API_SECRET` the routes are never registered and return `404` (never a `401` that would confirm the plane exists). The plane is cross-tenant by design (operator visibility) and the inventory is **per-instance**: a device with no live client on this node may be live on another.
+
+#### `ADMIN_API_SECRET`
+- **Description**: Bearer secret for `/admin/*` and `/metrics`. Empty disables (unregisters) the whole plane. When set, requests must send `Authorization: Bearer <secret>`, compared in constant time (`crypto/subtle`).
+- **Type**: String
+- **Default**: `""` (disabled)
+
+#### `METRICS_ENABLED`
+- **Description**: Exposes `GET /metrics` (hand-rolled Prometheus text exposition). Still requires `ADMIN_API_SECRET` to be reachable (same bearer-gated plane). Series: `whatsapp_gateway_messages_total{type,mode,result}`, `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, `whatsapp_gateway_sessions{state}` (gauge). A phone number is **never** a metric label (cardinality).
+- **Type**: Boolean
+- **Default**: `false`
+
+---
+
+### Direct-mode Webhook Retry Configuration
+
+Direct-mode status webhooks (`message.queued` / `message.sent` / `message.failed`) are delivered asynchronously with bounded exponential backoff on a detached context, so a retry outlives the HTTP request. Best-effort (drop-on-full, no DLQ); durable delivery requires RabbitMQ. Queue mode keeps its own RabbitMQ-level retry and is not double-retried.
+
+#### `WEBHOOK_MAX_RETRIES`
+- **Description**: Maximum retry attempts (beyond the first) for a direct-mode webhook delivery. Capped internally at 10.
+- **Type**: Integer
+- **Default**: `3`
+
+#### `WEBHOOK_RETRY_BACKOFF_SECONDS`
+- **Description**: Base backoff for the exponential retry schedule (`base`, `base×2`, `base×4`, …).
+- **Type**: Integer (seconds)
+- **Default**: `2`
+
+---
+
 ## Security Best Practices
 
 1. **Never commit `.env` files**: Always use `.env.example` as a template

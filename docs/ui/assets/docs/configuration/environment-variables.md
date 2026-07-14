@@ -328,6 +328,42 @@ Overall bound for cleanly disconnecting all WhatsApp clients on shutdown, before
 Type: integer (seconds)  
 Default: 10  
 
+## Admin / Metrics Plane
+
+An operator-only, cross-tenant plane at the ROOT path (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, `GET /metrics`. Dark by default — with no `ADMIN_API_SECRET` the routes are unregistered and return `404` (never a `401`). The session inventory is per-instance and phones are masked; metrics are never labelled by phone number.
+
+### ADMIN_API_SECRET
+
+Bearer secret for `/admin/*` and `/metrics`. Empty disables the whole plane. When set, requests send `Authorization: Bearer <secret>` (constant-time compare).
+
+Type: string  
+Default: "" (disabled)  
+
+### METRICS_ENABLED
+
+Expose `GET /metrics` (hand-rolled Prometheus text: `whatsapp_gateway_messages_total`, `whatsapp_gateway_webhook_deliveries_total`, `whatsapp_gateway_sessions{state}`). Still requires `ADMIN_API_SECRET` to be reachable.
+
+Type: boolean  
+Default: false  
+
+## Direct-mode Webhook Retry
+
+Direct-mode status webhooks are delivered asynchronously with bounded exponential backoff on a detached context (best-effort; queue mode keeps RabbitMQ retry).
+
+### WEBHOOK_MAX_RETRIES
+
+Maximum retry attempts (beyond the first) for a direct-mode webhook delivery. Capped at 10.
+
+Type: integer  
+Default: 3  
+
+### WEBHOOK_RETRY_BACKOFF_SECONDS
+
+Base backoff (seconds) for the exponential retry schedule.
+
+Type: integer (seconds)  
+Default: 2  
+
 ## RabbitMQ Configuration
 
 ### RABBITMQ_ENABLED

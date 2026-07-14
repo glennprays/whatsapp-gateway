@@ -215,6 +215,21 @@ Implement comprehensive logging:
 - The `chat` field accepts group JIDs (`@g.us`); ensure your access control (below) authorizes
   the account for the groups it sends into.
 
+### 9. Admin / Metrics Plane
+
+- The admin plane (`GET /admin/sessions`, `/admin/sessions/{phone}`, `/metrics`) is served at
+  the **ROOT path** and is **operator-only, cross-tenant** — any caller with the bearer sees
+  **every** account (masked). It is **NOT** for tenants. Keep it on a private network / behind
+  your reverse proxy, never on the public edge.
+- **Dark by default.** With `ADMIN_API_SECRET` unset, the routes are **not registered** and
+  return `404` — deliberately not a `401`, so an unconfigured plane never confirms it exists.
+  Set a strong, random `ADMIN_API_SECRET` (e.g. `openssl rand -base64 32`) before enabling.
+- The bearer is compared with `crypto/subtle.ConstantTimeCompare`. `/metrics` additionally
+  requires `METRICS_ENABLED=true` and is unreachable without the secret.
+- Metrics **never** label by phone number (bounded cardinality); per-account detail is only on
+  the bearer-gated `/admin/sessions`. The inventory is **per-instance** — behind a load balancer,
+  scrape/inspect each node.
+
 ## Encryption and Data Protection
 
 ### HMAC Master Key

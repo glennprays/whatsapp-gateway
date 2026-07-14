@@ -133,3 +133,12 @@ def handle_webhook(request):
     if user:
         notify_user(user, event)
 ```
+
+## Admin / Metrics Plane
+
+The gateway exposes an **operator-only** plane at the **ROOT path** (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, and `GET /metrics`. It is **cross-tenant** — any holder of the bearer sees **every** account (masked). Treat it as infrastructure, not a tenant API.
+
+- **Dark by default:** with no `ADMIN_API_SECRET`, the routes are never registered and return `404` — deliberately not `401`, so an unconfigured plane never confirms it exists.
+- Set a strong, random `ADMIN_API_SECRET` (`openssl rand -base64 32`) and send `Authorization: Bearer <secret>`; it is compared in constant time.
+- Keep the plane on a private network / behind your reverse proxy — never expose it publicly.
+- `/metrics` also requires `METRICS_ENABLED=true` and is unreachable without the secret. Metrics are **never** labelled by phone number, and the session inventory is **per-instance** (scrape each node behind a load balancer).

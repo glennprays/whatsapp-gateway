@@ -251,6 +251,12 @@ For complete API documentation, including all endpoints, request/response schema
 | Group | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
 | Community | `GET /community/subgroups?chat=<@g.us>` (list a community's linked sub-groups; empty list if none, not an error), `GET /community/participants?chat=<@g.us>` (all participants across the community's linked groups; each participant's primary JID only) — both server reads, cached + per-account read budget; a non-community group returns 400/403/404 |
 | Health | `GET /health`, `GET /health/live`, `GET /health/ready` |
+| Admin (ROOT path, operator-only) | `GET /admin/sessions` (per-instance session inventory: honest `connected`/`disconnected`/`never_paired`/`logged_out`/`banned` states merged from live clients + device store + persisted status; masked phones + `instance` hostname), `GET /admin/sessions/{phone}` (one account or 404) |
+| Metrics (ROOT path, operator-only) | `GET /metrics` (hand-rolled Prometheus text; `whatsapp_gateway_messages_total`, `whatsapp_gateway_webhook_deliveries_total`, `whatsapp_gateway_sessions{state}`) |
+
+**Admin / metrics plane** live at the **ROOT path** (not under the `/api/v1` base) and are **operator-only, cross-tenant**. They are **dark by default**: with no `ADMIN_API_SECRET` the routes are unregistered and return `404`; when set, send `Authorization: Bearer <secret>` (constant-time). `/metrics` additionally needs `METRICS_ENABLED=true`. Never labelled by phone number (cardinality); the inventory is **per-instance** (scrape each node behind a load balancer).
+
+Direct-mode status webhooks (`message.sent`/`message.failed`/`message.queued`) are delivered **asynchronously with bounded retry** (`WEBHOOK_MAX_RETRIES`, `WEBHOOK_RETRY_BACKOFF_SECONDS`); best-effort — durable delivery requires RabbitMQ.
 
 ## Error Responses
 
@@ -371,6 +377,15 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 |----------|---------|-------------|
 | `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Emit message lifecycle webhooks |
 | `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | Comma-separated subset: `message.queued`, `message.sent`, `message.failed` |
+| `WEBHOOK_MAX_RETRIES` | `3` | Direct-mode async webhook retry attempts (queue mode uses RabbitMQ retry) |
+| `WEBHOOK_RETRY_BACKOFF_SECONDS` | `2` | Base for the exponential retry backoff |
+
+### Admin / metrics plane (operator-only, ROOT path)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_API_SECRET` | _(empty)_ | Bearer secret for `/admin/*` + `/metrics`. Empty ⇒ plane unregistered (404, dark by default); set ⇒ `Authorization: Bearer <secret>`, constant-time |
+| `METRICS_ENABLED` | `false` | Expose `GET /metrics`; still needs `ADMIN_API_SECRET` set to be reachable |
 
 ### Object storage
 
