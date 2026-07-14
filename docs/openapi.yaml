@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.18.0
+  version: 0.19.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -183,6 +183,24 @@ components:
           type: boolean
           description: Whether the image should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
         - image
     SendMessageQueuedResponse:
@@ -228,6 +246,24 @@ components:
           type: string
           description: Optional address of the location.
           example: "Jakarta, Indonesia"
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. The mention attaches (fires a notification) but a location has no text to render the @<number> inline."
+          example: ["6281111111111"]
       required:
         - latitude
         - longitude
@@ -259,6 +295,24 @@ components:
           description: Number of options a user can select (default 1).
           default: 1
           example: 1
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. The mention attaches (fires a notification) but a poll has no free-text surface to render the @<number> inline."
+          example: ["6281111111111"]
       required:
         - question
         - options
@@ -278,6 +332,24 @@ components:
           type: string
           format: binary
           description: The sticker file to send.
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). The mention attaches (fires a notification) but a sticker has no caption to render the @<number> inline."
+          example: ["6281111111111"]
       required:
         - sticker
     SendMessageAudioRequest:
@@ -307,6 +379,24 @@ components:
           type: boolean
           description: Whether the audio should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). The mention attaches (fires a notification) but audio has no caption to render the @<number> inline."
+          example: ["6281111111111"]
       required:
         - audio
     SendMessageVideoRequest:
@@ -337,6 +427,24 @@ components:
           type: boolean
           description: Whether the video should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
         - video
     SendMessageDocumentRequest:
@@ -364,6 +472,24 @@ components:
           type: string
           description: Optional caption. Wrapped so it renders reliably across clients.
           example: "Invoice for July"
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
         - document
     ContactCheckResponse:
