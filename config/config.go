@@ -108,6 +108,12 @@ type Config struct {
 	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
 	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
 
+	// Direct-mode webhook retry parity: direct-mode status webhooks are delivered
+	// asynchronously with bounded exponential backoff (queue mode keeps RabbitMQ
+	// retry). Backoff is the base for the exponential schedule.
+	WebhookMaxRetries          int   `mapstructure:"WEBHOOK_MAX_RETRIES" default:"3"`
+	WebhookRetryBackoffSeconds int64 `mapstructure:"WEBHOOK_RETRY_BACKOFF_SECONDS" default:"2"`
+
 	// Storage Configuration
 	// Both providers are production-ready - choose based on infrastructure needs
 	StorageProvider             string `mapstructure:"STORAGE_PROVIDER" default:"local"` // options: s3, local

@@ -69,7 +69,7 @@ func InitializeApp() (*App, func(), error) {
 	whatsappWebhookHandler := whatsapp_handler.ProvideWhatsappWebhookHandler(whatsappWebhookUsecase, logger)
 	jobRepository := queue2.ProvideJobRepository(db)
 	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
-	webhookSender := whatsapp.ProvideWebhookSender(cipher, logger)
+	webhookSender := whatsapp.ProvideWebhookSender(cipher, logger, configConfig)
 	client, err := database.ProvideRedis(configConfig, logger)
 	if err != nil {
 		return nil, nil, err

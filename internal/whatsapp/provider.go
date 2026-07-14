@@ -5,8 +5,8 @@ import (
 
 	"github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
-	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	domainStorage "github.com/glennprays/whatsapp-gateway/domain/storage"
 	"github.com/glennprays/whatsapp-gateway/pkg/cipherx"
 	"go.mau.fi/whatsmeow"
 )
@@ -29,8 +29,8 @@ func ProvideWhatsAppRepository(db *sql.DB) WhatsAppRepository {
 }
 
 // ProvideWebhookSender creates webhook sender
-func ProvideWebhookSender(cipher *cipherx.Cipher, logger *log.Logger) *WebhookSender {
-	return NewWebhookSender(cipher, logger)
+func ProvideWebhookSender(cipher *cipherx.Cipher, logger *log.Logger, cfg *config.Config) *WebhookSender {
+	return NewWebhookSender(cipher, logger, cfg)
 }
 
 // ProvideMediaDownloader creates media downloader

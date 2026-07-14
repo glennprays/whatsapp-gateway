@@ -1175,12 +1175,9 @@ func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 		"timestamp":    time.Now().Unix(),
 	}
 
-	// Send webhook
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send queued webhook", nil, customLog.Error(err))
-	} else {
-		uc.logger.Debug(traceID, fmt.Sprintf("Sent message.queued webhook for job %s", job.JobID), nil)
-	}
+	// Deliver asynchronously with bounded retry (best-effort; durable delivery
+	// requires RabbitMQ). Fire-and-forget so it never blocks the HTTP response.
+	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageQueued), payload)
 }
 
 // sendDirectSentWebhook sends a message.sent webhook in direct mode
@@ -1221,11 +1218,7 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 		"message_id":   messageID,
 	}
 
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send direct sent webhook", nil, customLog.Error(err))
-	} else {
-		uc.logger.Debug(traceID, "Sent message.sent webhook (direct mode)", nil)
-	}
+	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageSent), payload)
 }
 
 // sendDirectFailedWebhook sends a message.failed webhook in direct mode
@@ -1266,7 +1259,5 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 		"error":        errorMsg,
 	}
 
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send direct failed webhook", nil, customLog.Error(err))
-	}
+	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageFailed), payload)
 }
