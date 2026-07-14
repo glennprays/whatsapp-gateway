@@ -105,6 +105,7 @@ type SendDocumentMessageRequest struct {
 type SendMessageResponse struct {
 	Success   bool   `json:"success"`
 	MessageID string `json:"message_id"`
+	Chat      string `json:"chat"` // resolved canonical recipient JID
 }
 
 // MessageOperationResponse represents a successful message operation response
@@ -117,6 +118,7 @@ type SendMessageQueuedResponse struct {
 	Success bool   `json:"success"`
 	Status  string `json:"status"` // "queued"
 	JobID   string `json:"job_id"`
+	Chat    string `json:"chat"` // resolved canonical recipient JID
 }
 
 // JobStatusResponse represents a job status lookup response

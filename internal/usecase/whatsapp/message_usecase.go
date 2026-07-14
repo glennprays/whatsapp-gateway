@@ -234,6 +234,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 				Success: true,
 				Status:  "queued",
 				JobID:   jobID,
+				Chat:    req.Msisdn,
 			}, nil
 		}
 	}
@@ -278,6 +279,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	return &waDomain.SendMessageResponse{
 		Success:   true,
 		MessageID: messageID,
+		Chat:      req.Msisdn,
 	}, nil, nil
 }
 
@@ -361,6 +363,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 				Success: true,
 				Status:  "queued",
 				JobID:   jobID,
+				Chat:    req.Msisdn,
 			}, nil
 		}
 	}
@@ -386,6 +389,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	return &waDomain.SendMessageResponse{
 		Success:   true,
 		MessageID: messageID,
+		Chat:      req.Msisdn,
 	}, nil, nil
 }
 
@@ -456,7 +460,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -472,7 +476,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendVideoMessage sends a video message (queued or direct).
@@ -540,7 +544,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -556,7 +560,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendDocumentMessage sends a document (file) message (queued or direct).
@@ -628,7 +632,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -644,7 +648,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendLocationMessage sends a location message (queued or direct)
@@ -691,7 +695,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -710,7 +714,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendPollMessage sends a poll message (queued or direct)
@@ -764,7 +768,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -783,7 +787,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendStickerMessage sends a sticker message (queued or direct)
@@ -841,7 +845,7 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
@@ -860,7 +864,7 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // ReactToMessage reacts to a message
