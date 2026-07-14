@@ -37,6 +37,12 @@ func runSessionStatusMigrations(db *sql.DB) error {
         phone_number   TEXT PRIMARY KEY,
         state          TEXT NOT NULL,
         reason         TEXT,
+        -- These two are compared to time.Now() for the pacer's ban gate, so they
+        -- must round-trip as absolute instants. lib/pq reads a bare TIMESTAMP as
+        -- UTC regardless of the real session tz, and modernc/SQLite only converts
+        -- TIMESTAMP (not TIMESTAMPTZ) text to time.Time — so the columns stay
+        -- TIMESTAMP and UpsertSessionStatus writes them in UTC (never the
+        -- session-tz-dependent CURRENT_TIMESTAMP) so the stored digits are UTC.
         ban_expires_at TIMESTAMP,
         updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );`

@@ -166,13 +166,23 @@ func (r *whatsAppRepository) DeleteAllWebhookSubscriptions(ctx context.Context, 
 // by bare phone number (repo convention: no normalization). Portable upsert
 // (SQLite modernc + Postgres). banExpiresAt is nil except for temporary bans.
 func (r *whatsAppRepository) UpsertSessionStatus(ctx context.Context, phone, state, reason string, banExpiresAt *time.Time) error {
+	// Write both timestamps in UTC rather than CURRENT_TIMESTAMP (which Postgres
+	// evaluates in the session tz). lib/pq reads a bare TIMESTAMP column back as
+	// UTC, so storing UTC digits keeps ban_expires_at/updated_at as correct
+	// absolute instants for the pacer's ban gate no matter the DB session
+	// timezone; SQLite is already UTC.
+	now := time.Now().UTC()
+	if banExpiresAt != nil {
+		u := banExpiresAt.UTC()
+		banExpiresAt = &u
+	}
 	_, err := r.DB.ExecContext(ctx, `
 		INSERT INTO session_status (phone_number, state, reason, ban_expires_at, updated_at)
-		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (phone_number)
 		DO UPDATE SET state = EXCLUDED.state, reason = EXCLUDED.reason,
-			ban_expires_at = EXCLUDED.ban_expires_at, updated_at = CURRENT_TIMESTAMP
-	`, phone, state, reason, banExpiresAt)
+			ban_expires_at = EXCLUDED.ban_expires_at, updated_at = EXCLUDED.updated_at
+	`, phone, state, reason, banExpiresAt, now)
 	return err
 }
 
