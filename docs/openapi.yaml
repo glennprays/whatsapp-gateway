@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.14.0
+  version: 0.15.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -505,6 +505,27 @@ components:
         lid:
           type: string
           example: "1122334455@lid"
+    AvatarResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        url:
+          type: string
+          description: Time-limited WhatsApp CDN URL; download directly.
+          example: "https://pps.whatsapp.net/v/t61.../avatar.jpg"
+        id:
+          type: string
+          description: Picture id; also returned as the ETag.
+          example: "1234567890"
+        type:
+          type: string
+          description: "\"image\" (full res) or \"preview\" (thumbnail)."
+          example: "image"
+        direct_path:
+          type: string
+          example: "/v/t61.../avatar.jpg"
     MessageDeleteRequest:
       type: object
       properties:
@@ -1066,6 +1087,65 @@ paths:
                 $ref: '#/components/schemas/ContactInfoResponse'
         '400':
           description: chat is missing or resolves to a group (use group/info).
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /contact/avatar:
+    get:
+      tags:
+        - Contact
+      summary: Get a chat's avatar (profile picture)
+      description: >
+        Returns a chat's profile picture (whatsmeow GetProfilePictureInfo). The
+        `chat` may be a user OR a group JID. Returns a time-limited CDN URL plus
+        the picture id; download the URL directly. The id doubles as the `ETag`
+        — send it back via `If-None-Match` on the next call to get `304 Not
+        Modified` when the picture hasn't changed. Cached + metered by the
+        per-account read budget (the `If-None-Match` freshness check bypasses the
+        cache but still spends budget).
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
+        - name: msisdn
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat."
+          schema:
+            type: string
+            example: "6281234567890"
+        - name: preview
+          in: query
+          required: false
+          description: "true returns the low-res thumbnail; false (default) the full-res image."
+          schema:
+            type: boolean
+            example: false
+        - name: If-None-Match
+          in: header
+          required: false
+          description: "A previously returned avatar ETag. When it still matches, the response is 304."
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The chat's avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarResponse'
+        '304':
+          description: The avatar is unchanged relative to the supplied If-None-Match.
+        '403':
+          description: The target has hidden their profile picture from you.
+        '404':
+          description: The target has no profile picture set.
         '429':
           description: Per-account read budget exhausted; retry after the indicated delay.
       security:
