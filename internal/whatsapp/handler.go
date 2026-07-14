@@ -256,6 +256,11 @@ func (h *handler) dispatch(traceID, phoneNumber, jid, event string, payload map[
 				WebhookURL: sub.Url,
 				HmacSecret: sub.HmacSecret,
 				Payload:    payload,
+				// traceID is unique per lifecycle event; combined with the
+				// per-destination dedup key it keeps each subscription's
+				// delivery independent (no cross-sub collapse) while still
+				// deduping a genuine RabbitMQ redelivery of the same message.
+				MessageID: traceID,
 			}); perr == nil {
 				continue
 			}
