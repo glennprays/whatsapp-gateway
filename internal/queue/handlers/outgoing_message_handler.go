@@ -132,7 +132,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption, jobMessageContext(job))
 		}
 	case "location":
-		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
+		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress, jobMessageContext(job))
 	case "poll":
 		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount)
 	case "sticker":

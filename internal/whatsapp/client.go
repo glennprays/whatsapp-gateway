@@ -52,7 +52,7 @@ type (
 		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
-		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
+		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
 		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
 		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
@@ -1048,7 +1048,7 @@ func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber st
 	return nil
 }
 
-func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
+func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error) {
 	cli := clients.Get(phoneNumber)
 	if cli == nil {
 		return "", errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
@@ -1072,6 +1072,7 @@ func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneN
 	if address != "" {
 		locationMsg.Address = &address
 	}
+	locationMsg.ContextInfo = buildContextInfo(msgCtx)
 
 	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{LocationMessage: locationMsg})
 	if err != nil {

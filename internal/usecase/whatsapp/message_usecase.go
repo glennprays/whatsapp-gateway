@@ -719,6 +719,11 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
@@ -731,6 +736,10 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 			Longitude:       req.Longitude,
 			LocationName:    req.Name,
 			LocationAddress: req.Address,
+			ReplyToID:       msgCtx.ReplyToID,
+			ReplyToSender:   msgCtx.ReplyToSender,
+			ReplyToText:     msgCtx.ReplyToText,
+			Mentions:        msgCtx.Mentions,
 			CreatedAt:       time.Now().Unix(),
 		}
 
@@ -756,7 +765,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
 	}
 
-	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address)
+	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address, msgCtx)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err

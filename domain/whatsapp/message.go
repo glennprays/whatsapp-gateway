@@ -76,12 +76,16 @@ type MessageEditRequest struct {
 
 // SendLocationMessageRequest represents a location message send request
 type SendLocationMessageRequest struct {
-	Chat      string  `json:"chat" binding:"omitempty"`
-	Msisdn    string  `json:"msisdn" binding:"omitempty"` // deprecated: alias for chat
-	Latitude  float64 `json:"latitude" binding:"required"`
-	Longitude float64 `json:"longitude" binding:"required"`
-	Name      string  `json:"name,omitempty"`
-	Address   string  `json:"address,omitempty"`
+	Chat          string   `json:"chat" binding:"omitempty"`
+	Msisdn        string   `json:"msisdn" binding:"omitempty"` // deprecated: alias for chat
+	Latitude      float64  `json:"latitude" binding:"required"`
+	Longitude     float64  `json:"longitude" binding:"required"`
+	Name          string   `json:"name,omitempty"`
+	Address       string   `json:"address,omitempty"`
+	ReplyToID     string   `json:"reply_to_id,omitempty"`     // quote this message id
+	ReplyToSender string   `json:"reply_to_sender,omitempty"` // author of the quoted message (number/JID)
+	ReplyToText   string   `json:"reply_to_text,omitempty"`   // optional quoted preview text
+	Mentions      []string `json:"mentions,omitempty"`        // numbers/JIDs to @-mention
 }
 
 // SendPollMessageRequest represents a poll message send request
