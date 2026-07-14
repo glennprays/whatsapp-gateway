@@ -401,6 +401,10 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
 	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce, msgCtx)
 	metrics.RecordSend("image", "direct", err)
 	if err != nil {
@@ -506,6 +510,10 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 		}
 	}
 
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
 	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce, msgCtx)
 	metrics.RecordSend("audio", "direct", err)
 	if err != nil {
@@ -598,6 +606,10 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 			uc.sendQueuedWebhook(ctx, traceID, job)
 			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
+	}
+
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce, msgCtx)
@@ -696,6 +708,10 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 			uc.sendQueuedWebhook(ctx, traceID, job)
 			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
+	}
+
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
 	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption, msgCtx)
