@@ -239,6 +239,22 @@ Server-hitting reads (joined groups; later profiles/avatars) are short-TTL **cac
 
 ---
 
+### Send Idempotency Configuration
+
+Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key **replays** the original response (with `Idempotent-Replay: true`) rather than sending again; an in-flight duplicate returns `409`; reusing a key with a **different** request body returns `422`. Dedup is DB-backed and keyed by the **JWT phone number + key** (never the body — one Account cannot spoof another's namespace), so it survives restarts and is shared across instances. In queue mode this is **enqueued-once, not delivered-once**.
+
+#### `IDEMPOTENCY_TTL_SECONDS`
+- **Description**: How long a completed response stays replayable; also the retention bound a background sweeper enforces on the `idempotency_keys` table.
+- **Type**: Integer (seconds)
+- **Default**: `86400` (24h)
+
+#### `IDEMPOTENCY_PENDING_TIMEOUT_SECONDS`
+- **Description**: If a request crashes after reserving a key but before completing, its row stays `pending`. After this timeout a retry may take the key over instead of receiving `409` indefinitely.
+- **Type**: Integer (seconds)
+- **Default**: `30`
+
+---
+
 ### Graceful Shutdown Configuration
 
 #### `SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS`

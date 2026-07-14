@@ -45,6 +45,7 @@ The matrix is intended to give solution architects and integrators a clear view 
 | Immediate Reject on Limit      | Yes       | When queue mode disabled |
 | Buffered Dispatch              | Yes       | When queue mode enabled |
 | Configurable Max Retry         | Yes       | For webhook delivery |
+| Send Idempotency               | Yes       | Optional `Idempotency-Key` header on `/message/*`; DB-backed replay (`409` in-flight, `422` body mismatch); enqueued-once in queue mode |
 
 ## Database Support
 

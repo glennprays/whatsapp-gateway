@@ -62,6 +62,12 @@ curl -X POST http://localhost:3000/api/v1/message/text \
 > a user JID (`@s.whatsapp.net`), a group JID (`@g.us`) — so you can message groups — or a `@lid`
 > (best-effort; not guaranteed dialable). Send responses echo the resolved canonical `chat`.
 
+> **Idempotent sends:** send an `Idempotency-Key` header on any `POST /message/*` to make retries
+> safe. A repeat of the same key replays the original response (`Idempotent-Replay: true`) instead
+> of sending twice; an in-flight duplicate gets `409`; the same key with a different body gets `422`.
+> DB-backed (keyed by JWT account + key), survives restarts. Queue mode is enqueued-once, not
+> delivered-once. Tune via `IDEMPOTENCY_TTL_SECONDS` / `IDEMPOTENCY_PENDING_TIMEOUT_SECONDS`.
+
 ### Step 3: Login to WhatsApp
 
 Use either QR code or pairing code:

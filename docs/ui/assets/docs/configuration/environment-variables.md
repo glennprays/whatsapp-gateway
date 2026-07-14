@@ -301,6 +301,24 @@ The rolling window over which `READ_QUERY_BUDGET` is counted.
 Type: integer (seconds)  
 Default: 60  
 
+## Send Idempotency
+
+Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key replays the original response (`Idempotent-Replay: true`) instead of sending again; an in-flight duplicate gets `409`; the same key with a different request body gets `422`. Dedup is DB-backed and keyed by the JWT phone number + key, so it survives restarts. In queue mode this guarantees enqueued-once, not delivered-once.
+
+### IDEMPOTENCY_TTL_SECONDS
+
+How long a completed response stays replayable (and the retention bound a background sweeper enforces).
+
+Type: integer (seconds)  
+Default: 86400 (24h)  
+
+### IDEMPOTENCY_PENDING_TIMEOUT_SECONDS
+
+If a request crashes after reserving a key but before completing, its row is left `pending`. After this timeout a retry may take the key over instead of getting a `409` forever.
+
+Type: integer (seconds)  
+Default: 30  
+
 ## Graceful Shutdown
 
 ### SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS
