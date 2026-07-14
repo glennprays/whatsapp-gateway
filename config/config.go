@@ -59,15 +59,32 @@ type Config struct {
 	ReadQueryBudget          int64 `mapstructure:"READ_QUERY_BUDGET" default:"30"`
 	ReadQueryWindowSeconds   int64 `mapstructure:"READ_QUERY_WINDOW_SECONDS" default:"60"`
 
-	// Group & community management (Phase E). The master toggle stays ON, but the
-	// high-ban-risk bulk/mass vectors (bulk participant add, join-via-link) default
-	// OFF until outbound pacing (#2) lands. With GroupManagementEnabled=false the
+	// Group & community management (Phase E). The master toggle stays ON. The
+	// high-ban-risk bulk/mass vectors (bulk participant add, join-via-link) are now
+	// enabled by default: outbound pacing (#2) supplies the ban-safety that the
+	// interim hard gate used to. The flags remain as pure kill-switches — set one
+	// false to fully disable that op (403). With GroupManagementEnabled=false the
 	// entire mutation/invite/requests/community surface is unregistered (404);
 	// reads (GET /group/, /group/info, /community/*) stay up.
 	GroupManagementEnabled         bool `mapstructure:"GROUP_MANAGEMENT_ENABLED" default:"true"`
-	GroupAddParticipantsEnabled    bool `mapstructure:"GROUP_ADD_PARTICIPANTS_ENABLED" default:"false"`
+	GroupAddParticipantsEnabled    bool `mapstructure:"GROUP_ADD_PARTICIPANTS_ENABLED" default:"true"`
 	GroupMaxParticipantsPerRequest int  `mapstructure:"GROUP_MAX_PARTICIPANTS_PER_REQUEST" default:"256"`
-	GroupJoinViaLinkEnabled        bool `mapstructure:"GROUP_JOIN_VIA_LINK_ENABLED" default:"false"`
+	GroupJoinViaLinkEnabled        bool `mapstructure:"GROUP_JOIN_VIA_LINK_ENABLED" default:"true"`
+
+	// Outbound pacing (#2): spaces every outbound WhatsApp op to stay under
+	// anti-spam thresholds. Supersedes the interim per-account action cap and the
+	// per-message reject limiter (which becomes the disabled-mode fallback).
+	// Per-account is a blocking token bucket; per-recipient is a hard reject.
+	// In-memory / per-instance (aggregate cap is approximate across a fleet).
+	OutboundPaceEnabled                   bool    `mapstructure:"OUTBOUND_PACE_ENABLED" default:"true"`
+	OutboundPaceMode                      string  `mapstructure:"OUTBOUND_PACE_MODE" default:"pace"` // pace | reject
+	OutboundPaceRatePerSecond             float64 `mapstructure:"OUTBOUND_PACE_RATE_PER_SECOND" default:"1"`
+	OutboundPaceBurst                     float64 `mapstructure:"OUTBOUND_PACE_BURST" default:"5"`
+	OutboundPaceMaxWaitSeconds            int64   `mapstructure:"OUTBOUND_PACE_MAX_WAIT_SECONDS" default:"30"`
+	OutboundPaceJitterMs                  int64   `mapstructure:"OUTBOUND_PACE_JITTER_MS" default:"250"`
+	OutboundPacePerRecipientRequests      int64   `mapstructure:"OUTBOUND_PACE_PER_RECIPIENT_REQUESTS" default:"10"`
+	OutboundPacePerRecipientWindowSeconds int64   `mapstructure:"OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS" default:"60"`
+	OutboundPaceBanDefaultHoldSeconds     int64   `mapstructure:"OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS" default:"3600"`
 
 	// Send idempotency: an optional Idempotency-Key header dedupes sends via a
 	// DB-backed (phone, key) table. TTL bounds how long a completed response is
@@ -230,6 +247,23 @@ const maxJWTDurationMinutes = 525600 // 1 year
 func (c *Config) normalize() {
 	if c.JwtDurationMinutes <= 0 || c.JwtDurationMinutes > maxJWTDurationMinutes {
 		c.JwtDurationMinutes = 1440 // 24h default
+	}
+	// Outbound pacing clamps: a non-positive rate or sub-1 burst would deadlock
+	// the token bucket; a negative wait/window is meaningless.
+	if c.OutboundPaceRatePerSecond <= 0 {
+		c.OutboundPaceRatePerSecond = 1
+	}
+	if c.OutboundPaceBurst < 1 {
+		c.OutboundPaceBurst = 1
+	}
+	if c.OutboundPaceMaxWaitSeconds < 0 {
+		c.OutboundPaceMaxWaitSeconds = 0
+	}
+	if c.OutboundPaceJitterMs < 0 {
+		c.OutboundPaceJitterMs = 0
+	}
+	if c.OutboundPaceMode != "reject" {
+		c.OutboundPaceMode = "pace"
 	}
 }
 
