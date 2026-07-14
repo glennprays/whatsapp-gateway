@@ -29,6 +29,7 @@ func ProvideWhatsappMessageUsecase(
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
 	limiter ratelimiter.Limiter,
+	pacer *ratelimiter.Pacer,
 ) *WhatsappMessageUsecase {
-	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo, whatsappRepo, webhookSender, cfg, limiter)
+	return NewWhatsappMessageUsecase(whatsappManager, logger, queue, jobRepo, whatsappRepo, webhookSender, cfg, limiter, pacer)
 }

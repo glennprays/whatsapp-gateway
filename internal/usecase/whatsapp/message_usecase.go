@@ -156,6 +156,7 @@ type WhatsappMessageUsecase struct {
 	webhookSender   *whatsapp.WebhookSender
 	config          *config.Config
 	limiter         ratelimiter.Limiter
+	pacer           *ratelimiter.Pacer  // outbound pacer (supersedes the interim action cap)
 	queryCache      *ttlCache           // short-TTL cache for server-hitting reads
 	queryBudget     ratelimiter.Limiter // per-account read budget (spent on cache miss)
 }
@@ -170,6 +171,7 @@ func NewWhatsappMessageUsecase(
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
 	limiter ratelimiter.Limiter,
+	pacer *ratelimiter.Pacer,
 ) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
 		whatsappManager: manager,
@@ -180,9 +182,31 @@ func NewWhatsappMessageUsecase(
 		webhookSender:   webhookSender,
 		config:          cfg,
 		limiter:         limiter,
+		pacer:           pacer,
 		queryCache:      newTTLCache(time.Duration(cfg.ReadQueryCacheTTLSeconds) * time.Second),
 		queryBudget:     newQueryBudget(cfg.ReadQueryBudget, cfg.ReadQueryWindowSeconds),
 	}
+}
+
+// pace clears an outbound op through the pacer, mapping a *RateLimitError to a
+// 429 domain error (with a Retry-After hint) and any infra error to a 500. It
+// supersedes the interim spendActionBudget cap and the per-send limiter.Allow.
+// recipient is the resolved chat/JID (or group JID); n is one token per op
+// (len(participants) for a bulk group add).
+func (uc *WhatsappMessageUsecase) pace(ctx context.Context, phone, recipient string, n int64) error {
+	if uc.pacer == nil {
+		return nil
+	}
+	err := uc.pacer.Wait(ctx, phone, recipient, n)
+	if err == nil {
+		return nil
+	}
+	var rl *ratelimiter.RateLimitError
+	if errors.As(err, &rl) {
+		return errDomain.NewError(errDomain.ErrTooManyRequests,
+			fmt.Errorf("rate limited; retry after %ds", int(rl.RetryAfter.Seconds())+1))
+	}
+	return errDomain.NewError(errDomain.ErrInternalFailure, err)
 }
 
 // SendTextMessage sends a text message (queued or direct)

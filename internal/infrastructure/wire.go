@@ -47,6 +47,7 @@ func InitializeApp() (*App, func(), error) {
 
 		// ratelimiter
 		ratelimiter.ProvideRateLimiter,
+		ProvideOutboundPacer,
 
 		// Infrastructure
 		cipherx.ProvideCipher,

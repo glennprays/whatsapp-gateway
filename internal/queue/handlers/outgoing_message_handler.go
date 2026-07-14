@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,7 +27,7 @@ type OutgoingMessageHandler struct {
 	Repository whatsapp.WhatsAppRepository
 	Sender     *whatsapp.WebhookSender
 	Config     *config.Config
-	Limiter    ratelimiter.Limiter
+	Pacer      *ratelimiter.Pacer
 	Dedup      *pkgQueue.DedupCache
 }
 
@@ -59,27 +60,24 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	masked := whatsapp.MaskedPhoneNumber(job.PhoneNumber)
 
-	var res ratelimiter.Result
-	res, err = h.Limiter.Allow(ctx, job.PhoneNumber)
-	if err != nil {
-		h.Logger.Error(traceID, "Rate limiter error", nil,
+	// Outbound pacing. On a paced-out / capped / banned result the worker returns
+	// the *RateLimitError so the worker pool reschedules the job with the
+	// RetryAfter delay (unchanged machinery).
+	if err = h.Pacer.Wait(ctx, job.PhoneNumber, job.To, 1); err != nil {
+		var rlErr *ratelimiter.RateLimitError
+		if errors.As(err, &rlErr) {
+			h.Logger.Warn(traceID, "Outbound send paced/limited", map[string]interface{}{
+				"phone_number": masked,
+				"retry_after":  rlErr.RetryAfter.String(),
+			})
+			return rlErr
+		}
+		h.Logger.Error(traceID, "Pacer error", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
 		)
 		return err
-	}
-
-	if !res.Allowed {
-		errMsg := fmt.Sprintf("Rate limit exceeded. Retry after %s", res.RetryAfter.String())
-		h.Logger.Warn(traceID, errMsg, map[string]interface{}{
-			"phone_number": job.PhoneNumber,
-			"limit":        res.Limit,
-			"remaining":    res.Remaining,
-		})
-
-		rateLimitErr := &ratelimiter.RateLimitError{}
-		return rateLimitErr.BuildError(res)
 	}
 
 	// Update job status to processing
