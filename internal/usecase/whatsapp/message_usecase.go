@@ -429,6 +429,11 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	}
 	req.Msisdn = to
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
 	}
@@ -459,16 +464,20 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "audio",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(audioBytes),
-			MimeType:    mimeType,
-			IsPTT:       req.IsPTT,
-			IsViewOnce:  req.IsViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "audio",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(audioBytes),
+			MimeType:      mimeType,
+			IsPTT:         req.IsPTT,
+			IsViewOnce:    req.IsViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -486,7 +495,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce)
+	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce, msgCtx)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send audio message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

@@ -39,7 +39,7 @@ type (
 		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
 		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
 		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
-		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
+		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
 		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
 		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
 		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
@@ -275,7 +275,7 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
-func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending audio message", nil,
 		customLog.String("phone_number", masked),
@@ -283,7 +283,7 @@ func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNum
 		customLog.Bool("ptt", isPTT),
 	)
 
-	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce)
+	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send audio message", nil,
 			customLog.String("phone_number", masked),

@@ -115,7 +115,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode audio data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce)
+			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "video":
 		videoBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)

@@ -103,10 +103,14 @@ type SendStickerMessageRequest struct {
 // IsPTT=true renders the waveform "voice note" bubble; false renders a
 // playable audio-file card.
 type SendAudioMessageRequest struct {
-	Chat       string `form:"chat" binding:"omitempty"`
-	Msisdn     string `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
-	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
-	IsPTT      bool   `form:"is_ptt" binding:"omitempty"`
+	Chat          string   `form:"chat" binding:"omitempty"`
+	Msisdn        string   `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
+	IsViewOnce    bool     `form:"is_view_once" binding:"omitempty"`
+	IsPTT         bool     `form:"is_ptt" binding:"omitempty"`
+	ReplyToID     string   `form:"reply_to_id" binding:"omitempty"`     // quote this message id
+	ReplyToSender string   `form:"reply_to_sender" binding:"omitempty"` // author of the quoted message (number/JID)
+	ReplyToText   string   `form:"reply_to_text" binding:"omitempty"`   // optional quoted preview text
+	Mentions      []string `form:"mentions" binding:"omitempty"`        // numbers/JIDs to @-mention (repeated form field)
 }
 
 // SendVideoMessageRequest represents a video message send request.
