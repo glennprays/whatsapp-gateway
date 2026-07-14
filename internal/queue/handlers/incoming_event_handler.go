@@ -56,28 +56,31 @@ func (h *IncomingEventHandler) Handle(ctx context.Context, body []byte, headers 
 	// Build webhook payload with client
 	payload := buildWebhookPayload(&waEvent, h.MediaDownloader, traceID, eventMsg.PhoneNumber, client)
 
-	// Fetch webhook config from database using JID
-	webhook, err := h.Repository.GetWebhook(ctx, eventMsg.JID)
+	// Fan the incoming-message event out to every matching subscription.
+	subs, err := h.Repository.GetWebhookSubscriptions(ctx, eventMsg.JID)
 	if err != nil {
-		return fmt.Errorf("failed to get webhook config: %w", err)
+		return fmt.Errorf("failed to get webhook subscriptions: %w", err)
 	}
-
-	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug("", fmt.Sprintf("No webhook URL configured for phone %s", eventMsg.PhoneNumber), nil)
+	if len(subs) == 0 {
+		h.Logger.Debug("", fmt.Sprintf("No webhook subscriptions configured for phone %s", eventMsg.PhoneNumber), nil)
 		h.Dedup.MarkProcessed(queue.QueueIncomingEvents, eventMsg.MessageID)
 		return nil // Not an error, just skip
 	}
 
-	// Enqueue to webhook delivery queue
-	webhookMsg := domainQueue.WebhookDeliveryMessage{
-		WebhookURL: webhook.Url,
-		HmacSecret: webhook.HmacSecret,
-		Payload:    payload,
-		MessageID:  eventMsg.MessageID,
-	}
-
-	if err := h.Publisher.PublishWebhookDelivery(ctx, webhookMsg); err != nil {
-		return fmt.Errorf("failed to publish webhook delivery: %w", err)
+	event := string(domainQueue.EventMessageIncoming)
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		webhookMsg := domainQueue.WebhookDeliveryMessage{
+			WebhookURL: sub.Url,
+			HmacSecret: sub.HmacSecret,
+			Payload:    payload,
+			MessageID:  eventMsg.MessageID,
+		}
+		if err := h.Publisher.PublishWebhookDelivery(ctx, webhookMsg); err != nil {
+			return fmt.Errorf("failed to publish webhook delivery: %w", err)
+		}
 	}
 
 	h.Dedup.MarkProcessed(queue.QueueIncomingEvents, eventMsg.MessageID)

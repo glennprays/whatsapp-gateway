@@ -1132,41 +1132,42 @@ func (uc *WhatsappMessageUsecase) GetJobStatus(
 	return response, nil
 }
 
+// dispatchDirectStatusWebhook fans a direct-mode status event out to every
+// subscription whose events filter matches (empty = all). Gated by the status
+// master kill-switch; each delivery is async with bounded retry (best-effort;
+// durable delivery requires RabbitMQ) and never blocks the HTTP response.
+func (uc *WhatsappMessageUsecase) dispatchDirectStatusWebhook(
+	ctx context.Context,
+	phoneNumber, event string,
+	payload map[string]interface{},
+) {
+	if !uc.config.WebhookStatusEventsEnabled {
+		return
+	}
+
+	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
+	if err != nil {
+		return
+	}
+	subs, err := uc.whatsappRepo.GetWebhookSubscriptions(ctx, JID)
+	if err != nil || len(subs) == 0 {
+		return
+	}
+
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		uc.webhookSender.SendAsync(sub.Url, sub.HmacSecret, event, payload)
+	}
+}
+
 // sendQueuedWebhook sends a message.queued webhook notification
 func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 	ctx context.Context,
 	traceID string,
 	job domainQueue.OutgoingMessageJob,
 ) {
-	// Check if webhook status events enabled
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	// Check if message.queued is in enabled events
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageQueued) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	// Get webhook config
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(job.PhoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
-	// Build payload
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageQueued),
 		"job_id":       job.JobID,
@@ -1174,10 +1175,7 @@ func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 		"phone_number": job.PhoneNumber,
 		"timestamp":    time.Now().Unix(),
 	}
-
-	// Deliver asynchronously with bounded retry (best-effort; durable delivery
-	// requires RabbitMQ). Fire-and-forget so it never blocks the HTTP response.
-	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageQueued), payload)
+	uc.dispatchDirectStatusWebhook(ctx, job.PhoneNumber, string(domainQueue.EventMessageQueued), payload)
 }
 
 // sendDirectSentWebhook sends a message.sent webhook in direct mode
@@ -1185,31 +1183,6 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 	ctx context.Context,
 	traceID, phoneNumber, to, messageID string,
 ) {
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageSent) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageSent),
 		"to":           to,
@@ -1217,8 +1190,7 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 		"timestamp":    time.Now().Unix(),
 		"message_id":   messageID,
 	}
-
-	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageSent), payload)
+	uc.dispatchDirectStatusWebhook(ctx, phoneNumber, string(domainQueue.EventMessageSent), payload)
 }
 
 // sendDirectFailedWebhook sends a message.failed webhook in direct mode
@@ -1226,31 +1198,6 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 	ctx context.Context,
 	traceID, phoneNumber, to, errorMsg string,
 ) {
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageFailed) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageFailed),
 		"to":           to,
@@ -1258,6 +1205,5 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 		"timestamp":    time.Now().Unix(),
 		"error":        errorMsg,
 	}
-
-	uc.webhookSender.SendAsync(webhook.Url, webhook.HmacSecret, string(domainQueue.EventMessageFailed), payload)
+	uc.dispatchDirectStatusWebhook(ctx, phoneNumber, string(domainQueue.EventMessageFailed), payload)
 }

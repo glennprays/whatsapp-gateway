@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	customLog "github.com/glennprays/log"
@@ -214,25 +213,9 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 	messageID string,
 	errorMsg string,
 ) {
-	// Check if status webhooks are enabled
+	// Master kill-switch for the status family. Per-event opt-in is now the
+	// per-subscription events filter, not the deprecated global list.
 	if !h.Config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	// Check if this event is in the enabled events list
-	enabledEvents := strings.Split(h.Config.WebhookStatusEvents, ",")
-	eventEnabled := false
-	for _, e := range enabledEvents {
-		if strings.TrimSpace(e) == string(event) {
-			eventEnabled = true
-			break
-		}
-	}
-	if !eventEnabled {
-		h.Logger.Debug(traceID, "Status webhook event not enabled", nil,
-			customLog.String("event", string(event)),
-			customLog.String("job_id", job.JobID),
-		)
 		return
 	}
 
@@ -248,19 +231,18 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		return
 	}
 
-	// Get webhook configuration for this phone number
-	webhook, err := h.Repository.GetWebhook(ctx, JID)
+	// Get subscriptions for this phone number
+	subs, err := h.Repository.GetWebhookSubscriptions(ctx, JID)
 	if err != nil {
-		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil,
+		h.Logger.Error(traceID, "Failed to get webhook subscriptions for status notification", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
 		)
 		return
 	}
-
-	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug(traceID, "No webhook URL configured for phone", nil,
+	if len(subs) == 0 {
+		h.Logger.Debug(traceID, "No webhook subscriptions configured for phone", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 		)
@@ -302,19 +284,24 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		payloadMap["error"] = payload.Error
 	}
 
-	// Send webhook (with HMAC signing and retry logic)
-	if err := h.Sender.Send(ctx, webhook.Url, webhook.HmacSecret, payloadMap); err != nil {
-		h.Logger.Error(traceID, "Failed to send status webhook", nil,
-			customLog.String("job_id", job.JobID),
-			customLog.String("phone_number", masked),
-			customLog.String("event", string(event)),
-			customLog.Error(err),
-		)
-	} else {
-		h.Logger.Debug(traceID, "Successfully sent status webhook", nil,
-			customLog.String("job_id", job.JobID),
-			customLog.String("phone_number", masked),
-			customLog.String("event", string(event)),
-		)
+	// Deliver to every subscription whose events filter matches (empty = all).
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, string(event)) {
+			continue
+		}
+		if err := h.Sender.Send(ctx, sub.Url, sub.HmacSecret, payloadMap); err != nil {
+			h.Logger.Error(traceID, "Failed to send status webhook", nil,
+				customLog.String("job_id", job.JobID),
+				customLog.String("phone_number", masked),
+				customLog.String("event", string(event)),
+				customLog.Error(err),
+			)
+		} else {
+			h.Logger.Debug(traceID, "Successfully sent status webhook", nil,
+				customLog.String("job_id", job.JobID),
+				customLog.String("phone_number", masked),
+				customLog.String("event", string(event)),
+			)
+		}
 	}
 }

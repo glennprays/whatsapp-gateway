@@ -120,32 +120,39 @@ func (h *DLQHandler) notifyDeadLettered(ctx context.Context, traceID, phoneNumbe
 		jid = resolved
 	}
 
-	webhook, err := h.Repository.GetWebhook(ctx, jid)
+	subs, err := h.Repository.GetWebhookSubscriptions(ctx, jid)
 	if err != nil {
-		h.Logger.Error(traceID, "Failed to get webhook config for dead-letter notification", nil,
+		h.Logger.Error(traceID, "Failed to get webhook subscriptions for dead-letter notification", nil,
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
 		)
 		return
 	}
-	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug(traceID, "No webhook URL configured for dead-letter notification", nil,
+	if len(subs) == 0 {
+		h.Logger.Debug(traceID, "No webhook subscriptions configured for dead-letter notification", nil,
 			customLog.String("phone_number", masked),
 		)
 		return
 	}
 
-	if err := h.Sender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		h.Logger.Error(traceID, "Failed to send dead-letter notification webhook", nil,
+	// The dead-letter payload is a message.failed event; deliver to each
+	// subscription whose events filter matches (empty = all).
+	event := string(domainQueue.EventMessageFailed)
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		if err := h.Sender.Send(ctx, sub.Url, sub.HmacSecret, payload); err != nil {
+			h.Logger.Error(traceID, "Failed to send dead-letter notification webhook", nil,
+				customLog.String("phone_number", masked),
+				customLog.Error(err),
+			)
+			continue
+		}
+		h.Logger.Info(traceID, "Sent dead-letter notification webhook", nil,
 			customLog.String("phone_number", masked),
-			customLog.Error(err),
 		)
-		return
 	}
-
-	h.Logger.Info(traceID, "Sent dead-letter notification webhook", nil,
-		customLog.String("phone_number", masked),
-	)
 }
 
 // dlqSourceQueue extracts the queue a message was dead-lettered from using

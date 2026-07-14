@@ -202,32 +202,35 @@ func (h *handler) deliverWebhook(traceID string, phoneNumber string, jid string,
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Fetch webhook config
-	webhook, err := h.repository.GetWebhook(ctx, jid)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		// No webhook configured, skip silently
+	// Load every subscription for this account and fan the incoming-message
+	// event out to each matching one. A subscription with an empty filter
+	// receives everything (the legacy single-URL behavior).
+	subs, err := h.repository.GetWebhookSubscriptions(ctx, jid)
+	if err != nil || len(subs) == 0 {
 		return
 	}
 
-	// Validate webhook URL to prevent SSRF attacks
-	if err := utils.ValidateURL(webhook.Url); err != nil {
-		h.logger.Error(traceID, "Invalid webhook URL format, skipping delivery", nil, customLog.Error(err))
-		return
-	}
-
-	// Get client for JID resolution
+	// Build the payload once (media is downloaded once, then reused per sub).
 	client := clients.Get(phoneNumber)
-
-	// Build payload with client
 	payload := buildWebhookPayload(msg, h.mediaDownloader, traceID, phoneNumber, client)
 
-	// Send webhook
-	err = h.sender.Send(ctx, webhook.Url, webhook.HmacSecret, payload)
-	metrics.RecordWebhook("direct", string(domainQueue.EventMessageIncoming), err)
-	if err != nil {
-		h.logger.Error(traceID, "Failed to deliver webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+webhook.Url, nil, customLog.Error(err))
-	} else {
-		h.logger.Info(traceID, "Successfully delivered webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+webhook.Url, nil)
+	const event = string(domainQueue.EventMessageIncoming)
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		// Validate the URL to prevent SSRF; a bad URL skips only that sub.
+		if err := utils.ValidateURL(sub.Url); err != nil {
+			h.logger.Error(traceID, "Invalid webhook URL format, skipping delivery", nil, customLog.Error(err))
+			continue
+		}
+		err := h.sender.Send(ctx, sub.Url, sub.HmacSecret, payload)
+		metrics.RecordWebhook("direct", event, err)
+		if err != nil {
+			h.logger.Error(traceID, "Failed to deliver webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+sub.Url, nil, customLog.Error(err))
+		} else {
+			h.logger.Info(traceID, "Successfully delivered webhook for "+MaskedPhoneNumber(phoneNumber)+" to "+sub.Url, nil)
+		}
 	}
 }
 
