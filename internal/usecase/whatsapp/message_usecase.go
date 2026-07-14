@@ -314,6 +314,11 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// Open and read image file
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
@@ -341,16 +346,20 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "image",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(imageBytes),
-			MimeType:    mimeType,
-			Caption:     req.Caption,
-			IsViewOnce:  isViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "image",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(imageBytes),
+			MimeType:      mimeType,
+			Caption:       req.Caption,
+			IsViewOnce:    isViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -382,7 +391,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	}
 
 	// Direct mode (or fallback): immediate send
-	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce)
+	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce, msgCtx)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send image message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),

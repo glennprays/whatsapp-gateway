@@ -36,10 +36,14 @@ type SendTextMessageRequest struct {
 
 // SendImageMessageRequest represents an image message send request
 type SendImageMessageRequest struct {
-	Chat       string `form:"chat" binding:"omitempty"`
-	Msisdn     string `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
-	Caption    string `form:"caption" binding:"omitempty"`
-	IsViewOnce bool   `form:"is_view_once" binding:"omitempty"`
+	Chat          string   `form:"chat" binding:"omitempty"`
+	Msisdn        string   `form:"msisdn" binding:"omitempty"` // deprecated: alias for chat
+	Caption       string   `form:"caption" binding:"omitempty"`
+	IsViewOnce    bool     `form:"is_view_once" binding:"omitempty"`
+	ReplyToID     string   `form:"reply_to_id" binding:"omitempty"`     // quote this message id
+	ReplyToSender string   `form:"reply_to_sender" binding:"omitempty"` // author of the quoted message (number/JID)
+	ReplyToText   string   `form:"reply_to_text" binding:"omitempty"`   // optional quoted preview text
+	Mentions      []string `form:"mentions" binding:"omitempty"`        // numbers/JIDs to @-mention (repeated form field)
 }
 
 // MessageReactionRequest represents a message reaction request

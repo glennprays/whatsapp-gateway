@@ -1,12 +1,39 @@
 package whatsapp_usecase
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 )
+
+// assertBadRequest fails unless err is a domain ErrBadRequest.
+func assertBadRequest(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected a 400 error")
+	}
+	var de errDomain.Error
+	if !errors.As(err, &de) || de.ServiceError() != errDomain.ErrBadRequest {
+		t.Fatalf("expected ErrBadRequest, got %v", err)
+	}
+}
+
+// An invalid mention must 400 in buildMessageContext before SendImageMessage
+// touches the (nil) fileHeader/manager — guards that buildMessageContext runs
+// ahead of the file read.
+func TestSendImage_InvalidMention400(t *testing.T) {
+	uc := &WhatsappMessageUsecase{}
+	_, _, err := uc.SendImageMessage(context.Background(), "trace", "628111",
+		waDomain.SendImageMessageRequest{
+			Chat:     "6282222222222",
+			Mentions: []string{"@@@bad@@@"},
+		}, nil, false)
+	assertBadRequest(t, err)
+}
 
 func TestResolveChat(t *testing.T) {
 	cases := []struct {

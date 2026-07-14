@@ -108,7 +108,7 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode image data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
+			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "audio":
 		audioBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
@@ -193,6 +193,16 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 		customLog.String("type", job.Type),
 	)
 	return nil
+}
+
+// jobMessageContext rebuilds the reply/mentions context carried on a queued job.
+func jobMessageContext(job domainQueue.OutgoingMessageJob) *waDomain.MessageContext {
+	return &waDomain.MessageContext{
+		ReplyToID:     job.ReplyToID,
+		ReplyToSender: job.ReplyToSender,
+		ReplyToText:   job.ReplyToText,
+		Mentions:      job.Mentions,
+	}
 }
 
 // sendStatusWebhook sends a webhook notification for message status updates
