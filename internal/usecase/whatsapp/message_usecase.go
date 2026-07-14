@@ -896,6 +896,11 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 		return err
 	}
 
+	// Reactions are conversation actions — counted against the interim action cap.
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return err
+	}
+
 	err := uc.whatsappManager.ReactToMessage(ctx, traceID, phoneNumber, req.Msisdn, senderJID, req.MessageID, req.Emoji)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to react to message", nil,
