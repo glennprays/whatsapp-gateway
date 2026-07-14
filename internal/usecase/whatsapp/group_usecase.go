@@ -322,3 +322,197 @@ func (uc *WhatsappMessageUsecase) RemoveGroupPhoto(
 	}
 	return &waDomain.GroupPhotoResponse{Removed: true}, nil
 }
+
+// GetGroupInviteLink returns a group's invite link. Not cached — the link can be
+// reset out-of-band, so a stale cache would hand out a dead link.
+func (uc *WhatsappMessageUsecase) GetGroupInviteLink(
+	ctx context.Context,
+	traceID, phoneNumber, chat, msisdn string,
+) (*waDomain.GroupInviteLinkResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	target, err := resolveGroupJID(chat, msisdn)
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return nil, err
+	}
+	link, err := uc.whatsappManager.GetGroupInviteLink(ctx, traceID, phoneNumber, target, false)
+	if err != nil {
+		return nil, err
+	}
+	return &waDomain.GroupInviteLinkResponse{Chat: target, InviteLink: link}, nil
+}
+
+// ResetGroupInviteLink revokes the current invite link and returns a fresh one.
+func (uc *WhatsappMessageUsecase) ResetGroupInviteLink(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.GroupInviteResetRequest,
+) (*waDomain.GroupInviteLinkResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	target, err := resolveGroupJID(req.Chat, req.Msisdn)
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return nil, err
+	}
+	link, err := uc.whatsappManager.GetGroupInviteLink(ctx, traceID, phoneNumber, target, true)
+	if err != nil {
+		return nil, err
+	}
+	return &waDomain.GroupInviteLinkResponse{Chat: target, InviteLink: link}, nil
+}
+
+// GetGroupInviteInfo previews a group from an invite code without joining. Served
+// through the shared read cache + budget (keyed by code).
+func (uc *WhatsappMessageUsecase) GetGroupInviteInfo(
+	ctx context.Context,
+	traceID, phoneNumber, code string,
+) (*waDomain.GroupInfoResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest, errors.New("code is required"))
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "inviteinfo:"+phoneNumber+":"+code,
+		func() (*waDomain.GroupInfoResponse, error) {
+			return uc.whatsappManager.GetGroupInfoFromLink(ctx, traceID, phoneNumber, code)
+		})
+}
+
+// JoinGroup joins a group by invite link. This is the mass-join vector, gated by
+// GROUP_JOIN_VIA_LINK_ENABLED (403 when off) on top of the master toggle.
+func (uc *WhatsappMessageUsecase) JoinGroup(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.JoinGroupRequest,
+) (*waDomain.JoinGroupResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	if !uc.config.GroupJoinViaLinkEnabled {
+		return nil, errDomain.NewError(errDomain.ErrForbidden, errors.New("joining via link is disabled"))
+	}
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest, errors.New("code is required"))
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return nil, err
+	}
+	jid, err := uc.whatsappManager.JoinGroupWithLink(ctx, traceID, phoneNumber, code)
+	if err != nil {
+		return nil, err
+	}
+	return &waDomain.JoinGroupResponse{GroupJID: jid}, nil
+}
+
+// ListJoinRequests lists a group's pending join requests. Served through the
+// shared read cache + budget (keyed by group JID). Requires admin.
+func (uc *WhatsappMessageUsecase) ListJoinRequests(
+	ctx context.Context,
+	traceID, phoneNumber, chat, msisdn string,
+) (*waDomain.GroupJoinRequestsResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	target, err := resolveGroupJID(chat, msisdn)
+	if err != nil {
+		return nil, err
+	}
+	return queryWithBudget(uc, ctx, phoneNumber, "joinreqs:"+phoneNumber+":"+target,
+		func() (*waDomain.GroupJoinRequestsResponse, error) {
+			items, err := uc.whatsappManager.GetGroupRequestParticipants(ctx, traceID, phoneNumber, target)
+			if err != nil {
+				return nil, err
+			}
+			return &waDomain.GroupJoinRequestsResponse{Chat: target, Requests: items, Count: len(items)}, nil
+		})
+}
+
+// UpdateJoinRequests approves or rejects pending join requests. Per-participant
+// failures are 200 partial success, never an overall error.
+func (uc *WhatsappMessageUsecase) UpdateJoinRequests(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.GroupJoinRequestsActionRequest,
+) (*waDomain.GroupJoinRequestsActionResponse, error) {
+	if err := uc.requireGroupManagement(); err != nil {
+		return nil, err
+	}
+	target, err := resolveGroupJID(req.Chat, req.Msisdn)
+	if err != nil {
+		return nil, err
+	}
+	action := strings.ToLower(strings.TrimSpace(req.Action))
+	if action != "approve" && action != "reject" {
+		return nil, errDomain.NewError(errDomain.ErrBadRequest, errors.New("action must be approve or reject"))
+	}
+	participants, err := uc.resolveParticipants(req.Participants, phoneNumber, false, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return nil, err
+	}
+	results, err := uc.whatsappManager.UpdateGroupRequestParticipants(ctx, traceID, phoneNumber, target, participants, action == "approve")
+	if err != nil {
+		return nil, err
+	}
+	return &waDomain.GroupJoinRequestsActionResponse{Chat: target, Action: action, Results: results}, nil
+}
+
+// LinkSubGroup links a subgroup under a parent community. Both parent and child
+// must be explicit @g.us JIDs.
+func (uc *WhatsappMessageUsecase) LinkSubGroup(
+	ctx context.Context,
+	traceID, phoneNumber string,
+	req waDomain.CommunityLinkRequest,
+) error {
+	if err := uc.requireGroupManagement(); err != nil {
+		return err
+	}
+	parent, err := resolveGroupJID(req.Chat, req.Msisdn)
+	if err != nil {
+		return err
+	}
+	child, err := resolveGroupJID(req.ChildJID, "")
+	if err != nil {
+		return err
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return err
+	}
+	return uc.whatsappManager.LinkSubGroup(ctx, traceID, phoneNumber, parent, child)
+}
+
+// UnlinkSubGroup removes a subgroup from a parent community. Both parent (chat)
+// and child must be explicit @g.us JIDs.
+func (uc *WhatsappMessageUsecase) UnlinkSubGroup(
+	ctx context.Context,
+	traceID, phoneNumber, chat, msisdn, child string,
+) error {
+	if err := uc.requireGroupManagement(); err != nil {
+		return err
+	}
+	parent, err := resolveGroupJID(chat, msisdn)
+	if err != nil {
+		return err
+	}
+	childJID, err := resolveGroupJID(child, "")
+	if err != nil {
+		return err
+	}
+	if err := uc.spendActionBudget(ctx, phoneNumber); err != nil {
+		return err
+	}
+	return uc.whatsappManager.UnlinkSubGroup(ctx, traceID, phoneNumber, parent, childJID)
+}
