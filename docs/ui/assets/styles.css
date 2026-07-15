@@ -801,10 +801,11 @@ rapi-doc {
   background: rgba(0, 0, 0, 0.6);
   z-index: 90;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.3s ease;
 }
 
-.sidebar-overlay.active { opacity: 1; }
+.sidebar-overlay.active { opacity: 1; pointer-events: auto; }
 
 .mobile-desktop-notice { display: none; }
 
