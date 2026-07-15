@@ -47,12 +47,12 @@ For production deployments, Linux-based container environments are strongly reco
 
 The system follows these core principles:
 
-- **Separation of Concerns** — Business logic belongs in your backend; WhatsApp state management belongs in the gateway.
-- **Stateless API Layer** — Backend services should not manage WhatsApp session complexity.
-- **Operational Transparency** — Health status and device state must be observable.
-- **Security by Design** — JWT authentication and HMAC-based webhook validation are enforced.
-- **Queue-Driven Scalability (Optional)** — RabbitMQ integration allows controlled message throughput.
-- **Production Readiness** — Clear boundaries, predictable behavior, and explicit failure handling.
+- **Separation of Concerns**: Business logic belongs in your backend; WhatsApp state management belongs in the gateway.
+- **Stateless API Layer**: Backend services should not manage WhatsApp session complexity.
+- **Operational Transparency**: Health status and device state must be observable.
+- **Security by Design**: JWT authentication and HMAC-based webhook validation are enforced.
+- **Queue-Driven Scalability (Optional)**: RabbitMQ integration allows controlled message throughput.
+- **Production Readiness**: Clear boundaries, predictable behavior, and explicit failure handling.
 
 ## High-Level Capability Summary
 

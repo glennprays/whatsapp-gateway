@@ -144,7 +144,7 @@ Webhook signature validation is mandatory for secure deployments.
 
 If you provided an `hmac_secret`, webhook requests will include an `X-Webhook-Signature` header of the form `sha256=<hex_signature>`, where the signature is the HMAC-SHA256 of the **raw request body**. Verify it like this:
 
-> The header is `X-Webhook-Signature` (not `X-Signature`) and includes the `sha256=` prefix — strip it before comparing. Compute the HMAC over the **raw bytes**, not a re-serialized object.
+> The header is `X-Webhook-Signature` (not `X-Signature`) and includes the `sha256=` prefix: strip it before comparing. Compute the HMAC over the **raw bytes**, not a re-serialized object.
 
 **Python Example:**
 ```python
@@ -199,8 +199,8 @@ func verifyWebhook(rawBody []byte, signatureHeader, secret string) bool {
 
 Incoming-message webhooks include an `addressing_mode` field alongside `from`:
 
-- `"pn"` — `from` is a callable `@s.whatsapp.net` phone number.
-- `"lid"` — the only available identifier was an opaque `@lid` (typically a group LID-only participant). Do **not** assume `from` is dialable; treat it as an opaque sender key.
+- `"pn"`: `from` is a callable `@s.whatsapp.net` phone number.
+- `"lid"`: the only available identifier was an opaque `@lid` (typically a group LID-only participant). Do **not** assume `from` is dialable; treat it as an opaque sender key.
 
 ## Delivery Process
 

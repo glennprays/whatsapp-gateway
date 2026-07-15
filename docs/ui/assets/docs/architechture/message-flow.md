@@ -34,7 +34,7 @@ sequenceDiagram
     G->>B: Webhook (HMAC-signed)
 ```
 
-### Step 1 — API Request Reception
+### Step 1: API Request Reception
 
 The backend sends an HTTP request to the gateway containing:
 
@@ -50,7 +50,7 @@ The gateway:
 
 If authentication fails, the request is rejected immediately.
 
-### Step 2 — Rate Limit Evaluation
+### Step 2: Rate Limit Evaluation
 
 The gateway evaluates configured rate limits.
 
@@ -67,7 +67,7 @@ Queue Enabled:
 - The message is published to RabbitMQ.
 - Dispatch occurs asynchronously via worker routines.
 
-### Step 3 — Message Persistence
+### Step 3: Message Persistence
 
 Before dispatch, the gateway stores message metadata in the database.
 
@@ -81,7 +81,7 @@ Stored information includes:
 
 This ensures traceability and status monitoring.
 
-### Step 4 — Message Dispatch
+### Step 4: Message Dispatch
 
 Queue Disabled:
 
@@ -94,7 +94,7 @@ Queue Enabled:
 - Worker dispatches message to WhatsApp.
 - Status updates are recorded in the database.
 
-### Step 5 — Delivery Status Tracking
+### Step 5: Delivery Status Tracking
 
 WhatsApp generates delivery-related events.
 
@@ -113,7 +113,7 @@ Possible lifecycle states may include:
 
 Exact state transitions are determined by WhatsApp event responses.
 
-### Step 6 — Webhook Notification
+### Step 6: Webhook Notification
 
 After state change, the gateway sends a webhook event to the backend.
 
@@ -146,7 +146,7 @@ sequenceDiagram
     Note over G,B: Retry on failure up to the configured max attempts
 ```
 
-### Step 1 — Event Reception
+### Step 1: Event Reception
 
 The WhatsApp session manager receives:
 
@@ -154,7 +154,7 @@ The WhatsApp session manager receives:
 - Supported media (image)
 - System events
 
-### Step 2 — Message Persistence
+### Step 2: Message Persistence
 
 Inbound message metadata is stored in the database.
 
@@ -165,7 +165,7 @@ Stored data includes:
 - Media reference (if applicable)
 - Timestamp
 
-### Step 3 — Webhook Dispatch
+### Step 3: Webhook Dispatch
 
 The gateway constructs a webhook payload and sends it to the configured backend endpoint.
 

@@ -31,7 +31,7 @@ Every send tool below accepts canonical **chat addressing** plus optional reply/
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `chat` | string | Yes* | Canonical recipient — a bare number, a user JID (`@s.whatsapp.net`), a group JID (`@g.us`), or a `@lid`. Preferred; wins over `to` when both are set. |
+| `chat` | string | Yes* | Canonical recipient: a bare number, a user JID (`@s.whatsapp.net`), a group JID (`@g.us`), or a `@lid`. Preferred; wins over `to` when both are set. |
 | `to` | string | Yes* | Back-compat recipient alias. |
 | `reply_to_id` | string | No | Quote an existing message by id. |
 | `reply_to_sender` | string | No | Author JID/number of the quoted message. |
@@ -48,7 +48,7 @@ Send a text message to a WhatsApp contact or group.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `chat` | string | Yes* | Canonical recipient (preferred) — see [Common send arguments](#common-send-arguments) |
+| `chat` | string | Yes* | Canonical recipient (preferred): see [Common send arguments](#common-send-arguments) |
 | `to` | string | Yes* | Back-compat recipient alias. *Either `chat` or `to` is required. |
 | `message` | string | Yes | Text message content |
 
@@ -301,7 +301,7 @@ Look up one contact's WhatsApp profile.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `chat` | string | Yes | Canonical recipient — a number, user JID, or `@lid`. |
+| `chat` | string | Yes | Canonical recipient: a number, user JID, or `@lid`. |
 
 **Returns:** `jid`, `status`, `picture_id`, `verified_name`, `device_count`, `lid`.
 
@@ -352,7 +352,7 @@ Mark one or more messages in a chat as read (blue ticks).
 |-----------|------|----------|-------------|
 | `chat` | string | Yes | Canonical recipient. |
 | `message_ids` | array of strings | Yes | Message IDs to mark read. |
-| `sender` | string | No | Message author's JID/number — required for group chats. |
+| `sender` | string | No | Message author's JID/number: required for group chats. |
 
 **Returns:** Success status.
 

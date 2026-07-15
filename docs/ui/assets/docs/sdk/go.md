@@ -9,7 +9,7 @@ The official Go SDK for WhatsApp Gateway provides an ergonomic client wrapper fo
 - Client configuration with customizable options
 - Authentication (register, JWT token management)
 - WhatsApp login (QR code, pair code)
-- Messaging: text, image, audio, video, document, location, poll, and sticker — with canonical `chat` addressing, quoted replies, @-mentions, and `Idempotency-Key` support on every send; plus edit, delete, and react
+- Messaging: text, image, audio, video, document, location, poll, and sticker, with canonical `chat` addressing, quoted replies, @-mentions, and `Idempotency-Key` support on every send; plus edit, delete, and react
 - Contact & group reads: `ListContacts`, `GetContactInfo`, `GetAvatar` (conditional/ETag fetch), `ListGroups`, `GetGroupInfo`
 - Two-way primitives: `MarkRead` (blue ticks) and `SendChatPresence` (typing/recording indicators)
 - Full group & community management (create, participants, settings, name/topic/photo, invite links, join requests, sub-group linking)
