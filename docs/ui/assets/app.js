@@ -43,7 +43,7 @@ function buildUrl(path) {
 
 // ==========================================
 // SIDEBAR CONFIG
-// Loaded from assets/nav.json — the single source of truth shared by the Go
+// Loaded from assets/nav.json: the single source of truth shared by the Go
 // console and the static GitHub Pages build, so the nav can no longer drift
 // between them. To add/reorder docs, edit nav.json (not this file).
 // ==========================================
