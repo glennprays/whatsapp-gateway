@@ -49,19 +49,71 @@ type Config struct {
 	// Upload limits
 	MaxUploadBytes int64 `mapstructure:"MAX_UPLOAD_BYTES" default:"16777216"` // 16 MiB cap on outbound media
 
+	// Graceful shutdown: overall bound for disconnecting all whatsmeow clients
+	ShutdownClientDisconnectTimeoutSeconds int64 `mapstructure:"SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS" default:"10"`
+
+	// Read/query surface: server-hitting reads (groups, profiles, avatars) are
+	// short-TTL cached and metered by a per-account budget so polling can't trip
+	// WhatsApp anti-spam. A budget token is spent only on a cache miss.
+	ReadQueryCacheTTLSeconds int64 `mapstructure:"READ_QUERY_CACHE_TTL_SECONDS" default:"300"`
+	ReadQueryBudget          int64 `mapstructure:"READ_QUERY_BUDGET" default:"30"`
+	ReadQueryWindowSeconds   int64 `mapstructure:"READ_QUERY_WINDOW_SECONDS" default:"60"`
+
+	// Group & community management (Phase E). The master toggle stays ON. The
+	// high-ban-risk bulk/mass vectors (bulk participant add, join-via-link) are now
+	// enabled by default: outbound pacing (#2) supplies the ban-safety that the
+	// interim hard gate used to. The flags remain as pure kill-switches — set one
+	// false to fully disable that op (403). With GroupManagementEnabled=false the
+	// entire mutation/invite/requests/community surface is unregistered (404);
+	// reads (GET /group/, /group/info, /community/*) stay up.
+	GroupManagementEnabled         bool `mapstructure:"GROUP_MANAGEMENT_ENABLED" default:"true"`
+	GroupAddParticipantsEnabled    bool `mapstructure:"GROUP_ADD_PARTICIPANTS_ENABLED" default:"true"`
+	GroupMaxParticipantsPerRequest int  `mapstructure:"GROUP_MAX_PARTICIPANTS_PER_REQUEST" default:"256"`
+	GroupJoinViaLinkEnabled        bool `mapstructure:"GROUP_JOIN_VIA_LINK_ENABLED" default:"true"`
+
+	// Outbound pacing (#2): spaces every outbound WhatsApp op to stay under
+	// anti-spam thresholds. Supersedes the interim per-account action cap and the
+	// per-message reject limiter (which becomes the disabled-mode fallback).
+	// Per-account is a blocking token bucket; per-recipient is a hard reject.
+	// In-memory / per-instance (aggregate cap is approximate across a fleet).
+	OutboundPaceEnabled                   bool    `mapstructure:"OUTBOUND_PACE_ENABLED" default:"true"`
+	OutboundPaceMode                      string  `mapstructure:"OUTBOUND_PACE_MODE" default:"pace"` // pace | reject
+	OutboundPaceRatePerSecond             float64 `mapstructure:"OUTBOUND_PACE_RATE_PER_SECOND" default:"1"`
+	OutboundPaceBurst                     float64 `mapstructure:"OUTBOUND_PACE_BURST" default:"5"`
+	OutboundPaceMaxWaitSeconds            int64   `mapstructure:"OUTBOUND_PACE_MAX_WAIT_SECONDS" default:"30"`
+	OutboundPaceJitterMs                  int64   `mapstructure:"OUTBOUND_PACE_JITTER_MS" default:"250"`
+	OutboundPacePerRecipientRequests      int64   `mapstructure:"OUTBOUND_PACE_PER_RECIPIENT_REQUESTS" default:"10"`
+	OutboundPacePerRecipientWindowSeconds int64   `mapstructure:"OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS" default:"60"`
+	OutboundPaceBanDefaultHoldSeconds     int64   `mapstructure:"OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS" default:"3600"`
+
+	// Send idempotency: an optional Idempotency-Key header dedupes sends via a
+	// DB-backed (phone, key) table. TTL bounds how long a completed response is
+	// replayable; PendingTimeout lets a retry take over a row left pending by a
+	// crashed request.
+	IdempotencyTTLSeconds            int64 `mapstructure:"IDEMPOTENCY_TTL_SECONDS" default:"86400"`
+	IdempotencyPendingTimeoutSeconds int64 `mapstructure:"IDEMPOTENCY_PENDING_TIMEOUT_SECONDS" default:"30"`
+
+	// Admin plane: operator-only, cross-tenant endpoints (/admin/*, /metrics) at
+	// the ROOT path. Empty secret keeps the whole plane unregistered (404, dark
+	// by default); when set, requests need Authorization: Bearer <secret>.
+	AdminAPISecret string `mapstructure:"ADMIN_API_SECRET" default:""`
+	// MetricsEnabled toggles /metrics independently; it still requires
+	// ADMIN_API_SECRET to be set to be reachable (same bearer-gated plane).
+	MetricsEnabled bool `mapstructure:"METRICS_ENABLED" default:"false"`
+
 	// Register endpoint rate limiting (per-IP, in-process memory limiter)
 	RegisterRateLimitEnabled         bool  `mapstructure:"REGISTER_RATE_LIMIT_ENABLED" default:"true"`
 	RegisterRateLimitRequests        int64 `mapstructure:"REGISTER_RATE_LIMIT_REQUESTS" default:"5"`
 	RegisterRateLimitDurationSeconds int64 `mapstructure:"REGISTER_RATE_LIMIT_DURATION_SECONDS" default:"60"`
 
 	// RabbitMQ Configuration
-	RabbitMQEnabled        bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
-	RabbitMQURL            string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
-	RabbitMQConnectionName string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
-	RabbitMQPrefetchCount  int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
-	RabbitMQReconnectDelaySeconds int `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
-	RabbitMQPublishConfirm        bool `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
-	RabbitMQConfirmTimeoutSeconds int  `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
+	RabbitMQEnabled               bool   `mapstructure:"RABBITMQ_ENABLED" default:"false"`
+	RabbitMQURL                   string `mapstructure:"RABBITMQ_URL" default:"amqp://user:user@localhost:5672/"`
+	RabbitMQConnectionName        string `mapstructure:"RABBITMQ_CONNECTION_NAME" default:"whatsapp-gateway"`
+	RabbitMQPrefetchCount         int    `mapstructure:"RABBITMQ_PREFETCH_COUNT" default:"5"`
+	RabbitMQReconnectDelaySeconds int    `mapstructure:"RABBITMQ_RECONNECT_DELAY_SECONDS" default:"5"`
+	RabbitMQPublishConfirm        bool   `mapstructure:"RABBITMQ_PUBLISH_CONFIRM" default:"true"`
+	RabbitMQConfirmTimeoutSeconds int    `mapstructure:"RABBITMQ_CONFIRM_TIMEOUT_SECONDS" default:"5"`
 
 	// Redis Configuration
 	RedisEnabled bool   `mapstructure:"REDIS_ENABLED" default:"false"`
@@ -79,9 +131,19 @@ type Config struct {
 	QueueDedupEnabled    bool `mapstructure:"QUEUE_DEDUP_ENABLED" default:"true"`
 	QueueDedupTTLSeconds int  `mapstructure:"QUEUE_DEDUP_TTL_SECONDS" default:"600"`
 
-	// Status Webhook Configuration
-	WebhookStatusEventsEnabled bool   `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
-	WebhookStatusEvents        string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
+	// Status Webhook Configuration. WebhookStatusEventsEnabled is the master
+	// kill-switch over the message.queued/sent/failed family.
+	WebhookStatusEventsEnabled bool `mapstructure:"WEBHOOK_STATUS_EVENTS_ENABLED" default:"true"`
+	// Deprecated: superseded by the per-subscription events filter (POST
+	// /webhook). Retained so existing .env files still parse; no longer applied
+	// as a delivery filter.
+	WebhookStatusEvents string `mapstructure:"WEBHOOK_STATUS_EVENTS" default:"message.sent,message.failed"`
+
+	// Direct-mode webhook retry parity: direct-mode status webhooks are delivered
+	// asynchronously with bounded exponential backoff (queue mode keeps RabbitMQ
+	// retry). Backoff is the base for the exponential schedule.
+	WebhookMaxRetries          int   `mapstructure:"WEBHOOK_MAX_RETRIES" default:"3"`
+	WebhookRetryBackoffSeconds int64 `mapstructure:"WEBHOOK_RETRY_BACKOFF_SECONDS" default:"2"`
 
 	// Storage Configuration
 	// Both providers are production-ready - choose based on infrastructure needs
@@ -186,17 +248,34 @@ func (c *Config) normalize() {
 	if c.JwtDurationMinutes <= 0 || c.JwtDurationMinutes > maxJWTDurationMinutes {
 		c.JwtDurationMinutes = 1440 // 24h default
 	}
+	// Outbound pacing clamps: a non-positive rate or sub-1 burst would deadlock
+	// the token bucket; a negative wait/window is meaningless.
+	if c.OutboundPaceRatePerSecond <= 0 {
+		c.OutboundPaceRatePerSecond = 1
+	}
+	if c.OutboundPaceBurst < 1 {
+		c.OutboundPaceBurst = 1
+	}
+	if c.OutboundPaceMaxWaitSeconds < 0 {
+		c.OutboundPaceMaxWaitSeconds = 0
+	}
+	if c.OutboundPaceJitterMs < 0 {
+		c.OutboundPaceJitterMs = 0
+	}
+	if c.OutboundPaceMode != "reject" {
+		c.OutboundPaceMode = "pace"
+	}
 }
 
 func (c *Config) validateProductionSecrets() error {
 	defaults := map[string]string{
-		"JWT_SECRET":                              "secret",
-		"SECRET_KEY":                              "secret",
+		"JWT_SECRET": "secret",
+		"SECRET_KEY": "secret",
 		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": "0123456789abcdef0123456789abcdef",
 	}
 	values := map[string]string{
-		"JWT_SECRET":                              c.JwtSecret,
-		"SECRET_KEY":                              c.BasicAuthSecretKey,
+		"JWT_SECRET": c.JwtSecret,
+		"SECRET_KEY": c.BasicAuthSecretKey,
 		"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY": c.WhatsappWebhookHmacEncryptionMasterKey,
 	}
 	for key, val := range values {

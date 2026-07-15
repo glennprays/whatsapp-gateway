@@ -265,6 +265,76 @@ Register throttle window in seconds.
 Type: integer  
 Default: 60  
 
+## Outbound Pacing
+
+A single in-process **pacer** governs every outbound WhatsApp action — all `POST /message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations — in both direct and queue modes, in three ordered layers: a **ban gate** (429 while the account is under a WhatsApp temporary ban, auto-resume), a **per-recipient hard cap** (429, never paced), and a **per-account token-bucket pace** (blocks/waits in `pace` mode, or 429s immediately in `reject` mode). This is the **primary** outbound governor; `MESSAGE_RATE_LIMIT_*` is the **fallback**, used only when `OUTBOUND_PACE_ENABLED=false`. The pacer is per-instance (single-node), not distributed — a multi-instance deployment needs an external limiter or the queue for a cluster-wide ceiling.
+
+### OUTBOUND_PACE_ENABLED
+
+Master toggle for the outbound pacer. When `false`, the pacer is bypassed and sends fall back to the reject-only `MESSAGE_RATE_LIMIT_*` limiter.
+
+Type: boolean  
+Default: true  
+
+### OUTBOUND_PACE_MODE
+
+`pace` blocks/waits for a token (up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` + jitter) before returning `429`; `reject` never waits — an over-budget call is an immediate `429`.
+
+Type: string  
+Default: pace  
+Options:
+- pace
+- reject
+
+### OUTBOUND_PACE_RATE_PER_SECOND
+
+Sustained per-account token-bucket refill rate (tokens per second).
+
+Type: integer  
+Default: 1  
+
+### OUTBOUND_PACE_BURST
+
+Token-bucket burst capacity — how many actions can fire back-to-back before the sustained rate applies.
+
+Type: integer  
+Default: 5  
+
+### OUTBOUND_PACE_MAX_WAIT_SECONDS
+
+In `pace` mode, the maximum time a call blocks waiting for a token before giving up with `429`.
+
+Type: integer (seconds)  
+Default: 30  
+
+### OUTBOUND_PACE_JITTER_MS
+
+Upper bound of random jitter added to the pace wait/deadline, so sends don't align on exact tick boundaries.
+
+Type: integer (milliseconds)  
+Default: 250  
+
+### OUTBOUND_PACE_PER_RECIPIENT_REQUESTS
+
+Per-recipient hard cap — more than this many actions to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` is rejected with `429` (never paced/queued).
+
+Type: integer  
+Default: 10  
+
+### OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS
+
+The rolling window over which `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` is counted.
+
+Type: integer (seconds)  
+Default: 60  
+
+### OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS
+
+Fallback hold applied by the ban gate when a temporary ban carries no explicit `ban_expires_at` — outbound actions are `429`d for this long before auto-resuming.
+
+Type: integer (seconds)  
+Default: 3600  
+
 ## Upload Limits
 
 ### MAX_UPLOAD_BYTES
@@ -275,6 +345,126 @@ Type: integer (bytes)
 Default: 16777216 (16 MiB)  
 
 Image/sticker/audio/video uploads are also validated against a per-kind MIME allow-list; documents accept any mimetype. PTT voice notes opt out of MIME sniffing (opus/ogg is unidentifiable).
+
+## Read / Query Surface
+
+Server-hitting reads (joined groups, and later profiles/avatars) are short-TTL cached and metered by a per-account budget, so a polling caller can't trip WhatsApp anti-spam. A budget token is spent **only on a cache miss**; cache hits are free. Local-store reads (e.g. `GET /contact/`) are never metered.
+
+### READ_QUERY_CACHE_TTL_SECONDS
+
+How long a server-hitting read is cached before the next call re-fetches.
+
+Type: integer (seconds)  
+Default: 300  
+
+### READ_QUERY_BUDGET
+
+Maximum cache-miss reads per account per window before requests get `429 Too Many Requests` (with `Retry-After`).
+
+Type: integer  
+Default: 30  
+
+### READ_QUERY_WINDOW_SECONDS
+
+The rolling window over which `READ_QUERY_BUDGET` is counted.
+
+Type: integer (seconds)  
+Default: 60  
+
+## Group & Community Management
+
+Group/community **mutations** are the highest-ban-risk surface, gated default-safe. **Reads** stay available regardless of these settings.
+
+### GROUP_MANAGEMENT_ENABLED
+
+Master toggle. When `false` the entire mutation/invite/join-request/community surface is **unregistered → 404** (hidden); reads stay up.
+
+Type: boolean  
+Default: true  
+
+### GROUP_ADD_PARTICIPANTS_ENABLED
+
+Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Now defaults **on** — the outbound pacer + ban gate cover the bulk-add ban risk this gate guarded as an interim measure; set it to `false` to hard-disable bulk add.
+
+Type: boolean  
+Default: true  
+
+### GROUP_JOIN_VIA_LINK_ENABLED
+
+Gates `POST /group/join`, the mass-join vector → `403` when off. Now defaults **on** — outbound pacing + the ban gate cover the mass-join ban risk; set it to `false` to hard-disable join-via-link.
+
+Type: boolean  
+Default: true  
+
+### GROUP_MAX_PARTICIPANTS_PER_REQUEST
+
+Caps how many participants a single batch may carry; over-cap → `400`. `0` disables the cap.
+
+Type: integer  
+Default: 256  
+
+## Send Idempotency
+
+Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key replays the original response (`Idempotent-Replay: true`) instead of sending again; an in-flight duplicate gets `409`; the same key with a different request body gets `422`. Dedup is DB-backed and keyed by the JWT phone number + key, so it survives restarts. In queue mode this guarantees enqueued-once, not delivered-once.
+
+### IDEMPOTENCY_TTL_SECONDS
+
+How long a completed response stays replayable (and the retention bound a background sweeper enforces).
+
+Type: integer (seconds)  
+Default: 86400 (24h)  
+
+### IDEMPOTENCY_PENDING_TIMEOUT_SECONDS
+
+If a request crashes after reserving a key but before completing, its row is left `pending`. After this timeout a retry may take the key over instead of getting a `409` forever.
+
+Type: integer (seconds)  
+Default: 30  
+
+## Graceful Shutdown
+
+### SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS
+
+Overall bound for cleanly disconnecting all WhatsApp clients on shutdown, before the database is closed. A hung client is skipped so shutdown never blocks past this.
+
+Type: integer (seconds)  
+Default: 10  
+
+## Admin / Metrics Plane
+
+An operator-only, cross-tenant plane at the ROOT path (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, `GET /metrics`. Dark by default — with no `ADMIN_API_SECRET` the routes are unregistered and return `404` (never a `401`). The session inventory is per-instance and phones are masked; metrics are never labelled by phone number.
+
+### ADMIN_API_SECRET
+
+Bearer secret for `/admin/*` and `/metrics`. Empty disables the whole plane. When set, requests send `Authorization: Bearer <secret>` (constant-time compare).
+
+Type: string  
+Default: "" (disabled)  
+
+### METRICS_ENABLED
+
+Expose `GET /metrics` (hand-rolled Prometheus text: `whatsapp_gateway_messages_total`, `whatsapp_gateway_webhook_deliveries_total`, `whatsapp_gateway_sessions{state}`). Still requires `ADMIN_API_SECRET` to be reachable.
+
+Type: boolean  
+Default: false  
+
+## Direct-mode Webhook Retry
+
+Direct-mode status webhooks are delivered asynchronously with bounded exponential backoff on a detached context (best-effort; queue mode keeps RabbitMQ retry).
+
+### WEBHOOK_MAX_RETRIES
+
+Maximum retry attempts (beyond the first) for a direct-mode webhook delivery. Capped at 10.
+
+Type: integer  
+Default: 3  
+
+### WEBHOOK_RETRY_BACKOFF_SECONDS
+
+Base backoff (seconds) for the exponential retry schedule.
+
+Type: integer (seconds)  
+Default: 2  
 
 ## RabbitMQ Configuration
 

@@ -46,7 +46,8 @@ const DOCS_CONFIG = {
         { title: "Introduction", file: "getting-started/introduction" },
         { title: "System Boundary", file: "getting-started/system-boundary" },
         { title: "Design Principles", file: "getting-started/design-principles" },
-        { title: "Feature Matrix", file: "getting-started/feature-matrix" }
+        { title: "Feature Matrix", file: "getting-started/feature-matrix" },
+        { title: "Group & Community Management", file: "getting-started/group-management" }
       ]
     },
     {

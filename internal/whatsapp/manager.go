@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/config"
@@ -34,24 +36,52 @@ type (
 		LoginStatus(ctx context.Context, traceID string, phoneNumber string) (bool, error)
 		Logout(ctx context.Context, traceID string, phoneNumber string) error
 		Reconnect(ctx context.Context, traceID string, phoneNumber string) error
-		GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error)
-		SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
-		DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error
-		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error)
-		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error)
-		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error)
-		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error)
-		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error)
-		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error)
-		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error)
-		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error)
+		ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error)
+		SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error
+		DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error
+		DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error
+		SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error)
+		SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
+		SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
+		SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error)
+		SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error)
+		SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error)
+		SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error)
+		SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error)
 		ReactToMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, senderJID string, messageID string, emoji string) error
 		DeleteMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string) error
 		EditMessage(ctx context.Context, traceID string, phoneNumber string, chatJID string, messageID string, newText string) error
 		GetIncomingMessages(ctx context.Context, traceID string, phoneNumber string, limit int) ([]*IncomingMessage, error)
 		GetJIDFromPhoneNumber(phoneNumber string) (string, error)
 		CheckNumber(ctx context.Context, traceID string, phoneNumber string, msisdn string) (waDomain.ContactCheckResponse, error)
+		ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error)
+		ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error)
+		GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error)
+		ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error)
+		ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error)
+		CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error)
+		LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error
+		UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error)
+		SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error
+		SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error
+		SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error
+		SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error
+		SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error)
+		GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error)
+		JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error)
+		GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error)
+		GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error)
+		UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error)
+		LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
+		UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error
+		GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error)
+		GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error)
+		MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error
+		SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error
 		GetClientStore() *ClientStore
+		SessionInventory(ctx context.Context, traceID string) (*waDomain.SessionInventory, error)
+		GetOneSession(ctx context.Context, traceID string, phone string) (*waDomain.SessionInventoryItem, error)
+		BanState(phoneNumber string) (time.Time, bool)
 	}
 )
 
@@ -70,14 +100,14 @@ func NewManager(config *config.Config, dbType string, db *sql.DB, cp *cipherx.Ci
 	repository := NewWhatsappRepository(db)
 
 	// Create webhook sender
-	webhookSender := NewWebhookSender(cp, logger)
+	webhookSender := NewWebhookSender(cp, logger, config)
 
 	// Create event handler with repository, sender, queue, and media downloader
 	evtHandler := NewHandler(repository, webhookSender, queue, logger, mediaDownloader, config.IncomingMessageBufferSize)
 
 	client := NewClient(container, config, repository, logger)
 
-	err := runMigrations(db)
+	err := runMigrations(db, cp)
 	if err != nil {
 		logger.Error(startupTraceID, "Failed to run database migrations", nil, customLog.Error(err))
 		return nil, fmt.Errorf("database migrations: %w", err)
@@ -152,30 +182,29 @@ func (m *manager) LoginPairCode(ctx context.Context, traceID string, phoneNumber
 	return m.Client.LoginPairCode(ctx, traceID, phoneNumber)
 }
 
-func (m *manager) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
-	return m.Client.GetWebhookURL(ctx, traceID, phoneNumber)
+func (m *manager) ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error) {
+	return m.Client.ListWebhookSubscriptions(ctx, traceID, phoneNumber)
 }
 
-func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
+func (m *manager) SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
 	masked := MaskedPhoneNumber(phoneNumber)
-	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
-	if err != nil {
-		m.Logger.Error(traceID, "Failed to get login status", nil,
-			customLog.String("phone_number", masked),
-			customLog.Error(err),
-		)
-		return errDomain.NewError(errDomain.ErrInternalFailure, err)
+	if err := m.webhookLoginGate(traceID, phoneNumber, "set"); err != nil {
+		return err
 	}
 
-	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot set webhook URL: client not logged in", nil,
-			customLog.String("phone_number", masked),
-		)
-		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
+	// Validate the events filter against the catalog before any DB write (and
+	// before the DNS-hitting URL check). Omitted/empty events = all events.
+	for _, e := range webhook.Events {
+		if !domainQueue.IsKnownEvent(strings.TrimSpace(e)) {
+			m.Logger.Error(traceID, "Unknown webhook event type", nil,
+				customLog.String("phone_number", masked),
+				customLog.String("event", e),
+			)
+			return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("unknown event type: %s", e))
+		}
 	}
 
-	err = utils.ValidateURL(webhook.Url)
-	if err != nil {
+	if err := utils.ValidateURL(webhook.Url); err != nil {
 		m.Logger.Error(traceID, "Invalid webhook URL", nil,
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
@@ -183,19 +212,39 @@ func (m *manager) SetWebhookURL(ctx context.Context, traceID string, phoneNumber
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
 	}
 
-	encryptedHmacSecret, err := m.Cipher.Encrypt(webhook.HmacSecret)
-	if err != nil {
-		m.Logger.Error(traceID, "Failed to encrypt HMAC secret", nil,
-			customLog.String("phone_number", masked),
-			customLog.Error(err),
-		)
-		return err
+	// Store an empty secret as-is (no ciphertext); the sender treats "" as an
+	// unsigned webhook. Only a user-supplied secret is encrypted at rest.
+	if webhook.HmacSecret != "" {
+		encryptedHmacSecret, err := m.Cipher.Encrypt(webhook.HmacSecret)
+		if err != nil {
+			m.Logger.Error(traceID, "Failed to encrypt HMAC secret", nil,
+				customLog.String("phone_number", masked),
+				customLog.Error(err),
+			)
+			return err
+		}
+		webhook.HmacSecret = encryptedHmacSecret
 	}
-	webhook.HmacSecret = encryptedHmacSecret
-	return m.Client.SetWebhookURL(ctx, traceID, phoneNumber, webhook)
+	return m.Client.SetWebhookSubscription(ctx, traceID, phoneNumber, webhook)
 }
 
-func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
+func (m *manager) DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error {
+	if err := m.webhookLoginGate(traceID, phoneNumber, "delete"); err != nil {
+		return err
+	}
+	return m.Client.DeleteWebhookSubscription(ctx, traceID, phoneNumber, url)
+}
+
+func (m *manager) DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error {
+	if err := m.webhookLoginGate(traceID, phoneNumber, "delete"); err != nil {
+		return err
+	}
+	return m.Client.DeleteAllWebhookSubscriptions(ctx, traceID, phoneNumber)
+}
+
+// webhookLoginGate enforces the shared "client must be logged in" precondition
+// for webhook mutations, returning 409(401) when not logged in.
+func (m *manager) webhookLoginGate(traceID, phoneNumber, action string) error {
 	masked := MaskedPhoneNumber(phoneNumber)
 	loginStatus, err := m.Client.LoginStatus(traceID, phoneNumber)
 	if err != nil {
@@ -205,25 +254,23 @@ func (m *manager) DeleteWebhookURL(ctx context.Context, traceID string, phoneNum
 		)
 		return errDomain.NewError(errDomain.ErrInternalFailure, err)
 	}
-
 	if !loginStatus {
-		m.Logger.Error(traceID, "Cannot delete webhook URL: client not logged in", nil,
+		m.Logger.Error(traceID, "Cannot "+action+" webhook: client not logged in", nil,
 			customLog.String("phone_number", masked),
 		)
 		return errDomain.NewError(errDomain.ErrConflict, errDomain.NewError(errDomain.ErrUnauthorized, errors.New(constant.ErrClientNotLoggedIn)))
 	}
-
-	return m.Client.DeleteWebhookURL(ctx, traceID, phoneNumber)
+	return nil
 }
 
-func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string) (string, error) {
+func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumber string, to string, message string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending text message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendTextMessage(ctx, traceID, phoneNumber, to, message)
+	messageID, err := m.Client.SendTextMessage(ctx, traceID, phoneNumber, to, message, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", masked),
@@ -242,14 +289,14 @@ func (m *manager) SendTextMessage(ctx context.Context, traceID string, phoneNumb
 	return messageID, nil
 }
 
-func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool) (string, error) {
+func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNumber string, to string, imageBytes []byte, mimeType string, caption string, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending image message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendImageMessage(ctx, traceID, phoneNumber, to, imageBytes, mimeType, caption, isViewOnce)
+	messageID, err := m.Client.SendImageMessage(ctx, traceID, phoneNumber, to, imageBytes, mimeType, caption, isViewOnce, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send image message", nil,
 			customLog.String("phone_number", masked),
@@ -268,7 +315,7 @@ func (m *manager) SendImageMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
-func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool) (string, error) {
+func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNumber string, to string, audioBytes []byte, mimeType string, isPTT bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending audio message", nil,
 		customLog.String("phone_number", masked),
@@ -276,7 +323,7 @@ func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNum
 		customLog.Bool("ptt", isPTT),
 	)
 
-	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce)
+	messageID, err := m.Client.SendAudioMessage(ctx, traceID, phoneNumber, to, audioBytes, mimeType, isPTT, isViewOnce, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send audio message", nil,
 			customLog.String("phone_number", masked),
@@ -295,7 +342,7 @@ func (m *manager) SendAudioMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
-func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool) (string, error) {
+func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNumber string, to string, videoBytes []byte, mimeType string, caption string, isGif bool, isViewOnce bool, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending video message", nil,
 		customLog.String("phone_number", masked),
@@ -303,7 +350,7 @@ func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNum
 		customLog.Bool("gif", isGif),
 	)
 
-	messageID, err := m.Client.SendVideoMessage(ctx, traceID, phoneNumber, to, videoBytes, mimeType, caption, isGif, isViewOnce)
+	messageID, err := m.Client.SendVideoMessage(ctx, traceID, phoneNumber, to, videoBytes, mimeType, caption, isGif, isViewOnce, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send video message", nil,
 			customLog.String("phone_number", masked),
@@ -322,7 +369,7 @@ func (m *manager) SendVideoMessage(ctx context.Context, traceID string, phoneNum
 	return messageID, nil
 }
 
-func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string) (string, error) {
+func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phoneNumber string, to string, docBytes []byte, mimeType string, fileName string, caption string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending document message", nil,
 		customLog.String("phone_number", masked),
@@ -330,7 +377,7 @@ func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phone
 		customLog.String("file_name", fileName),
 	)
 
-	messageID, err := m.Client.SendDocumentMessage(ctx, traceID, phoneNumber, to, docBytes, mimeType, fileName, caption)
+	messageID, err := m.Client.SendDocumentMessage(ctx, traceID, phoneNumber, to, docBytes, mimeType, fileName, caption, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send document message", nil,
 			customLog.String("phone_number", masked),
@@ -349,14 +396,14 @@ func (m *manager) SendDocumentMessage(ctx context.Context, traceID string, phone
 	return messageID, nil
 }
 
-func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string) (string, error) {
+func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phoneNumber string, to string, latitude float64, longitude float64, name string, address string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending location message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendLocationMessage(ctx, traceID, phoneNumber, to, latitude, longitude, name, address)
+	messageID, err := m.Client.SendLocationMessage(ctx, traceID, phoneNumber, to, latitude, longitude, name, address, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send location message", nil,
 			customLog.String("phone_number", masked),
@@ -374,14 +421,14 @@ func (m *manager) SendLocationMessage(ctx context.Context, traceID string, phone
 	return messageID, nil
 }
 
-func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int) (string, error) {
+func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumber string, to string, question string, options []string, selectableCount int, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending poll message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount)
+	messageID, err := m.Client.SendPollMessage(ctx, traceID, phoneNumber, to, question, options, selectableCount, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send poll message", nil,
 			customLog.String("phone_number", masked),
@@ -399,14 +446,14 @@ func (m *manager) SendPollMessage(ctx context.Context, traceID string, phoneNumb
 	return messageID, nil
 }
 
-func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string) (string, error) {
+func (m *manager) SendStickerMessage(ctx context.Context, traceID string, phoneNumber string, to string, stickerBytes []byte, mimeType string, msgCtx *waDomain.MessageContext) (string, error) {
 	masked := MaskedPhoneNumber(phoneNumber)
 	m.Logger.Info(traceID, "Sending sticker message", nil,
 		customLog.String("phone_number", masked),
 		customLog.String("to", to),
 	)
 
-	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType)
+	messageID, err := m.Client.SendStickerMessage(ctx, traceID, phoneNumber, to, stickerBytes, mimeType, msgCtx)
 	if err != nil {
 		m.Logger.Error(traceID, "Failed to send sticker message", nil,
 			customLog.String("phone_number", masked),
@@ -531,6 +578,285 @@ func (m *manager) CheckNumber(ctx context.Context, traceID string, phoneNumber s
 		return waDomain.ContactCheckResponse{}, err
 	}
 	return resp, nil
+}
+
+func (m *manager) ListContacts(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.ContactListItem, error) {
+	items, err := m.Client.ListContacts(ctx, traceID, phoneNumber)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list contacts", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) ListGroups(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.GroupListItem, error) {
+	items, err := m.Client.ListGroups(ctx, traceID, phoneNumber)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list groups", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) GetGroupInfo(ctx context.Context, traceID string, phoneNumber string, groupJID string) (*waDomain.GroupInfoResponse, error) {
+	info, err := m.Client.GetGroupInfo(ctx, traceID, phoneNumber, groupJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get group info", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) ListSubGroups(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.SubGroupItem, error) {
+	items, err := m.Client.ListSubGroups(ctx, traceID, phoneNumber, communityJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list subgroups", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) ListCommunityParticipants(ctx context.Context, traceID string, phoneNumber string, communityJID string) ([]waDomain.CommunityParticipantItem, error) {
+	items, err := m.Client.ListCommunityParticipants(ctx, traceID, phoneNumber, communityJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list community participants", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) CreateGroup(ctx context.Context, traceID string, phoneNumber string, name string, participantJIDs []string, isCommunity bool, linkedParentJID string, isAnnounce bool, isLocked bool, isJoinApproval bool) (*waDomain.CreateGroupResponse, error) {
+	resp, err := m.Client.CreateGroup(ctx, traceID, phoneNumber, name, participantJIDs, isCommunity, linkedParentJID, isAnnounce, isLocked, isJoinApproval)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to create group", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (m *manager) LeaveGroup(ctx context.Context, traceID string, phoneNumber string, groupJID string) error {
+	if err := m.Client.LeaveGroup(ctx, traceID, phoneNumber, groupJID); err != nil {
+		m.Logger.Error(traceID, "Failed to leave group", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) UpdateGroupParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, action string, participantJIDs []string) ([]waDomain.ParticipantResult, error) {
+	results, err := m.Client.UpdateGroupParticipants(ctx, traceID, phoneNumber, groupJID, action, participantJIDs)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to update group participants", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return results, nil
+}
+
+func (m *manager) SetGroupAnnounce(ctx context.Context, traceID string, phoneNumber string, groupJID string, announce bool) error {
+	if err := m.Client.SetGroupAnnounce(ctx, traceID, phoneNumber, groupJID, announce); err != nil {
+		m.Logger.Error(traceID, "Failed to set group announce", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupLocked(ctx context.Context, traceID string, phoneNumber string, groupJID string, locked bool) error {
+	if err := m.Client.SetGroupLocked(ctx, traceID, phoneNumber, groupJID, locked); err != nil {
+		m.Logger.Error(traceID, "Failed to set group locked", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupName(ctx context.Context, traceID string, phoneNumber string, groupJID string, name string) error {
+	if err := m.Client.SetGroupName(ctx, traceID, phoneNumber, groupJID, name); err != nil {
+		m.Logger.Error(traceID, "Failed to set group name", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupTopic(ctx context.Context, traceID string, phoneNumber string, groupJID string, topic string) error {
+	if err := m.Client.SetGroupTopic(ctx, traceID, phoneNumber, groupJID, topic); err != nil {
+		m.Logger.Error(traceID, "Failed to set group topic", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SetGroupPhoto(ctx context.Context, traceID string, phoneNumber string, groupJID string, photo []byte) (string, error) {
+	pictureID, err := m.Client.SetGroupPhoto(ctx, traceID, phoneNumber, groupJID, photo)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to set group photo", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return pictureID, nil
+}
+
+func (m *manager) GetGroupInviteLink(ctx context.Context, traceID string, phoneNumber string, groupJID string, reset bool) (string, error) {
+	link, err := m.Client.GetGroupInviteLink(ctx, traceID, phoneNumber, groupJID, reset)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get group invite link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return link, nil
+}
+
+func (m *manager) JoinGroupWithLink(ctx context.Context, traceID string, phoneNumber string, code string) (string, error) {
+	jid, err := m.Client.JoinGroupWithLink(ctx, traceID, phoneNumber, code)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to join group via link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return "", err
+	}
+	return jid, nil
+}
+
+func (m *manager) GetGroupInfoFromLink(ctx context.Context, traceID string, phoneNumber string, code string) (*waDomain.GroupInfoResponse, error) {
+	info, err := m.Client.GetGroupInfoFromLink(ctx, traceID, phoneNumber, code)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to preview group from link", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) GetGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string) ([]waDomain.GroupJoinRequestItem, error) {
+	items, err := m.Client.GetGroupRequestParticipants(ctx, traceID, phoneNumber, groupJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to list group join requests", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return items, nil
+}
+
+func (m *manager) UpdateGroupRequestParticipants(ctx context.Context, traceID string, phoneNumber string, groupJID string, participantJIDs []string, approve bool) ([]waDomain.ParticipantResult, error) {
+	results, err := m.Client.UpdateGroupRequestParticipants(ctx, traceID, phoneNumber, groupJID, participantJIDs, approve)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to update group join requests", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return results, nil
+}
+
+func (m *manager) LinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	if err := m.Client.LinkSubGroup(ctx, traceID, phoneNumber, parentJID, childJID); err != nil {
+		m.Logger.Error(traceID, "Failed to link subgroup", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber string, parentJID string, childJID string) error {
+	if err := m.Client.UnlinkSubGroup(ctx, traceID, phoneNumber, parentJID, childJID); err != nil {
+		m.Logger.Error(traceID, "Failed to unlink subgroup", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) GetContactInfo(ctx context.Context, traceID string, phoneNumber string, userJID string) (*waDomain.ContactInfoResponse, error) {
+	info, err := m.Client.GetContactInfo(ctx, traceID, phoneNumber, userJID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get contact info", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) GetAvatar(ctx context.Context, traceID string, phoneNumber string, targetJID string, preview bool, existingID string) (*waDomain.AvatarResponse, error) {
+	info, err := m.Client.GetAvatar(ctx, traceID, phoneNumber, targetJID, preview, existingID)
+	if err != nil {
+		m.Logger.Error(traceID, "Failed to get avatar", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return nil, err
+	}
+	return info, nil
+}
+
+func (m *manager) MarkRead(ctx context.Context, traceID string, phoneNumber string, chat string, sender string, messageIDs []string) error {
+	if err := m.Client.MarkRead(ctx, traceID, phoneNumber, chat, sender, messageIDs); err != nil {
+		m.Logger.Error(traceID, "Failed to mark messages read", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
+}
+
+func (m *manager) SendChatPresence(ctx context.Context, traceID string, phoneNumber string, chat string, state string, media string) error {
+	if err := m.Client.SendChatPresence(ctx, traceID, phoneNumber, chat, state, media); err != nil {
+		m.Logger.Error(traceID, "Failed to send chat presence", nil,
+			customLog.String("phone_number", MaskedPhoneNumber(phoneNumber)),
+			customLog.Error(err),
+		)
+		return err
+	}
+	return nil
 }
 
 func (m *manager) GetClientStore() *ClientStore {

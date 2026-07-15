@@ -6,9 +6,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.AuthMiddleware) {
+func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.AuthMiddleware, idempotencyMw *middleware.IdempotencyMiddleware) {
 	messageGroup := r.Group("/message")
 	messageGroup.Use(authMw.JWTAuthentication())
+	// After auth (needs the account phone from the JWT); dedupes sends that carry an Idempotency-Key.
+	messageGroup.Use(idempotencyMw.Handler())
 	{
 		messageGroup.Post("/text", h.WhatsappMessageHandler.SendTextMessage)
 		messageGroup.Post("/image", h.WhatsappMessageHandler.SendImageMessage)
@@ -19,6 +21,7 @@ func initMessageRoutes(r fiber.Router, h *handler.Handler, authMw *middleware.Au
 		messageGroup.Post("/poll", h.WhatsappMessageHandler.SendPollMessage)
 		messageGroup.Post("/sticker", h.WhatsappMessageHandler.SendStickerMessage)
 		messageGroup.Post("/react", h.WhatsappMessageHandler.ReactToMessage)
+		messageGroup.Post("/read", h.WhatsappMessageHandler.MarkRead)
 		messageGroup.Delete("/", h.WhatsappMessageHandler.DeleteMessage)
 		messageGroup.Put("/", h.WhatsappMessageHandler.EditMessage)
 		messageGroup.Get("/job/:job_id", h.WhatsappMessageHandler.GetJobStatus)

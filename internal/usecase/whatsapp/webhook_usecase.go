@@ -22,40 +22,43 @@ func NewWhatsappWebhookUsecase(manager whatsapp.Manager, logger *customLog.Logge
 	}
 }
 
-// GetWebhookURL retrieves the webhook URL for a phone number
-func (uc *WhatsappWebhookUsecase) GetWebhookURL(ctx context.Context, traceID string, phoneNumber string) (*string, error) {
-	webhookURL, err := uc.whatsappManager.GetWebhookURL(ctx, traceID, phoneNumber)
+// ListWebhookSubscriptions returns all webhook subscriptions for a phone number.
+func (uc *WhatsappWebhookUsecase) ListWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) ([]waDomain.WebhookSubscription, error) {
+	subs, err := uc.whatsappManager.ListWebhookSubscriptions(ctx, traceID, phoneNumber)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to get webhook URL for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		uc.logger.Error(traceID, "Failed to list webhook subscriptions for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 		return nil, err
 	}
-
-	// Return empty string pointer if nil
-	if webhookURL == nil {
-		webhookURL = new(string)
-	}
-
-	return webhookURL, nil
+	return subs, nil
 }
 
-// SetWebhookURL sets the webhook URL for a phone number
-func (uc *WhatsappWebhookUsecase) SetWebhookURL(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
-	err := uc.whatsappManager.SetWebhookURL(ctx, traceID, phoneNumber, webhook)
+// SetWebhookSubscription registers/updates one webhook subscription.
+func (uc *WhatsappWebhookUsecase) SetWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, webhook *waDomain.Webhook) error {
+	err := uc.whatsappManager.SetWebhookSubscription(ctx, traceID, phoneNumber, webhook)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to set webhook URL for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		uc.logger.Error(traceID, "Failed to set webhook subscription for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 		return err
 	}
-
 	return nil
 }
 
-// DeleteWebhookURL deletes the webhook URL for a phone number
-func (uc *WhatsappWebhookUsecase) DeleteWebhookURL(ctx context.Context, traceID string, phoneNumber string) error {
-	err := uc.whatsappManager.DeleteWebhookURL(ctx, traceID, phoneNumber)
+// DeleteWebhookSubscription removes a single subscription by URL.
+func (uc *WhatsappWebhookUsecase) DeleteWebhookSubscription(ctx context.Context, traceID string, phoneNumber string, url string) error {
+	err := uc.whatsappManager.DeleteWebhookSubscription(ctx, traceID, phoneNumber, url)
 	if err != nil {
-		uc.logger.Error(traceID, "Failed to delete webhook URL for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		uc.logger.Error(traceID, "Failed to delete webhook subscription for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
 		return err
 	}
+	return nil
+}
 
+// DeleteAllWebhookSubscriptions removes every subscription for a phone number
+// (legacy no-body DELETE semantics).
+func (uc *WhatsappWebhookUsecase) DeleteAllWebhookSubscriptions(ctx context.Context, traceID string, phoneNumber string) error {
+	err := uc.whatsappManager.DeleteAllWebhookSubscriptions(ctx, traceID, phoneNumber)
+	if err != nil {
+		uc.logger.Error(traceID, "Failed to delete webhook subscriptions for Phone Number: "+whatsapp.MaskedPhoneNumber(phoneNumber), nil, customLog.Error(err))
+		return err
+	}
 	return nil
 }

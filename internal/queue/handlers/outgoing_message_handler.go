@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	customLog "github.com/glennprays/log"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/glennprays/whatsapp-gateway/config"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
+	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	pkgQueue "github.com/glennprays/whatsapp-gateway/pkg/queue"
@@ -26,7 +27,7 @@ type OutgoingMessageHandler struct {
 	Repository whatsapp.WhatsAppRepository
 	Sender     *whatsapp.WebhookSender
 	Config     *config.Config
-	Limiter    ratelimiter.Limiter
+	Pacer      *ratelimiter.Pacer
 	Dedup      *pkgQueue.DedupCache
 }
 
@@ -59,27 +60,24 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	masked := whatsapp.MaskedPhoneNumber(job.PhoneNumber)
 
-	var res ratelimiter.Result
-	res, err = h.Limiter.Allow(ctx, job.PhoneNumber)
-	if err != nil {
-		h.Logger.Error(traceID, "Rate limiter error", nil,
+	// Outbound pacing. On a paced-out / capped / banned result the worker returns
+	// the *RateLimitError so the worker pool reschedules the job with the
+	// RetryAfter delay (unchanged machinery).
+	if err = h.Pacer.Wait(ctx, job.PhoneNumber, job.To, 1); err != nil {
+		var rlErr *ratelimiter.RateLimitError
+		if errors.As(err, &rlErr) {
+			h.Logger.Warn(traceID, "Outbound send paced/limited", map[string]interface{}{
+				"phone_number": masked,
+				"retry_after":  rlErr.RetryAfter.String(),
+			})
+			return rlErr
+		}
+		h.Logger.Error(traceID, "Pacer error", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
 		)
 		return err
-	}
-
-	if !res.Allowed {
-		errMsg := fmt.Sprintf("Rate limit exceeded. Retry after %s", res.RetryAfter.String())
-		h.Logger.Warn(traceID, errMsg, map[string]interface{}{
-			"phone_number": job.PhoneNumber,
-			"limit":        res.Limit,
-			"remaining":    res.Remaining,
-		})
-
-		rateLimitErr := &ratelimiter.RateLimitError{}
-		return rateLimitErr.BuildError(res)
 	}
 
 	// Update job status to processing
@@ -96,45 +94,50 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 
 	switch job.Type {
 	case "text":
-		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text)
+		messageID, err = h.Manager.SendTextMessage(ctx, traceID, job.PhoneNumber, job.To, job.Text, &waDomain.MessageContext{
+			ReplyToID:     job.ReplyToID,
+			ReplyToSender: job.ReplyToSender,
+			ReplyToText:   job.ReplyToText,
+			Mentions:      job.Mentions,
+		})
 	case "image":
 		imageBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode image data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce)
+			messageID, err = h.Manager.SendImageMessage(ctx, traceID, job.PhoneNumber, job.To, imageBytes, job.MimeType, job.Caption, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "audio":
 		audioBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode audio data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce)
+			messageID, err = h.Manager.SendAudioMessage(ctx, traceID, job.PhoneNumber, job.To, audioBytes, job.MimeType, job.IsPTT, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "video":
 		videoBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode video data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce)
+			messageID, err = h.Manager.SendVideoMessage(ctx, traceID, job.PhoneNumber, job.To, videoBytes, job.MimeType, job.Caption, job.IsGif, job.IsViewOnce, jobMessageContext(job))
 		}
 	case "document":
 		docBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode document data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption)
+			messageID, err = h.Manager.SendDocumentMessage(ctx, traceID, job.PhoneNumber, job.To, docBytes, job.MimeType, job.FileName, job.Caption, jobMessageContext(job))
 		}
 	case "location":
-		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress)
+		messageID, err = h.Manager.SendLocationMessage(ctx, traceID, job.PhoneNumber, job.To, job.Latitude, job.Longitude, job.LocationName, job.LocationAddress, jobMessageContext(job))
 	case "poll":
-		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount)
+		messageID, err = h.Manager.SendPollMessage(ctx, traceID, job.PhoneNumber, job.To, job.Question, job.Options, job.SelectableCount, jobMessageContext(job))
 	case "sticker":
 		stickerBytes, decodeErr := base64.StdEncoding.DecodeString(job.ImageData)
 		if decodeErr != nil {
 			err = fmt.Errorf("failed to decode sticker data: %w", decodeErr)
 		} else {
-			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType)
+			messageID, err = h.Manager.SendStickerMessage(ctx, traceID, job.PhoneNumber, job.To, stickerBytes, job.MimeType, jobMessageContext(job))
 		}
 	case "react":
 		err = h.Manager.ReactToMessage(ctx, traceID, job.PhoneNumber, job.To, job.SenderMsisdn, job.MessageID, job.Emoji)
@@ -189,6 +192,16 @@ func (h *OutgoingMessageHandler) Handle(ctx context.Context, body []byte, header
 	return nil
 }
 
+// jobMessageContext rebuilds the reply/mentions context carried on a queued job.
+func jobMessageContext(job domainQueue.OutgoingMessageJob) *waDomain.MessageContext {
+	return &waDomain.MessageContext{
+		ReplyToID:     job.ReplyToID,
+		ReplyToSender: job.ReplyToSender,
+		ReplyToText:   job.ReplyToText,
+		Mentions:      job.Mentions,
+	}
+}
+
 // sendStatusWebhook sends a webhook notification for message status updates
 func (h *OutgoingMessageHandler) sendStatusWebhook(
 	ctx context.Context,
@@ -198,25 +211,9 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 	messageID string,
 	errorMsg string,
 ) {
-	// Check if status webhooks are enabled
+	// Master kill-switch for the status family. Per-event opt-in is now the
+	// per-subscription events filter, not the deprecated global list.
 	if !h.Config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	// Check if this event is in the enabled events list
-	enabledEvents := strings.Split(h.Config.WebhookStatusEvents, ",")
-	eventEnabled := false
-	for _, e := range enabledEvents {
-		if strings.TrimSpace(e) == string(event) {
-			eventEnabled = true
-			break
-		}
-	}
-	if !eventEnabled {
-		h.Logger.Debug(traceID, "Status webhook event not enabled", nil,
-			customLog.String("event", string(event)),
-			customLog.String("job_id", job.JobID),
-		)
 		return
 	}
 
@@ -232,19 +229,18 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		return
 	}
 
-	// Get webhook configuration for this phone number
-	webhook, err := h.Repository.GetWebhook(ctx, JID)
+	// Get subscriptions for this phone number
+	subs, err := h.Repository.GetWebhookSubscriptions(ctx, JID)
 	if err != nil {
-		h.Logger.Error(traceID, "Failed to get webhook config for status notification", nil,
+		h.Logger.Error(traceID, "Failed to get webhook subscriptions for status notification", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 			customLog.Error(err),
 		)
 		return
 	}
-
-	if webhook == nil || webhook.Url == "" {
-		h.Logger.Debug(traceID, "No webhook URL configured for phone", nil,
+	if len(subs) == 0 {
+		h.Logger.Debug(traceID, "No webhook subscriptions configured for phone", nil,
 			customLog.String("job_id", job.JobID),
 			customLog.String("phone_number", masked),
 		)
@@ -286,19 +282,24 @@ func (h *OutgoingMessageHandler) sendStatusWebhook(
 		payloadMap["error"] = payload.Error
 	}
 
-	// Send webhook (with HMAC signing and retry logic)
-	if err := h.Sender.Send(ctx, webhook.Url, webhook.HmacSecret, payloadMap); err != nil {
-		h.Logger.Error(traceID, "Failed to send status webhook", nil,
-			customLog.String("job_id", job.JobID),
-			customLog.String("phone_number", masked),
-			customLog.String("event", string(event)),
-			customLog.Error(err),
-		)
-	} else {
-		h.Logger.Debug(traceID, "Successfully sent status webhook", nil,
-			customLog.String("job_id", job.JobID),
-			customLog.String("phone_number", masked),
-			customLog.String("event", string(event)),
-		)
+	// Deliver to every subscription whose events filter matches (empty = all).
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, string(event)) {
+			continue
+		}
+		if err := h.Sender.Send(ctx, sub.Url, sub.HmacSecret, payloadMap); err != nil {
+			h.Logger.Error(traceID, "Failed to send status webhook", nil,
+				customLog.String("job_id", job.JobID),
+				customLog.String("phone_number", masked),
+				customLog.String("event", string(event)),
+				customLog.Error(err),
+			)
+		} else {
+			h.Logger.Debug(traceID, "Successfully sent status webhook", nil,
+				customLog.String("job_id", job.JobID),
+				customLog.String("phone_number", masked),
+				customLog.String("event", string(event)),
+			)
+		}
 	}
 }

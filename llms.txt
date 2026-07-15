@@ -54,8 +54,34 @@ Response:
 curl -X POST http://localhost:3000/api/v1/message/text \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"msisdn": "6289876543210", "message": "Hello!"}'
+  -d '{"chat": "6289876543210", "message": "Hello!"}'
 ```
+
+> **Recipient addressing:** every message/contact endpoint takes `chat` (canonical) or the
+> deprecated `msisdn` alias; `chat` wins when both are set. `chat` accepts a bare phone number,
+> a user JID (`@s.whatsapp.net`), a group JID (`@g.us`) — so you can message groups — or a `@lid`
+> (best-effort; not guaranteed dialable). Send responses echo the resolved canonical `chat`.
+
+> **Group/community ops require an explicit `@g.us`** — a group op never lands on a user JID (a bare
+> number or user JID is a 400). Batch mutations (add/remove/promote/demote, approve/reject) return
+> **200 partial success** with per-participant `results[]`, never an overall error for one bad member.
+> Ban-safety gates (default): the whole mutation surface is behind `GROUP_MANAGEMENT_ENABLED` (404 when
+> off); **bulk participant add** and **join-via-link (mass join)** now default **enabled** (the outbound
+> pacer + ban gate cover the ban risk) but can be set to `false` (`GROUP_ADD_PARTICIPANTS_ENABLED`,
+> `GROUP_JOIN_VIA_LINK_ENABLED`) to hard-disable them and return 403.
+
+> **Replies & mentions (all sends):** every `POST /message/*` send (text, image, audio, video, document,
+> location, poll, sticker) accepts `reply_to_id` + `reply_to_sender` (+ optional `reply_to_text` for the
+> quoted preview) to quote a message, and `mentions[]` (numbers/JIDs) to @-tag. Storeless (caller supplies
+> the quoted context). Works in direct and queue modes. On multipart endpoints (image/audio/video/document/
+> sticker) send `mentions` as repeated form fields, not comma-joined. A mention renders inline only where a
+> caption/text carries the matching `@<number>`; sticker/location/poll still fire the mention notification.
+
+> **Idempotent sends:** send an `Idempotency-Key` header on any `POST /message/*` to make retries
+> safe. A repeat of the same key replays the original response (`Idempotent-Replay: true`) instead
+> of sending twice; an in-flight duplicate gets `409`; the same key with a different body gets `422`.
+> DB-backed (keyed by JWT account + key), survives restarts. Queue mode is enqueued-once, not
+> delivered-once. Tune via `IDEMPOTENCY_TTL_SECONDS` / `IDEMPOTENCY_PENDING_TIMEOUT_SECONDS`.
 
 ### Step 3: Login to WhatsApp
 
@@ -194,13 +220,37 @@ app.post('/webhook', (req, res) => {
 
 ## Webhook Events
 
-The gateway sends webhooks to your registered URL for message events.
+The gateway delivers webhooks to your registered subscriptions. Each account can
+register **multiple** subscription URLs, each with an optional per-subscription
+**event filter** (`POST /webhook` with `events: [...]`). Omit or leave `events`
+empty to receive **all** events (the legacy single-URL behavior). An unknown
+event name is rejected with `400`.
 
-Event types:
+Event catalog:
+- `message.incoming` - Incoming message received
 - `message.queued` - Message queued for sending
 - `message.sent` - Message successfully sent
 - `message.failed` - Message failed to send
-- `message.incoming` - Incoming message received
+- `session.logged_out` - Account unpaired (fields: `on_connect`, `reason`, `reason_text`)
+- `session.banned` - Temporary ban (fields: `code`, `reason_text`, `expires_in`)
+- `session.connect_failure` - Connect failure (fields: `reason`, `reason_text`, `message`)
+- `session.connected` - Session connected to WhatsApp
+- `session.disconnected` - Session disconnected (fires on every reconnect cycle)
+- `session.replaced` - Socket taken over by another client with the same session
+
+All webhooks share a flat envelope (`event`, `phone_number`, `jid`, `timestamp`)
+with per-event fields at the top level. `session.*` are NOT gated by
+`WEBHOOK_STATUS_EVENTS_ENABLED` (that flag only gates `message.queued/sent/failed`).
+
+Managing subscriptions:
+- `GET /webhook` → `{ "url": "<first subscription or empty>", "subscriptions": [ { "url", "events": [...], "has_hmac" } ] }`. The `url` field is retained for back-compat; the HMAC secret is **never** returned (only `has_hmac`).
+- `POST /webhook` `{ url, hmac_secret?, events?[] }` — upserts one subscription (re-posting the same URL edits its filter/secret).
+- `DELETE /webhook` — no body deletes **all** subscriptions; body `{ "url": "..." }` deletes just that one.
+
+Filtering is per-subscription: a subscription with an empty filter receives every
+event; the `WEBHOOK_STATUS_EVENTS` global list is **deprecated** and superseded
+by it. `WEBHOOK_STATUS_EVENTS_ENABLED` remains the master kill-switch for the
+`message.queued/sent/failed` status family.
 
 Incoming-message webhooks include an `addressing_mode` field:
 - `"pn"` - `from` is a callable `@s.whatsapp.net` phone number
@@ -226,10 +276,21 @@ For complete API documentation, including all endpoints, request/response schema
 | Category | Endpoints |
 |----------|-----------|
 | Auth | `POST /register`, `POST /login/qr_code/{format}`, `POST /login/pair_code`, `GET /login/status`, `POST /logout`, `POST /session/reconnect` |
-| Webhooks | `GET /webhook`, `POST /webhook`, `DELETE /webhook` |
+| Webhooks | `GET /webhook` (list subscriptions; back-compat `url` + `subscriptions[]`), `POST /webhook` (upsert one subscription; `events?[]` filter, empty = all), `DELETE /webhook` (no body = all, `{url}` = one) |
 | Messaging | `POST /message/text`, `POST /message/image`, `POST /message/audio` (is_ptt = voice note), `POST /message/video` (caption/is_gif), `POST /message/document` (file_name/caption), `POST /message/location`, `POST /message/poll`, `POST /message/sticker`, `POST /message/react`, `PUT /message` (edit), `DELETE /message` |
-| Contact | `GET /contact/check?msisdn=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name) |
-| Health | `GET /health` |
+| Interaction | `POST /message/read` (blue ticks; `message_ids[]`, `sender` required for groups), `POST /chat/presence` (typing indicator; `state`=composing/recording/paused) — both paced by the outbound pacer |
+| Contact | `GET /contact/check?chat=` (IsOnWhatsApp validation; returns jid/is_on_whatsapp/verified_name), `GET /contact/` (list synced contacts; paginated limit/offset; local store, never 404 on empty), `GET /contact/info?chat=` (server profile: status/picture_id/verified_name/device_count; cached+budgeted), `GET /contact/avatar?chat=&preview=` (avatar URL+id for a user OR group; ETag via If-None-Match → 304; 404 none / 403 hidden) |
+| Group (reads) | `GET /group/` (list joined groups; server read, short-TTL cached + per-account read budget, 429 when exhausted), `GET /group/info?chat=<@g.us>` (one group's full detail + participant roster; 403 if not a member, 404 if absent) |
+| Group (mutations) | `POST /group/` (create group/community; add-on-create gated), `POST /group/leave`, `POST /group/participants` (`action`=add/remove/promote/demote; add gated; **200 partial success** with `results[]` — privacy-blocked add → invited, non-member promote → failed; self in remove/promote/demote → 400, use leave), `PATCH /group/settings` (announce/locked), `PATCH /group/name` (≤25), `PATCH /group/topic` (≤512), `PUT /group/photo` (multipart JPEG), `DELETE /group/photo`, `GET /group/invite` + `POST /group/invite/reset` (admin invite link), `GET /group/invite/info?code=` (preview, no join; 410 if revoked), `POST /group/join` (**mass-join, gated → 403**), `GET /group/requests` + `POST /group/requests` (list / approve-reject join requests; approve/reject is 200 partial success) — all gated by `GROUP_MANAGEMENT_ENABLED` (404 when off) |
+| Community (reads) | `GET /community/subgroups?chat=<@g.us>` (list linked sub-groups; empty list if none, not an error), `GET /community/participants?chat=<@g.us>` (all participants across linked groups; primary JID only) — server reads, cached + budgeted; a non-community group returns 400/403/404 |
+| Community (mutations) | `POST /community/subgroups` (link a sub-group under a parent community; body `{chat, child_jid}`), `DELETE /community/subgroups?chat=&child=` (unlink) — gated by `GROUP_MANAGEMENT_ENABLED` (404 when off) |
+| Health | `GET /health`, `GET /health/live`, `GET /health/ready` |
+| Admin (ROOT path, operator-only) | `GET /admin/sessions` (per-instance session inventory: honest `connected`/`disconnected`/`never_paired`/`logged_out`/`banned` states merged from live clients + device store + persisted status; masked phones + `instance` hostname), `GET /admin/sessions/{phone}` (one account or 404) |
+| Metrics (ROOT path, operator-only) | `GET /metrics` (hand-rolled Prometheus text; `whatsapp_gateway_messages_total`, `whatsapp_gateway_webhook_deliveries_total`, `whatsapp_gateway_sessions{state}`) |
+
+**Admin / metrics plane** live at the **ROOT path** (not under the `/api/v1` base) and are **operator-only, cross-tenant**. They are **dark by default**: with no `ADMIN_API_SECRET` the routes are unregistered and return `404`; when set, send `Authorization: Bearer <secret>` (constant-time). `/metrics` additionally needs `METRICS_ENABLED=true`. Never labelled by phone number (cardinality); the inventory is **per-instance** (scrape each node behind a load balancer).
+
+Direct-mode status webhooks (`message.sent`/`message.failed`/`message.queued`) are delivered **asynchronously with bounded retry** (`WEBHOOK_MAX_RETRIES`, `WEBHOOK_RETRY_BACKOFF_SECONDS`); best-effort — durable delivery requires RabbitMQ.
 
 ## Error Responses
 
@@ -304,14 +365,25 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 ### Rate limiting
 
+`OUTBOUND_PACE_*` is the **primary** outbound governor (per-account token-bucket pace + per-recipient hard cap + ban gate, applied to every outbound action in both direct and queue modes); `MESSAGE_RATE_LIMIT_*` is the **fallback** limiter, used only when `OUTBOUND_PACE_ENABLED=false`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REGISTER_RATE_LIMIT_ENABLED` | `true` | Toggle per-IP throttle on `POST /register` (in-process memory limiter) |
 | `REGISTER_RATE_LIMIT_REQUESTS` | `5` | Max registrations per IP per window |
 | `REGISTER_RATE_LIMIT_DURATION_SECONDS` | `60` | Register throttle window |
 | `MESSAGE_RATE_LIMIT_PROVIDER` | `memory` | `memory`, `redis`, or `noop` |
-| `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window |
-| `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length |
+| `MESSAGE_RATE_LIMIT_REQUESTS` | `100` | Requests per window (fallback limiter) |
+| `MESSAGE_RATE_LIMIT_DURATION_SECONDS` | `60` | Window length (fallback limiter) |
+| `OUTBOUND_PACE_ENABLED` | `true` | Master toggle for the outbound pacer; `false` bypasses it and falls back to `MESSAGE_RATE_LIMIT_*` |
+| `OUTBOUND_PACE_MODE` | `pace` | `pace` blocks/waits for a token; `reject` never waits (over-budget → immediate `429`) |
+| `OUTBOUND_PACE_RATE_PER_SECOND` | `1` | Sustained per-account token-bucket refill rate (tokens/sec) |
+| `OUTBOUND_PACE_BURST` | `5` | Token-bucket burst capacity |
+| `OUTBOUND_PACE_MAX_WAIT_SECONDS` | `30` | Max time a `pace`-mode call blocks for a token before `429` |
+| `OUTBOUND_PACE_JITTER_MS` | `250` | Extra random wait (ms) added to the pace deadline |
+| `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` | `10` | Per-recipient hard cap per window; over-cap → `429` (never paced) |
+| `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` | `60` | Per-recipient cap window |
+| `OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS` | `3600` | Fallback ban hold when a temporary ban carries no explicit `ban_expires_at` |
 
 ### Uploads
 
@@ -348,8 +420,17 @@ Full reference mirroring `config/config.go`. Defaults come from struct tag defau
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Emit message lifecycle webhooks |
-| `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | Comma-separated subset: `message.queued`, `message.sent`, `message.failed` |
+| `WEBHOOK_STATUS_EVENTS_ENABLED` | `true` | Master kill-switch for the `message.queued/sent/failed` status family |
+| `WEBHOOK_STATUS_EVENTS` | `message.sent,message.failed` | **Deprecated** — superseded by per-subscription `events`. Still read for back-compat; a subscription with an empty filter now inherits "all" |
+| `WEBHOOK_MAX_RETRIES` | `3` | Direct-mode async webhook retry attempts (queue mode uses RabbitMQ retry) |
+| `WEBHOOK_RETRY_BACKOFF_SECONDS` | `2` | Base for the exponential retry backoff |
+
+### Admin / metrics plane (operator-only, ROOT path)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_API_SECRET` | _(empty)_ | Bearer secret for `/admin/*` + `/metrics`. Empty ⇒ plane unregistered (404, dark by default); set ⇒ `Authorization: Bearer <secret>`, constant-time |
+| `METRICS_ENABLED` | `false` | Expose `GET /metrics`; still needs `ADMIN_API_SECRET` set to be reachable |
 
 ### Object storage
 
@@ -389,13 +470,13 @@ Canonical reference: [environment-variables.md](https://waga.glennprays.com/asse
 
 ## MCP (Model Context Protocol)
 
-A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. The agent invokes MCP tools (send text/image, edit/delete/react to messages, manage webhooks, check connection status); the MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
+A standalone MCP server bridges AI agents — Claude, Cursor, Claude Code, and other MCP-capable clients — to this gateway. It exposes a curated read-and-messaging tool surface (26 tools): sends for text/image/audio/video/document/location/poll/sticker — each accepting canonical `chat` addressing plus optional reply/mention threading — edit/delete/react, the polled inbox (`get_latest_incoming_messages`, `get_job_status`), contact and group reads (`list_contacts`, `get_contact_info`, `get_avatar`, `list_groups`, `get_group_info`), two-way conversation signals (`mark_read`, `send_typing`), connection and health checks (`check_connection_status`, `check_contact`, `check_health`), and webhook management (`get_webhook`, `register_webhook`, `delete_webhook`). The MCP server translates each tool call into an authenticated HTTP request against the gateway using a pre-issued JWT scoped to one phone number.
 
 ```
 AI Agent  <--MCP (stdio or HTTP+SSE)-->  MCP WhatsApp Gateway  <--HTTP/JWT-->  WhatsApp Gateway (this service)
 ```
 
-The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent.
+The MCP server is a separate component from the gateway itself — you deploy the gateway, mint a JWT via `POST /api/register`, then configure the MCP server with that token. The gateway handles all WhatsApp protocol logic; the MCP server only exposes the tool surface to the agent. The MCP deliberately **excludes** group/community mutations (create, leave, participants, settings, name, topic, photo, invite, join, requests), community operations, and the operator admin plane and metrics — even though the gateway and Go SDK support them — to keep an autonomous agent from taking destructive or account-wide actions; drive those from the REST API or SDK in a trusted backend.
 
 | Doc | Link |
 |-----|------|
@@ -404,6 +485,10 @@ The MCP server is a separate component from the gateway itself — you deploy th
 | Client Setup | https://waga.glennprays.com/assets/docs/mcp/client-setup.md |
 | Configuration | https://waga.glennprays.com/assets/docs/mcp/configuration.md |
 | Tools Reference | https://waga.glennprays.com/assets/docs/mcp/tools-reference.md |
+
+## Go SDK
+
+An official Go SDK (`github.com/glennprays/whatsapp-gateway-sdk-go`) wraps the gateway's REST surface: chat-addressed sends with quoted replies, @-mentions, and `Idempotency-Key` support; contact and group reads (`ListContacts`/`GetContactInfo`/`GetAvatar`/`ListGroups`/`GetGroupInfo`); two-way primitives (`MarkRead`/`SendChatPresence`); the full group and community management surface; HMAC webhook verification with a unified `ParseWebhook` dispatcher covering the `message.*` and `session.*` events; and a separate opt-in `AdminClient` for the operator-only admin plane. Full method reference: https://github.com/glennprays/whatsapp-gateway-sdk-go.
 
 ## Documentation
 

@@ -1,11 +1,18 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.11.1
+  version: 0.25.0
   description: >
     API documentation for Whatsapp Gateway.
 
     This service allows integration with WhatsApp through REST endpoints.
+
+    Outbound operations (message sends, reactions, edits, deletes, mark-read,
+    typing, and group/community mutations) are paced to stay under WhatsApp
+    anti-spam thresholds. In the default `pace` mode a request may block briefly
+    before succeeding instead of failing fast; when the pacing budget is
+    exhausted, a per-recipient cap is hit, or the account is temporarily banned,
+    the endpoint returns `429` with a `Retry-After` header.
   license:
     name: MIT License
     url: https://opensource.org/licenses/MIT
@@ -26,8 +33,46 @@ tags:
     description: Endpoints for handling WhatsApp webhooks and events.
   - name: Whatsapp Message
     description: Endpoints for managing WhatsApp chats and messages.
+  - name: Contact
+    description: Endpoints for validating and listing contacts.
+  - name: Group
+    description: >
+      Endpoints for reading and managing the account's WhatsApp groups. Reads
+      (list, info) are always available. Mutations (create/leave/participants/
+      settings/name/topic/photo), invite links, join-via-link, and join-requests
+      are gated by GROUP_MANAGEMENT_ENABLED (404 when off). Every group op needs
+      an explicit @g.us JID. The ban-risky bulk vectors (participant add, join via
+      link) are gated OFF by default.
+  - name: Community
+    description: >
+      Endpoints for reading and managing a community's sub-groups. Reads
+      (sub-groups, participants) are always available; link/unlink mutations are
+      gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+  - name: Admin
+    description: >
+      Operator-only, cross-tenant endpoints served at the ROOT path (not under
+      /api/v1). Bearer-gated by ADMIN_API_SECRET; unregistered (404) when unset.
+  - name: Metrics
+    description: >
+      Prometheus metrics at the ROOT path. Gated by METRICS_ENABLED and the admin
+      bearer.
 
 components:
+  parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        Optional. Dedupes this send across retries. A repeated key replays the
+        original response (with header `Idempotent-Replay: true`) instead of
+        sending again; an in-flight duplicate returns `409`; the same key with a
+        different request body returns `422`. Dedup is keyed by the JWT account +
+        key and is DB-backed (survives restarts). In queue mode this guarantees
+        enqueued-once, not delivered-once.
+      schema:
+        type: string
+        example: "a1b2c3d4-order-4711"
   schemas:
     ErrorResponse:
       type: object
@@ -82,26 +127,142 @@ components:
           example: 300
     WebhookRegisterRequest:
       type: object
+      required:
+        - url
       properties:
         url:
           type: string
-          description: The URL to register for receiving WhatsApp webhooks.
+          description: >
+            The subscription URL. Re-posting the same URL upserts it (edits its
+            hmac/events filter).
           example: "https://example.com/webhook"
         hmac_secret:
           type: string
-          description: Optional secret for validating webhook requests.
+          description: Optional secret for signing webhook requests (never returned).
           example: "my_webhook_secret"
+        events:
+          type: array
+          items:
+            type: string
+            enum: [message.incoming, message.queued, message.sent, message.failed,
+                   session.logged_out, session.banned, session.connect_failure,
+                   session.connected, session.disconnected, session.replaced]
+          description: >
+            Event types this subscription receives. Omit or leave empty to
+            receive all events (matches the legacy single-URL behavior). An
+            unknown value is rejected with 400.
+          example: ["message.incoming", "session.logged_out"]
+    WebhookSubscription:
+      type: object
+      properties:
+        url:
+          type: string
+          example: "https://example.com/webhook"
+        events:
+          type: array
+          items:
+            type: string
+          description: The event filter; an empty array means all events.
+          example: ["message.incoming"]
+        has_hmac:
+          type: boolean
+          description: Whether a signing secret is configured (the secret itself is never returned).
+          example: true
+    WebhookEnvelope:
+      type: object
+      description: >
+        The flat outbound webhook shape delivered to your subscription URL,
+        signed with `X-Webhook-Signature: sha256=<hex>` when the subscription has
+        a secret. Every payload carries `event` at the top level plus per-event
+        fields (message.incoming keeps its message fields top-level for
+        zero-break back-compat).
+      properties:
+        event:
+          type: string
+          description: The event type (see the WebhookRegisterRequest events enum).
+          example: session.logged_out
+        phone_number:
+          type: string
+          example: "628123456789"
+        jid:
+          type: string
+          example: "628123456789@s.whatsapp.net"
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix seconds.
+          example: 1737000000
+    WebhookSessionEvent:
+      allOf:
+        - $ref: '#/components/schemas/WebhookEnvelope'
+        - type: object
+          description: >
+            session.* lifecycle payloads. Field presence depends on the event:
+            session.logged_out → on_connect/reason/reason_text; session.banned →
+            code/reason_text/expires_in; session.connect_failure →
+            reason/reason_text/message; session.connected/disconnected/replaced →
+            no extra fields.
+          properties:
+            on_connect:
+              type: boolean
+              description: (session.logged_out) true if triggered by a connect failure.
+            reason:
+              type: integer
+              description: (session.logged_out / session.connect_failure) whatsmeow reason code.
+            reason_text:
+              type: string
+              description: 'Human-readable reason, formatted "<code>: <message>".'
+            message:
+              type: string
+              description: (session.connect_failure) raw failure message.
+            code:
+              type: integer
+              description: (session.banned) temp-ban reason code.
+            expires_in:
+              type: integer
+              description: (session.banned) seconds until the ban expires (0 if unknown).
+          example:
+            event: session.banned
+            phone_number: "628123456789"
+            jid: "628123456789@s.whatsapp.net"
+            timestamp: 1737000000
+            code: 104
+            reason_text: "104: you sent the same message to too many people"
+            expires_in: 86400
     SendMessageTextRequest:
       type: object
       properties:
-        msisdn::
-          type: string 
-        description: The recipient's Personal ID or Group ID.
-        example: "6281234567890@us.c"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
+          example: "6281234567890@us.c"
         message:
           type: string
           description: The text message to send.
           example: "Hello, this is a test message."
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention; include the matching @<number> token in `message` for it to render."
+          example: ["6281111111111"]
     SendMessageResponse:
       type: object
       properties:
@@ -113,12 +274,21 @@ components:
           type: string
           description: The ID of the sent message.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: The resolved canonical recipient JID.
+          example: "6281234567890@s.whatsapp.net"
     SendMessageImageRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         image:
           type: string
@@ -132,8 +302,25 @@ components:
           type: boolean
           description: Whether the image should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - image
     SendMessageQueuedResponse:
       type: object
@@ -146,12 +333,21 @@ components:
           type: string
           description: The ID of the queued job.
           example: "job_1234567890"
+        chat:
+          type: string
+          description: The resolved canonical recipient JID.
+          example: "6281234567890@s.whatsapp.net"
     SendMessageLocationRequest:
       type: object
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         latitude:
           type: number
@@ -169,16 +365,38 @@ components:
           type: string
           description: Optional address of the location.
           example: "Jakarta, Indonesia"
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. The mention attaches (fires a notification) but a location has no text to render the @<number> inline."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - latitude
         - longitude
     SendMessagePollRequest:
       type: object
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         question:
           type: string
@@ -196,30 +414,74 @@ components:
           description: Number of options a user can select (default 1).
           default: 1
           example: 1
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. The mention attaches (fires a notification) but a poll has no free-text surface to render the @<number> inline."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - question
         - options
     SendMessageStickerRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         sticker:
           type: string
           format: binary
           description: The sticker file to send.
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). The mention attaches (fires a notification) but a sticker has no caption to render the @<number> inline."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - sticker
     SendMessageAudioRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         audio:
           type: string
@@ -236,15 +498,37 @@ components:
           type: boolean
           description: Whether the audio should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). The mention attaches (fires a notification) but audio has no caption to render the @<number> inline."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - audio
     SendMessageVideoRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         video:
           type: string
@@ -262,15 +546,37 @@ components:
           type: boolean
           description: Whether the video should be sent as view once.
           example: false
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - video
     SendMessageDocumentRequest:
       type: multipart/form-data
       properties:
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@s.whatsapp.net"
         document:
           type: string
@@ -285,8 +591,25 @@ components:
           type: string
           description: Optional caption. Wrapped so it renders reliably across clients.
           example: "Invoice for July"
+        reply_to_id:
+          type: string
+          description: "Quote this message id (turns the send into a reply)."
+          example: "3EB0C767D26A1D8A2C1B"
+        reply_to_sender:
+          type: string
+          description: "Author of the quoted message (number/JID). Recommended with reply_to_id, required for group replies."
+          example: "6289999999999@s.whatsapp.net"
+        reply_to_text:
+          type: string
+          description: "Optional quoted preview text (storeless replies — the caller supplies what the quote shows)."
+          example: "the original message"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: "Numbers/JIDs to @-mention. Send as repeated `mentions` form fields (not comma-joined). Include the matching @<number> token in `caption` for it to render."
+          example: ["6281111111111"]
       required:
-        - msisdn
         - document
     ContactCheckResponse:
       type: object
@@ -307,6 +630,537 @@ components:
           type: string
           description: The business verified name, if the number is a verified business.
           example: "Acme Inc."
+    ContactListItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        push_name:
+          type: string
+          example: "Alice"
+        full_name:
+          type: string
+          example: "Alice Tan"
+        first_name:
+          type: string
+          example: "Alice"
+        business_name:
+          type: string
+          example: "Acme Inc."
+    ContactListResponse:
+      type: object
+      properties:
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactListItem'
+        count:
+          type: integer
+          description: Items in this page.
+          example: 100
+        total:
+          type: integer
+          description: Total synced contacts.
+          example: 240
+        note:
+          type: string
+          description: Honest metadata about the synced-state of the store.
+    GroupListItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The group's @g.us JID.
+          example: "120363000000000000@g.us"
+        name:
+          type: string
+          example: "Project Team"
+        topic:
+          type: string
+          example: "Release planning"
+        owner_jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        participant_count:
+          type: integer
+          example: 12
+        is_announce:
+          type: boolean
+          description: Only admins can send.
+          example: false
+        is_locked:
+          type: boolean
+          description: Only admins can edit group info.
+          example: false
+        is_community:
+          type: boolean
+          description: This group is a community parent.
+          example: false
+    GroupListResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupListItem'
+        count:
+          type: integer
+          example: 12
+    GroupParticipantItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        phone_number:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        lid:
+          type: string
+          example: "1122334455@lid"
+        is_admin:
+          type: boolean
+          example: false
+        is_super_admin:
+          type: boolean
+          example: false
+    GroupInfoResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "120363000000000000@g.us"
+        name:
+          type: string
+          example: "Project Team"
+        topic:
+          type: string
+          example: "Release planning"
+        owner_jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        participant_count:
+          type: integer
+          example: 12
+        is_announce:
+          type: boolean
+          example: false
+        is_locked:
+          type: boolean
+          example: false
+        is_community:
+          type: boolean
+          example: false
+        is_ephemeral:
+          type: boolean
+          example: false
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupParticipantItem'
+    SubGroupItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The sub-group's @g.us JID.
+          example: "120363111111111111@g.us"
+        name:
+          type: string
+          example: "Announcements"
+        is_default_sub_group:
+          type: boolean
+          description: The community's default/announcement group.
+          example: true
+    SubGroupListResponse:
+      type: object
+      properties:
+        sub_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubGroupItem'
+        count:
+          type: integer
+          example: 3
+    CommunityParticipantItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          description: The participant's primary JID (@lid or @s.whatsapp.net).
+          example: "1122334455@lid"
+    CommunityParticipantsResponse:
+      type: object
+      properties:
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunityParticipantItem'
+        count:
+          type: integer
+          example: 42
+    GroupTargetRequest:
+      type: object
+      description: Bare recipient wrapper; chat wins over the deprecated msisdn alias.
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+    ParticipantInvite:
+      type: object
+      description: Present when a privacy-blocked add was converted to an invite.
+      properties:
+        code:
+          type: string
+          example: "AbCdEf123456"
+        expires_at:
+          type: string
+          format: date-time
+    ParticipantResult:
+      type: object
+      description: >
+        Canonical per-participant outcome. A partial failure never fails the whole
+        request — it surfaces here.
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        lid:
+          type: string
+          example: "1122334455@lid"
+        status:
+          type: string
+          enum: [ok, invited, failed]
+        code:
+          type: integer
+          description: whatsmeow participant error code (when not ok).
+          example: 403
+        invite:
+          $ref: '#/components/schemas/ParticipantInvite'
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 25
+          example: "Project Team"
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890", "6289999999999"]
+        is_community:
+          type: boolean
+        linked_parent_jid:
+          type: string
+          description: Create the group inside this community (@g.us).
+        is_announce:
+          type: boolean
+        is_locked:
+          type: boolean
+        is_join_approval_required:
+          type: boolean
+    CreateGroupResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        group_info:
+          $ref: '#/components/schemas/GroupInfoResponse'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    GroupParticipantsRequest:
+      type: object
+      required: [chat, action, participants]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        action:
+          type: string
+          enum: [add, remove, promote, demote]
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890"]
+    GroupParticipantsResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        action:
+          type: string
+          example: "add"
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    GroupSettingsRequest:
+      type: object
+      required: [chat]
+      description: At least one of announce/locked must be supplied.
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        announce:
+          type: boolean
+          description: Only admins can send.
+        locked:
+          type: boolean
+          description: Only admins can edit group info.
+    GroupSettingsResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+        applied:
+          type: array
+          items:
+            type: string
+          example: ["announce", "locked"]
+    SetGroupNameRequest:
+      type: object
+      required: [chat, name]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        name:
+          type: string
+          maxLength: 25
+          example: "Release Team"
+    SetGroupTopicRequest:
+      type: object
+      required: [chat]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        topic:
+          type: string
+          maxLength: 512
+          example: "Q3 release planning"
+    GroupPhotoResponse:
+      type: object
+      properties:
+        picture_id:
+          type: string
+          example: "1673634563"
+        removed:
+          type: boolean
+    GroupInviteLinkResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        invite_link:
+          type: string
+          example: "https://chat.whatsapp.com/AbCdEf123456"
+    GroupInviteResetRequest:
+      type: object
+      required: [chat]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+    JoinGroupRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: A full chat.whatsapp.com link or a bare invite code.
+          example: "https://chat.whatsapp.com/AbCdEf123456"
+    JoinGroupResponse:
+      type: object
+      properties:
+        group_jid:
+          type: string
+          example: "120363000000000000@g.us"
+    GroupJoinRequestItem:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        requested_at:
+          type: string
+          format: date-time
+    GroupJoinRequestsResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupJoinRequestItem'
+        count:
+          type: integer
+          example: 2
+    GroupJoinRequestsActionRequest:
+      type: object
+      required: [chat, action, participants]
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        action:
+          type: string
+          enum: [approve, reject]
+        participants:
+          type: array
+          items:
+            type: string
+          example: ["6281234567890"]
+    GroupJoinRequestsActionResponse:
+      type: object
+      properties:
+        chat:
+          type: string
+          example: "120363000000000000@g.us"
+        action:
+          type: string
+          example: "approve"
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantResult'
+    CommunityLinkRequest:
+      type: object
+      required: [chat, child_jid]
+      properties:
+        chat:
+          type: string
+          description: The parent community's JID (@g.us).
+          example: "120363000000000000@g.us"
+        msisdn:
+          type: string
+          deprecated: true
+        child_jid:
+          type: string
+          description: The sub-group's JID (@g.us).
+          example: "120363111111111111@g.us"
+    ContactInfoResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        status:
+          type: string
+          description: The user's "about" / status text.
+          example: "Available"
+        picture_id:
+          type: string
+          description: Current profile picture id (use with /contact/avatar for the image).
+          example: "1234567890"
+        verified_name:
+          type: string
+          example: "Acme Inc."
+        device_count:
+          type: integer
+          description: Number of linked devices.
+          example: 2
+        lid:
+          type: string
+          example: "1122334455@lid"
+    AvatarResponse:
+      type: object
+      properties:
+        jid:
+          type: string
+          example: "6281234567890@s.whatsapp.net"
+        url:
+          type: string
+          description: Time-limited WhatsApp CDN URL; download directly.
+          example: "https://pps.whatsapp.net/v/t61.../avatar.jpg"
+        id:
+          type: string
+          description: Picture id; also returned as the ETag.
+          example: "1234567890"
+        type:
+          type: string
+          description: "\"image\" (full res) or \"preview\" (thumbnail)."
+          example: "image"
+        direct_path:
+          type: string
+          example: "/v/t61.../avatar.jpg"
+    MarkReadRequest:
+      type: object
+      properties:
+        chat:
+          type: string
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat."
+          deprecated: true
+          example: "6281234567890"
+        message_ids:
+          type: array
+          items:
+            type: string
+          description: IDs of the messages to mark as read.
+          example: ["3EB0C767D26A1D8A2C1B", "3EB0C767D26A1D8A2C1C"]
+        sender:
+          type: string
+          description: The message author (required for group chats).
+          example: "6289999999999@s.whatsapp.net"
+      required:
+        - message_ids
+    ChatPresenceRequest:
+      type: object
+      properties:
+        chat:
+          type: string
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
+        msisdn:
+          type: string
+          description: "Deprecated alias for chat."
+          deprecated: true
+          example: "6281234567890"
+        state:
+          type: string
+          enum: [composing, recording, paused]
+          description: "composing = typing…, recording = voice note, paused = cleared."
+          example: "composing"
+      required:
+        - state
     MessageDeleteRequest:
       type: object
       properties:
@@ -314,9 +1168,14 @@ components:
           type: string
           description: The ID of the message to delete.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
     MessageEditRequest:
       type: object
@@ -325,9 +1184,14 @@ components:
           type: string
           description: The ID of the message to edit.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         new_message:
           type: string
@@ -340,9 +1204,14 @@ components:
           type: string
           description: The ID of the message to react to.
           example: "msg_1234567890"
+        chat:
+          type: string
+          description: "Canonical recipient. Accepts a bare phone number, a user JID (@s.whatsapp.net), a group JID (@g.us), or a @lid. Preferred over msisdn (chat wins when both are set). Provide chat OR msisdn."
+          example: "6281234567890@s.whatsapp.net"
         msisdn:
           type: string
-          description: The recipient's Personal ID or Group ID.
+          description: "Deprecated alias for chat (resolves to a user JID). Provide chat OR msisdn."
+          deprecated: true
           example: "6281234567890@us.c"
         emoji:
           type: string
@@ -523,15 +1392,79 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IncomingMessage'
+    SessionInventoryItem:
+      type: object
+      description: Honest, per-instance view of one account (phone number masked).
+      properties:
+        phone_masked:
+          type: string
+          example: "62819104xxxx"
+        state:
+          type: string
+          enum: [connected, disconnected, never_paired, logged_out, banned]
+        source:
+          type: string
+          enum: [in-memory, store]
+        reason:
+          type: string
+        last_seen:
+          type: string
+          format: date-time
+        ban_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    SessionInventory:
+      type: object
+      properties:
+        instance:
+          type: string
+          description: Reporting node hostname (the inventory is per-instance).
+          example: gw-pod-7c9f
+        count:
+          type: integer
+          example: 2
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionInventoryItem'
+
   securitySchemes:
     accountBearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    adminBearer:
+      type: http
+      scheme: bearer
+      description: >
+        Operator-only admin plane. Set ADMIN_API_SECRET and send
+        `Authorization: Bearer <secret>`. When the secret is unset the entire
+        plane is unregistered and returns 404 (never a 401 that would confirm it
+        exists). Compared in constant time.
 
-  responses: 
+  responses:
     BadRequest:
       description: Invalid request syntax or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    IdempotencyConflict:
+      description: A request with this Idempotency-Key is already in progress.
+    IdempotencyBodyMismatch:
+      description: The Idempotency-Key was reused with a different request body.
+    RateLimited:
+      description: >
+        Outbound pacing budget exhausted, per-recipient cap hit, or the account
+        is temporarily banned. In pace mode the gateway first blocks up to
+        OUTBOUND_PACE_MAX_WAIT_SECONDS; this is returned only when that deadline
+        is exceeded (or in reject mode, immediately).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
       content:
         application/json:
           schema:
@@ -702,10 +1635,18 @@ paths:
         status, and verified business name if any. Also warms the LID<->PN
         cache, reducing send fragility.
       parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical recipient (see chat field). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
         - name: msisdn
           in: query
-          required: true
-          description: The phone number or JID to validate.
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat. Provide chat OR msisdn (at least one is required)."
           schema:
             type: string
             example: "6281234567890"
@@ -716,6 +1657,818 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContactCheckResponse'
+      security:
+        - accountBearerAuth: []
+  /contact/:
+    get:
+      tags:
+        - Contact
+      summary: List synced contacts
+      description: >
+        Lists the account's locally-synced contacts (whatsmeow address book).
+        A pure local-store read — no network call and no read budget spent. The
+        store fills in after pairing and as the account is used, so an empty or
+        partial result is normal, not an error (never 404). Paginated over a
+        stable JID sort.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: "Page size (default 100, max 500)."
+          schema:
+            type: integer
+            example: 100
+        - name: offset
+          in: query
+          required: false
+          description: "Number of contacts to skip (default 0)."
+          schema:
+            type: integer
+            example: 0
+      responses:
+        '200':
+          description: A page of synced contacts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactListResponse'
+      security:
+        - accountBearerAuth: []
+  /group/:
+    get:
+      tags:
+        - Group
+      summary: List joined groups
+      description: >
+        Lists the account's joined groups as lightweight summaries (no
+        participant roster). This hits the WhatsApp server (GetJoinedGroups), so
+        it is short-TTL cached and metered by a per-account read budget: repeat
+        polls are served from cache, and an exhausted budget returns 429. The
+        full set is returned in one call (not paginated).
+      responses:
+        '200':
+          description: The account's joined groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+    post:
+      tags:
+        - Group
+      summary: Create a group or community
+      description: >
+        Creates a group (or a community when is_community=true). The account's own
+        JID is added implicitly. Adding participants at creation is gated by
+        GROUP_ADD_PARTICIPANTS_ENABLED (403 when off); privacy-blocked or
+        non-contact members come back in results[] as invited/failed (still 201).
+        Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: The created group.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateGroupResponse'
+        '400':
+          description: name missing/too long (>25), bad participant, or over cap.
+        '403':
+          description: Adding participants is disabled (GROUP_ADD_PARTICIPANTS_ENABLED=false).
+        '404':
+          description: Group management disabled.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/info:
+    get:
+      tags:
+        - Group
+      summary: Get one group's full detail
+      description: >
+        Returns a single group's full detail including its participant roster
+        (whatsmeow GetGroupInfo, a server IQ). Requires a group JID and that the
+        account is a participant. Cached + metered by the per-account read
+        budget.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The group's detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfoResponse'
+        '400':
+          description: chat is missing or is not a group JID.
+        '403':
+          description: The account is not a participant of that group.
+        '404':
+          description: The group does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/leave:
+    post:
+      tags:
+        - Group
+      summary: Leave a group
+      description: >
+        Removes the account from a group. Allowed for non-admins. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupTargetRequest'
+      responses:
+        '200':
+          description: Left the group.
+        '400':
+          description: chat is missing or not a group JID.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/participants:
+    post:
+      tags:
+        - Group
+      summary: Add / remove / promote / demote participants
+      description: >
+        Mutates a group's roster. action=add is gated by
+        GROUP_ADD_PARTICIPANTS_ENABLED (403 when off). Per-participant failures
+        (privacy-blocked add -> invited; non-member promote -> failed) are a 200
+        partial success in results[], never an overall error. Removing/promoting/
+        demoting your own number is a 400 (use POST /group/leave). Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupParticipantsRequest'
+      responses:
+        '200':
+          description: Per-participant results (partial success).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupParticipantsResponse'
+        '400':
+          description: bad action, empty/over-cap participants, or self in remove/promote/demote.
+        '403':
+          description: action=add disabled, or the account is not an admin.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget or server rate limit exhausted.
+      security:
+        - accountBearerAuth: []
+  /group/settings:
+    patch:
+      tags:
+        - Group
+      summary: Set announce / locked
+      description: >
+        Toggles group settings. announce = only admins can send; locked = only
+        admins can edit group info. At least one flag must be supplied; flags
+        apply sequentially (best-effort — a partial apply is possible). Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupSettingsRequest'
+      responses:
+        '200':
+          description: The settings that were applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSettingsResponse'
+        '400':
+          description: chat missing/not a group, or no settings supplied.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/name:
+    patch:
+      tags:
+        - Group
+      summary: Set a group's name
+      description: >
+        Updates the group name (subject), max 25 characters. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetGroupNameRequest'
+      responses:
+        '200':
+          description: Name updated.
+        '400':
+          description: chat missing/not a group, or name empty/over 25 chars.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/topic:
+    patch:
+      tags:
+        - Group
+      summary: Set a group's topic
+      description: >
+        Updates the group topic (description), max 512 characters. An empty topic
+        clears it. Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetGroupTopicRequest'
+      responses:
+        '200':
+          description: Topic updated.
+        '400':
+          description: chat missing/not a group, or topic over 512 chars.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/photo:
+    put:
+      tags:
+        - Group
+      summary: Set a group's photo
+      description: >
+        Sets the group picture from an uploaded JPEG (multipart form). The file is
+        size-capped (MAX_UPLOAD_BYTES) and sniffed for image/jpeg. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [chat, photo]
+              properties:
+                chat:
+                  type: string
+                  example: "120363000000000000@g.us"
+                msisdn:
+                  type: string
+                  deprecated: true
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: The new picture id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupPhotoResponse'
+        '400':
+          description: chat missing/not a group, missing photo, non-JPEG, or oversize.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+    delete:
+      tags:
+        - Group
+      summary: Remove a group's photo
+      description: >
+        Clears the group picture. Accepts {chat} in the body or ?chat=. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "The target group's JID (must be @g.us). Provide in body or query."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: Photo removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupPhotoResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /group/invite:
+    get:
+      tags:
+        - Group
+      summary: Get a group's invite link (admin only)
+      description: >
+        Returns the group's invite link. Not cached (the link can be reset
+        out-of-band). Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The invite link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInviteLinkResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin, or not a participant.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/invite/reset:
+    post:
+      tags:
+        - Group
+      summary: Revoke and regenerate the invite link
+      description: >
+        Revokes the current invite link and returns a fresh one. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupInviteResetRequest'
+      responses:
+        '200':
+          description: The new invite link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInviteLinkResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Action budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/invite/info:
+    get:
+      tags:
+        - Group
+      summary: Preview a group from an invite link (no join)
+      description: >
+        Previews a group from an invite code (a full chat.whatsapp.com link or a
+        bare code) without joining. Served through the shared read cache + budget.
+        Gated by GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: "A full chat.whatsapp.com link or a bare invite code."
+          schema:
+            type: string
+            example: "https://chat.whatsapp.com/AbCdEf123456"
+      responses:
+        '200':
+          description: The group preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfoResponse'
+        '400':
+          description: The invite link is malformed/invalid.
+        '404':
+          description: Group management disabled.
+        '410':
+          description: The invite link has been revoked — request a fresh link.
+        '429':
+          description: Read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /group/join:
+    post:
+      tags:
+        - Group
+      summary: Join a group via invite link (gated)
+      description: >
+        Joins a group via an invite code. This is the mass-join vector, gated by
+        GROUP_JOIN_VIA_LINK_ENABLED (403 when off) on top of the master toggle.
+        The returned JID is either the group or a membership-approval request
+        (whatsmeow does not expose which).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinGroupRequest'
+      responses:
+        '200':
+          description: The joined (or pending) group JID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinGroupResponse'
+        '400':
+          description: The invite link is malformed/invalid.
+        '403':
+          description: Joining via link is disabled (GROUP_JOIN_VIA_LINK_ENABLED=false).
+        '404':
+          description: Group management disabled.
+        '410':
+          description: The invite link has been revoked.
+      security:
+        - accountBearerAuth: []
+  /group/requests:
+    get:
+      tags:
+        - Group
+      summary: List pending join requests
+      description: >
+        Lists a group's pending membership-approval requests. Requires admin.
+        Served through the shared read cache + budget. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The target group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The pending join requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupJoinRequestsResponse'
+        '400':
+          description: chat is missing or not a group JID.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+        '429':
+          description: Read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+    post:
+      tags:
+        - Group
+      summary: Approve / reject join requests
+      description: >
+        Approves or rejects pending join requests. Per-participant failures are a
+        200 partial success in results[], never an overall error. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupJoinRequestsActionRequest'
+      responses:
+        '200':
+          description: Per-participant results (partial success).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupJoinRequestsActionResponse'
+        '400':
+          description: bad action or empty participants.
+        '403':
+          description: The account is not an admin of this group.
+        '404':
+          description: Group management disabled, or the group does not exist.
+      security:
+        - accountBearerAuth: []
+  /community/subgroups:
+    get:
+      tags:
+        - Community
+      summary: List a community's sub-groups
+      description: >
+        Lists the groups linked under a community (whatsmeow GetSubGroups, a
+        server IQ). chat must be the community's @g.us JID. Short-TTL cached and
+        metered by the per-account read budget (429 when exhausted). A community
+        with zero sub-groups returns an empty list, not an error; a chat that is
+        a group but not a community returns 400/404.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The community's sub-groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubGroupListResponse'
+        '400':
+          description: chat is missing, is not a group JID, or is not a community.
+        '403':
+          description: The account is not authorized to read that community.
+        '404':
+          description: The community does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+    post:
+      tags:
+        - Community
+      summary: Link a sub-group to a community
+      description: >
+        Links a child group under a parent community. Requires admin on both.
+        Both chat (parent) and child_jid must be explicit @g.us JIDs. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommunityLinkRequest'
+      responses:
+        '200':
+          description: The sub-group was linked.
+        '400':
+          description: chat or child_jid missing/not a group JID.
+        '403':
+          description: The account is not an admin of the parent or child.
+        '404':
+          description: Group management disabled, or a group does not exist.
+        '409':
+          description: Already linked, or the child is itself a community.
+      security:
+        - accountBearerAuth: []
+    delete:
+      tags:
+        - Community
+      summary: Unlink a sub-group from a community
+      description: >
+        Removes a child group from a parent community. Gated by
+        GROUP_MANAGEMENT_ENABLED (404 when off).
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The parent community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+        - name: child
+          in: query
+          required: true
+          description: "The sub-group's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363111111111111@g.us"
+      responses:
+        '200':
+          description: The sub-group was unlinked.
+        '400':
+          description: chat or child missing/not a group JID.
+        '403':
+          description: The account is not an admin.
+        '404':
+          description: Group management disabled, or a group does not exist.
+      security:
+        - accountBearerAuth: []
+  /community/participants:
+    get:
+      tags:
+        - Community
+      summary: List all community participants
+      description: >
+        Lists every participant across a community's linked groups (whatsmeow
+        GetLinkedGroupsParticipants, a server IQ). Returns each participant's
+        primary JID (@lid or @s.whatsapp.net). chat must be the community's
+        @g.us JID. Cached + metered by the per-account read budget like other
+        server reads.
+      parameters:
+        - name: chat
+          in: query
+          required: true
+          description: "The community's JID (must be @g.us)."
+          schema:
+            type: string
+            example: "120363000000000000@g.us"
+      responses:
+        '200':
+          description: The community's participants.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityParticipantsResponse'
+        '400':
+          description: chat is missing, is not a group JID, or is not a community.
+        '403':
+          description: The account is not authorized to read that community.
+        '404':
+          description: The community does not exist.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /contact/info:
+    get:
+      tags:
+        - Contact
+      summary: Get a user's profile info
+      description: >
+        Returns a server-side profile lookup for one user (whatsmeow
+        GetUserInfo): status text, current picture id, verified business name,
+        and linked-device count. Cached + metered by the per-account read
+        budget. An unknown number yields a response with the JID only.
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical recipient (a user JID or bare number). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
+        - name: msisdn
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat. Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890"
+      responses:
+        '200':
+          description: The user's profile info.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfoResponse'
+        '400':
+          description: chat is missing or resolves to a group (use group/info).
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /contact/avatar:
+    get:
+      tags:
+        - Contact
+      summary: Get a chat's avatar (profile picture)
+      description: >
+        Returns a chat's profile picture (whatsmeow GetProfilePictureInfo). The
+        `chat` may be a user OR a group JID. Returns a time-limited CDN URL plus
+        the picture id; download the URL directly. The id doubles as the `ETag`
+        — send it back via `If-None-Match` on the next call to get `304 Not
+        Modified` when the picture hasn't changed. Cached + metered by the
+        per-account read budget (the `If-None-Match` freshness check bypasses the
+        cache but still spends budget).
+      parameters:
+        - name: chat
+          in: query
+          required: false
+          description: "Canonical chat (user or group JID, or bare number). Provide chat OR msisdn."
+          schema:
+            type: string
+            example: "6281234567890@s.whatsapp.net"
+        - name: msisdn
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated alias for chat."
+          schema:
+            type: string
+            example: "6281234567890"
+        - name: preview
+          in: query
+          required: false
+          description: "true returns the low-res thumbnail; false (default) the full-res image."
+          schema:
+            type: boolean
+            example: false
+        - name: If-None-Match
+          in: header
+          required: false
+          description: "A previously returned avatar ETag. When it still matches, the response is 304."
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The chat's avatar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarResponse'
+        '304':
+          description: The avatar is unchanged relative to the supplied If-None-Match.
+        '403':
+          description: The target has hidden their profile picture from you.
+        '404':
+          description: The target has no profile picture set.
+        '429':
+          description: Per-account read budget exhausted; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /message/read:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Mark messages as read
+      description: >
+        Marks one or more messages in a chat as read (blue ticks). For a group
+        chat, `sender` (the message author's number/JID) is required so the
+        receipt is attributed. Paced by the outbound pacer (429 when the
+        per-account/per-recipient budget is exhausted).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkReadRequest'
+      responses:
+        '200':
+          description: Messages marked as read.
+        '400':
+          description: Missing message_ids, or a group chat without sender.
+        '429':
+          description: Action rate limit exceeded; retry after the indicated delay.
+      security:
+        - accountBearerAuth: []
+  /chat/presence:
+    post:
+      tags:
+        - Whatsapp Message
+      summary: Set the typing indicator
+      description: >
+        Sets the chat presence (typing indicator). `state` is `composing`
+        (typing…), `recording` (recording a voice note; sent as composing +
+        audio), or `paused`. The indicator auto-expires client-side after a few
+        seconds, so an explicit `paused` is optional. Paced by the outbound
+        pacer (429 when the per-account/per-recipient budget is exhausted).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatPresenceRequest'
+      responses:
+        '200':
+          description: Presence sent.
+        '400':
+          description: Invalid or missing state.
+        '429':
+          description: Action rate limit exceeded; retry after the indicated delay.
       security:
         - accountBearerAuth: []
   /session/reconnect:
@@ -762,12 +2515,15 @@ paths:
     get:
       tags:
         - Whatsapp Webhook
-      summary: Get registered webhook URL
+      summary: List webhook subscriptions
       description: >
-        Retrieves the currently registered webhook URL for receiving WhatsApp events.
+        Lists the account's webhook subscriptions. The top-level `url` is kept
+        for back-compat (the first subscription's url, or empty) alongside the
+        additive `subscriptions` array. The HMAC secret is never returned, only
+        `has_hmac`.
       responses:
         '200':
-          description: Webhook URL retrieved successfully.
+          description: Subscriptions retrieved successfully.
           content:
             application/json:
               schema:
@@ -775,16 +2531,22 @@ paths:
                 properties:
                   url:
                     type: string
-                    description: The registered webhook URL.
+                    description: First subscription's url (back-compat), or empty.
                     example: "https://example.com/webhook"
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookSubscription'
       security:
         - accountBearerAuth: []
     post:
       tags:
         - Whatsapp Webhook
-      summary: Register a webhook URL
+      summary: Register or update a webhook subscription
       description: >
-        Registers a URL to receive WhatsApp webhook events. Optionally, a secret can be provided for validation.
+        Registers (upserts) one webhook subscription. Optionally a signing
+        secret and an `events` filter can be supplied; an omitted/empty filter
+        receives all events. Requires the client to be logged in.
       requestBody:
         required: true
         content:
@@ -793,7 +2555,7 @@ paths:
               $ref: '#/components/schemas/WebhookRegisterRequest'
       responses:
         '200':
-          description: Webhook URL registered successfully.
+          description: Subscription registered successfully.
           content:
             application/json:
               schema:
@@ -802,17 +2564,33 @@ paths:
                   success:
                     type: boolean
                     example: true
+        '400':
+          description: Invalid URL or an unknown event type in `events`.
+        '409':
+          description: Client not logged in.
       security:
         - accountBearerAuth: []
     delete:
       tags:
         - Whatsapp Webhook
-      summary: Unregister the webhook URL
+      summary: Unregister webhook subscriptions
       description: >
-        Unregisters the currently registered webhook URL.
+        With no request body, deletes ALL subscriptions for the account (legacy
+        semantics). With body `{"url": "..."}`, deletes only that subscription.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: The subscription URL to delete; omit to delete all.
+                  example: "https://example.com/webhook"
       responses:
         '200':
-          description: Webhook URL unregistered successfully.
+          description: Subscription(s) unregistered successfully.
           content:
             application/json:
               schema:
@@ -843,6 +2621,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/image:
@@ -865,6 +2651,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/location:
@@ -893,6 +2687,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/poll:
@@ -921,6 +2723,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/sticker:
@@ -949,6 +2759,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/audio:
@@ -980,6 +2798,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/video:
@@ -1010,6 +2836,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/document:
@@ -1040,6 +2874,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SendMessageQueuedResponse'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyBodyMismatch'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       security:
         - accountBearerAuth: []
   /message/react:
@@ -1155,6 +2997,94 @@ paths:
       security:
         - accountBearerAuth: []
 
+  /admin/sessions:
+    get:
+      tags:
+        - Admin
+      x-root-path: true
+      summary: List session inventory (operator-only)
+      description: >
+        Per-instance inventory of every account this node knows about, merged
+        from the in-memory client set, the device store, and persisted lifecycle
+        status into honest states (connected / disconnected / never_paired /
+        logged_out / banned). Served at the ROOT path (NOT under /api/v1).
+        Bearer-gated by ADMIN_API_SECRET; when the secret is unset the route is
+        not registered and returns 404 (dark by default). Cross-tenant by design
+        (operator visibility); phone numbers are masked. The view is
+        per-instance — a device with no live client here may be live on another
+        node.
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Session inventory (empty node -> count 0, never an error).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInventory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Admin plane disabled (ADMIN_API_SECRET unset) or route absent.
+  /admin/sessions/{phone}:
+    get:
+      tags:
+        - Admin
+      x-root-path: true
+      summary: Get one account's session state (operator-only)
+      description: >
+        Single-account view by bare phone number (no normalization). Served at
+        the ROOT path; bearer-gated by ADMIN_API_SECRET (404 when unset).
+      security:
+        - adminBearer: []
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "6281910481554"
+      responses:
+        '200':
+          description: The account's merged session state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance:
+                    type: string
+                  session:
+                    $ref: '#/components/schemas/SessionInventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such account on this instance (or admin plane disabled).
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      x-root-path: true
+      summary: Prometheus metrics (operator-only)
+      description: >
+        Hand-rolled Prometheus text exposition. Served at the ROOT path; gated by
+        METRICS_ENABLED (default false) AND the admin bearer (unreachable without
+        ADMIN_API_SECRET). Series: `whatsapp_gateway_messages_total{type,mode,result}`,
+        `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, and
+        `whatsapp_gateway_sessions{state}` (gauge). Never labelled by phone number.
+      security:
+        - adminBearer: []
+      responses:
+        '200':
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Metrics disabled (METRICS_ENABLED false) or admin plane unset.
 webhooks:
   outgoingWebhook:
     post:

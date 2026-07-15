@@ -203,7 +203,64 @@ The `/register` endpoint is throttled per client IP to prevent brute-forcing of 
 - **Example**: `REGISTER_RATE_LIMIT_DURATION_SECONDS=60`
 - **Over-budget response**: `429 Too Many Requests` with a `Retry-After` header (seconds). The limiter fails open on internal errors.
 
-> Outbound **message** sends are gated separately by the existing `MESSAGE_RATE_LIMIT_*` variables.
+> Outbound sends are now governed primarily by the **outbound pacer** (`OUTBOUND_PACE_*`, see below); the `MESSAGE_RATE_LIMIT_*` variables above are the **fallback** limiter, used only when `OUTBOUND_PACE_ENABLED=false`.
+
+---
+
+### Outbound Pacing Configuration
+
+A single shared in-process **pacer** governs **every** outbound WhatsApp action — all `POST /message/*` sends, react, edit, delete, mark-read, typing/presence, and all group/community mutations — in **both** direct and queue modes, in three ordered layers:
+
+1. **Ban gate** — while the account is under a WhatsApp temporary ban (read from the persisted `session_status` store) the action is rejected with `429` until the ban expires (auto-resume).
+2. **Per-recipient hard cap** — too many actions to the *same* recipient within a window is rejected with `429`, never paced or queued.
+3. **Per-account token-bucket pace** — a sustained rate with burst; in `pace` mode a call **blocks/waits** (bounded) for a token, in `reject` mode it returns `429` immediately when over budget.
+
+This is the **primary** outbound governor; when `OUTBOUND_PACE_ENABLED=false` the pacer is bypassed and sends fall back to the legacy reject-only `MESSAGE_RATE_LIMIT_*` limiter. The pacer is **per gateway instance** (single-node, not distributed) — a multi-instance deployment needs an external limiter or the RabbitMQ queue for a cluster-wide ceiling.
+
+#### `OUTBOUND_PACE_ENABLED`
+- **Description**: Master toggle for the outbound pacer. When `false` the pacer is bypassed and outbound sends fall back to the legacy reject-only `MESSAGE_RATE_LIMIT_*` limiter.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `OUTBOUND_PACE_MODE`
+- **Description**: `pace` **blocks/waits** for a token (up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` + jitter) before returning `429`; `reject` never waits — an over-budget call is an immediate `429`.
+- **Type**: String (`pace` | `reject`)
+- **Default**: `pace`
+
+#### `OUTBOUND_PACE_RATE_PER_SECOND`
+- **Description**: Sustained per-account token-bucket refill rate (tokens per second) for the pace layer.
+- **Type**: Integer
+- **Default**: `1`
+
+#### `OUTBOUND_PACE_BURST`
+- **Description**: Token-bucket burst capacity — how many actions can fire back-to-back before the sustained rate applies.
+- **Type**: Integer
+- **Default**: `5`
+
+#### `OUTBOUND_PACE_MAX_WAIT_SECONDS`
+- **Description**: In `pace` mode, the maximum time a call blocks waiting for a token before giving up with `429`.
+- **Type**: Integer (seconds)
+- **Default**: `30`
+
+#### `OUTBOUND_PACE_JITTER_MS`
+- **Description**: Upper bound of random jitter added to the pace wait/deadline, so sends don't align on exact tick boundaries.
+- **Type**: Integer (milliseconds)
+- **Default**: `250`
+
+#### `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS`
+- **Description**: Per-recipient hard cap — more than this many actions to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` is rejected with `429` (never paced/queued).
+- **Type**: Integer
+- **Default**: `10`
+
+#### `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS`
+- **Description**: The rolling window over which `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` is counted.
+- **Type**: Integer (seconds)
+- **Default**: `60`
+
+#### `OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS`
+- **Description**: Fallback hold applied by the ban gate when a temporary ban carries no explicit `ban_expires_at` — outbound actions are `429`d for this long before auto-resuming.
+- **Type**: Integer (seconds)
+- **Default**: `3600`
 
 ---
 
@@ -215,6 +272,137 @@ The `/register` endpoint is throttled per client IP to prevent brute-forcing of 
 - **Default**: `16777216` (16 MiB)
 - **Example**: `MAX_UPLOAD_BYTES=33554432` (32 MiB)
 - **MIME allow-lists**: In addition to the size cap, `image`/`sticker`/`audio`/`video` uploads are validated against a per-kind MIME allow-list. Disguised payloads (e.g. a binary sent as an image) are rejected with `400`. Documents accept any mimetype. PTT voice notes opt out of MIME sniffing (opus/ogg is unidentifiable) and default to `audio/ogg; codecs=opus` server-side.
+
+---
+
+### Read / Query Surface Configuration
+
+Server-hitting reads (joined groups; later profiles/avatars) are short-TTL **cached** and metered by a **per-account budget** so a polling caller cannot trip WhatsApp anti-spam. A budget token is spent **only on a cache miss** — cache hits are free. Local-store reads (e.g. `GET /contact/`) are never metered.
+
+#### `READ_QUERY_CACHE_TTL_SECONDS`
+- **Description**: How long a server-hitting read stays cached before the next call re-fetches from WhatsApp.
+- **Type**: Integer (seconds)
+- **Default**: `300`
+
+#### `READ_QUERY_BUDGET`
+- **Description**: Maximum cache-miss reads per account per window before requests receive `429 Too Many Requests` (with `Retry-After`).
+- **Type**: Integer
+- **Default**: `30`
+
+#### `READ_QUERY_WINDOW_SECONDS`
+- **Description**: The rolling window over which `READ_QUERY_BUDGET` is counted.
+- **Type**: Integer (seconds)
+- **Default**: `60`
+
+---
+
+### Group & Community Management Configuration
+
+Group/community **mutations** are the highest-ban-risk surface. They are gated by a master toggle plus two default-off gates over the specific bulk/mass vectors. Group/community **reads** (`GET /group/`, `GET /group/info`, `GET /community/subgroups`, `GET /community/participants`) are always available regardless of these settings.
+
+#### `GROUP_MANAGEMENT_ENABLED`
+- **Description**: Master toggle for the entire mutation surface (create/leave/participants/settings/name/topic/photo, invite links, join-via-link, join-requests, community link/unlink). When `false` those routes are **never registered**, so the whole surface returns `404` (hidden entirely); reads stay up.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `GROUP_ADD_PARTICIPANTS_ENABLED`
+- **Description**: Gates **bulk participant add** — `POST /group/participants` with `action=add`, and adding participants at create time (`POST /group/` with a non-empty `participants`). When `false` those requests return `403` (checked in the usecase, before any server call); remove/promote/demote/settings/name/topic/photo/leave are unaffected. Now defaults **on** — the outbound pacer + ban gate cover the bulk-add ban risk this gate guarded as an interim measure; set it to `false` to hard-disable bulk add.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `GROUP_JOIN_VIA_LINK_ENABLED`
+- **Description**: Gates `POST /group/join` — the mass-join vector. When `false` it returns `403`. Now defaults **on** — outbound pacing + the ban gate cover the mass-join ban risk; set it to `false` to hard-disable join-via-link.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `GROUP_MAX_PARTICIPANTS_PER_REQUEST`
+- **Description**: Caps how many participants a single batch (add/remove/promote/demote, approve/reject) may carry; an over-cap request is `400` before the server call. `0` disables the cap.
+- **Type**: Integer
+- **Default**: `256`
+
+---
+
+### Send Idempotency Configuration
+
+Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A duplicate key **replays** the original response (with `Idempotent-Replay: true`) rather than sending again; an in-flight duplicate returns `409`; reusing a key with a **different** request body returns `422`. Dedup is DB-backed and keyed by the **JWT phone number + key** (never the body — one Account cannot spoof another's namespace), so it survives restarts and is shared across instances. In queue mode this is **enqueued-once, not delivered-once**.
+
+#### `IDEMPOTENCY_TTL_SECONDS`
+- **Description**: How long a completed response stays replayable; also the retention bound a background sweeper enforces on the `idempotency_keys` table.
+- **Type**: Integer (seconds)
+- **Default**: `86400` (24h)
+
+#### `IDEMPOTENCY_PENDING_TIMEOUT_SECONDS`
+- **Description**: If a request crashes after reserving a key but before completing, its row stays `pending`. After this timeout a retry may take the key over instead of receiving `409` indefinitely.
+- **Type**: Integer (seconds)
+- **Default**: `30`
+
+---
+
+### Graceful Shutdown Configuration
+
+#### `SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS`
+- **Description**: Overall bound for cleanly disconnecting all WhatsApp clients on shutdown, **before** the database is closed. A hung client is skipped so shutdown never blocks past this bound.
+- **Type**: Integer (seconds)
+- **Default**: `10`
+
+---
+
+### Admin / Metrics Plane Configuration
+
+An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, and `GET /metrics`. It is **dark by default** — with no `ADMIN_API_SECRET` the routes are never registered and return `404` (never a `401` that would confirm the plane exists). The plane is cross-tenant by design (operator visibility) and the inventory is **per-instance**: a device with no live client on this node may be live on another.
+
+#### `ADMIN_API_SECRET`
+- **Description**: Bearer secret for `/admin/*` and `/metrics`. Empty disables (unregisters) the whole plane. When set, requests must send `Authorization: Bearer <secret>`, compared in constant time (`crypto/subtle`).
+- **Type**: String
+- **Default**: `""` (disabled)
+
+#### `METRICS_ENABLED`
+- **Description**: Exposes `GET /metrics` (hand-rolled Prometheus text exposition). Still requires `ADMIN_API_SECRET` to be reachable (same bearer-gated plane). Series: `whatsapp_gateway_messages_total{type,mode,result}`, `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, `whatsapp_gateway_sessions{state}` (gauge). A phone number is **never** a metric label (cardinality).
+- **Type**: Boolean
+- **Default**: `false`
+
+---
+
+### Webhook Subscriptions & Status Events
+
+Each account can register **multiple** webhook subscriptions, each with an
+optional per-subscription `events` filter (`POST /webhook` with `events: [...]`).
+An empty/omitted filter receives **all** events. Event catalog:
+`message.incoming`, `message.queued`, `message.sent`, `message.failed`,
+`session.logged_out`, `session.banned`, `session.connect_failure`,
+`session.connected`, `session.disconnected`, `session.replaced`. The `session.*`
+lifecycle events are **not** gated by `WEBHOOK_STATUS_EVENTS_ENABLED` (that flag
+only gates the `message.queued/sent/failed` family).
+`GET /webhook` returns the legacy top-level `url` (first subscription) plus a
+`subscriptions[]` array (`url`, `events`, `has_hmac`); the HMAC secret is never
+returned. `DELETE /webhook` with no body clears all subscriptions; with
+`{"url": "..."}` it removes one.
+
+#### `WEBHOOK_STATUS_EVENTS_ENABLED`
+- **Description**: Master kill-switch for the `message.queued/sent/failed` status family. When `false`, no status webhook fires regardless of per-subscription filters. `message.incoming` is not gated by this flag.
+- **Type**: Boolean
+- **Default**: `true`
+
+#### `WEBHOOK_STATUS_EVENTS`
+- **Description**: **Deprecated** — superseded by the per-subscription `events` filter. Still read for back-compat, but a subscription registered with an empty filter now receives all events. Prefer setting `events` per URL.
+- **Type**: Comma-separated string
+- **Default**: `message.sent,message.failed`
+
+---
+
+### Direct-mode Webhook Retry Configuration
+
+Direct-mode status webhooks (`message.queued` / `message.sent` / `message.failed`) are delivered asynchronously with bounded exponential backoff on a detached context, so a retry outlives the HTTP request. Best-effort (drop-on-full, no DLQ); durable delivery requires RabbitMQ. Queue mode keeps its own RabbitMQ-level retry and is not double-retried.
+
+#### `WEBHOOK_MAX_RETRIES`
+- **Description**: Maximum retry attempts (beyond the first) for a direct-mode webhook delivery. Capped internally at 10.
+- **Type**: Integer
+- **Default**: `3`
+
+#### `WEBHOOK_RETRY_BACKOFF_SECONDS`
+- **Description**: Base backoff for the exponential retry schedule (`base`, `base×2`, `base×4`, …).
+- **Type**: Integer (seconds)
+- **Default**: `2`
 
 ---
 

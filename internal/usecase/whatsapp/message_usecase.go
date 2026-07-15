@@ -16,10 +16,12 @@ import (
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
 	domainQueue "github.com/glennprays/whatsapp-gateway/domain/queue"
 	waDomain "github.com/glennprays/whatsapp-gateway/domain/whatsapp"
+	"github.com/glennprays/whatsapp-gateway/internal/metrics"
 	"github.com/glennprays/whatsapp-gateway/internal/queue"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/glennprays/whatsapp-gateway/pkg/ratelimiter"
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow/types"
 )
 
 const (
@@ -75,32 +77,46 @@ func validateMediaMime(kind, detectedMime string) error {
 }
 
 // validJIDServers are the WhatsApp address spaces a recipient may target.
+// `broadcast` is intentionally excluded: whatsmeow does not support sending to
+// non-status broadcast lists, so we reject it early (400) instead of letting it
+// fail late as a confusing 500.
 var validJIDServers = map[string]bool{
 	"s.whatsapp.net": true, // individual user
 	"g.us":           true, // group
 	"lid":            true, // privacy-preserving linked id
-	"broadcast":      true, // broadcast / status list
 }
 
-// validateRecipient trims and normalizes a recipient identifier into a JID.
+// resolveChat resolves the canonical recipient JID from a request's `chat`
+// field (preferred) or the legacy `msisdn` alias — chat wins when both are set.
 // A bare phone number (optionally with +, spaces or dashes) becomes
-// "<digits>@s.whatsapp.net"; a value already in JID form must use a known
-// server. Empty or otherwise invalid input returns a 400-mapped domain error
-// instead of letting whatsmeow fail later with a confusing 500
-// ("can't send message to unknown server").
-func validateRecipient(msisdn string) (string, error) {
-	v := strings.TrimSpace(msisdn)
+// "<digits>@s.whatsapp.net". A value already in JID form must use a known
+// server (s.whatsapp.net, g.us, lid) with a digits-only user; any device/agent
+// suffix is stripped and the server is lowercased to the canonical non-AD form.
+// Empty or otherwise invalid input returns a 400-mapped domain error instead of
+// letting whatsmeow fail later with a confusing 500.
+func resolveChat(chat, msisdn string) (string, error) {
+	v := strings.TrimSpace(chat)
+	if v == "" {
+		v = strings.TrimSpace(msisdn)
+	}
 	if v == "" {
 		return "", errDomain.NewError(errDomain.ErrBadRequest,
-			errors.New("recipient (msisdn) is required"))
+			errors.New("chat (or msisdn) is required"))
 	}
 
-	if user, server, found := strings.Cut(v, "@"); found {
-		if user == "" || !validJIDServers[server] {
+	if strings.ContainsRune(v, '@') {
+		jid, err := types.ParseJID(v)
+		if err != nil || !isAllDigits(jid.User) {
 			return "", errDomain.NewError(errDomain.ErrBadRequest,
-				fmt.Errorf("invalid recipient %q", msisdn))
+				fmt.Errorf("invalid recipient %q", v))
 		}
-		return v, nil
+		server := strings.ToLower(jid.Server)
+		if !validJIDServers[server] {
+			return "", errDomain.NewError(errDomain.ErrBadRequest,
+				fmt.Errorf("invalid recipient %q", v))
+		}
+		// Canonical non-AD form: user@server with device/agent stripped.
+		return jid.User + "@" + server, nil
 	}
 
 	// Bare number: keep digits only, then attach the individual-user server.
@@ -112,9 +128,22 @@ func validateRecipient(msisdn string) (string, error) {
 	}, strings.TrimPrefix(v, "+"))
 	if digits == "" {
 		return "", errDomain.NewError(errDomain.ErrBadRequest,
-			fmt.Errorf("invalid recipient %q", msisdn))
+			fmt.Errorf("invalid recipient %q", v))
 	}
 	return digits + "@s.whatsapp.net", nil
+}
+
+// isAllDigits reports whether s is non-empty and contains only ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // WhatsappMessageUsecase handles message operations business logic
@@ -126,7 +155,9 @@ type WhatsappMessageUsecase struct {
 	whatsappRepo    whatsapp.WhatsAppRepository
 	webhookSender   *whatsapp.WebhookSender
 	config          *config.Config
-	limiter         ratelimiter.Limiter
+	pacer           *ratelimiter.Pacer  // outbound pacer (supersedes the interim action cap)
+	queryCache      *ttlCache           // short-TTL cache for server-hitting reads
+	queryBudget     ratelimiter.Limiter // per-account read budget (spent on cache miss)
 }
 
 // NewWhatsappMessageUsecase creates a new message usecase
@@ -138,7 +169,7 @@ func NewWhatsappMessageUsecase(
 	whatsappRepo whatsapp.WhatsAppRepository,
 	webhookSender *whatsapp.WebhookSender,
 	cfg *config.Config,
-	limiter ratelimiter.Limiter,
+	pacer *ratelimiter.Pacer,
 ) *WhatsappMessageUsecase {
 	return &WhatsappMessageUsecase{
 		whatsappManager: manager,
@@ -148,8 +179,31 @@ func NewWhatsappMessageUsecase(
 		whatsappRepo:    whatsappRepo,
 		webhookSender:   webhookSender,
 		config:          cfg,
-		limiter:         limiter,
+		pacer:           pacer,
+		queryCache:      newTTLCache(time.Duration(cfg.ReadQueryCacheTTLSeconds) * time.Second),
+		queryBudget:     newQueryBudget(cfg.ReadQueryBudget, cfg.ReadQueryWindowSeconds),
 	}
+}
+
+// pace clears an outbound op through the pacer, mapping a *RateLimitError to a
+// 429 domain error (with a Retry-After hint) and any infra error to a 500. It
+// supersedes the interim spendActionBudget cap and the per-send limiter.Allow.
+// recipient is the resolved chat/JID (or group JID); n is one token per op
+// (len(participants) for a bulk group add).
+func (uc *WhatsappMessageUsecase) pace(ctx context.Context, phone, recipient string, n int64) error {
+	if uc.pacer == nil {
+		return nil
+	}
+	err := uc.pacer.Wait(ctx, phone, recipient, n)
+	if err == nil {
+		return nil
+	}
+	var rl *ratelimiter.RateLimitError
+	if errors.As(err, &rl) {
+		return errDomain.NewError(errDomain.ErrTooManyRequests,
+			fmt.Errorf("rate limited; retry after %ds", int(rl.RetryAfter.Seconds())+1))
+	}
+	return errDomain.NewError(errDomain.ErrInternalFailure, err)
 }
 
 // SendTextMessage sends a text message (queued or direct)
@@ -158,7 +212,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendTextMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -168,19 +222,28 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 		return nil, nil, err
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// Check if queue is enabled and healthy
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		// Queue mode: enqueue job
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "text",
-			To:          req.Msisdn,
-			Text:        req.Message,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "text",
+			To:            req.Msisdn,
+			Text:          req.Message,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -201,36 +264,24 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 
 			// Send message.queued webhook
 			uc.sendQueuedWebhook(ctx, traceID, job)
+			metrics.RecordSend(job.Type, "queue", nil)
 
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
 				Status:  "queued",
 				JobID:   jobID,
+				Chat:    req.Msisdn,
 			}, nil
 		}
 	}
 
 	// Direct mode (or fallback): immediate send
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		uc.logger.Error(traceID, "Rate limiter error", map[string]interface{}{
-			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
-		}, customLog.Error(err))
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
-	if !res.Allowed {
-		uc.logger.Warn(traceID, "Rate limit exceeded", map[string]interface{}{
-			"phone_number": whatsapp.MaskedPhoneNumber(phoneNumber),
-			"limit":        res.Limit,
-			"retry_after":  res.RetryAfter.Seconds(),
-			"reset_after":  res.ResetAfter.Seconds(),
-			"remaining":    res.Remaining,
-		})
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, errors.New(fmt.Sprintf("Rate limit exceeded. Retry after %.0f seconds", res.RetryAfter.Seconds())))
-	}
-
-	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message)
+	messageID, err := uc.whatsappManager.SendTextMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Message, msgCtx)
+	metrics.RecordSend("text", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send text message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -250,6 +301,7 @@ func (uc *WhatsappMessageUsecase) SendTextMessage(
 	return &waDomain.SendMessageResponse{
 		Success:   true,
 		MessageID: messageID,
+		Chat:      req.Msisdn,
 	}, nil, nil
 }
 
@@ -261,13 +313,18 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	fileHeader *multipart.FileHeader,
 	isViewOnce bool,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Msisdn = to
 
 	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -298,16 +355,20 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 		jobID := uuid.New().String()
 
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "image",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(imageBytes),
-			MimeType:    mimeType,
-			Caption:     req.Caption,
-			IsViewOnce:  isViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "image",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(imageBytes),
+			MimeType:      mimeType,
+			Caption:       req.Caption,
+			IsViewOnce:    isViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -328,17 +389,24 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 
 			// Send message.queued webhook
 			uc.sendQueuedWebhook(ctx, traceID, job)
+			metrics.RecordSend(job.Type, "queue", nil)
 
 			return nil, &waDomain.SendMessageQueuedResponse{
 				Success: true,
 				Status:  "queued",
 				JobID:   jobID,
+				Chat:    req.Msisdn,
 			}, nil
 		}
 	}
 
 	// Direct mode (or fallback): immediate send
-	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce)
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
+	messageID, err := uc.whatsappManager.SendImageMessage(ctx, traceID, phoneNumber, req.Msisdn, imageBytes, mimeType, req.Caption, isViewOnce, msgCtx)
+	metrics.RecordSend("image", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send image message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -358,6 +426,7 @@ func (uc *WhatsappMessageUsecase) SendImageMessage(
 	return &waDomain.SendMessageResponse{
 		Success:   true,
 		MessageID: messageID,
+		Chat:      req.Msisdn,
 	}, nil, nil
 }
 
@@ -369,11 +438,16 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	req waDomain.SendAudioMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Msisdn = to
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
@@ -405,16 +479,20 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "audio",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(audioBytes),
-			MimeType:    mimeType,
-			IsPTT:       req.IsPTT,
-			IsViewOnce:  req.IsViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "audio",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(audioBytes),
+			MimeType:      mimeType,
+			IsPTT:         req.IsPTT,
+			IsViewOnce:    req.IsViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -428,11 +506,16 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce)
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
+	messageID, err := uc.whatsappManager.SendAudioMessage(ctx, traceID, phoneNumber, req.Msisdn, audioBytes, mimeType, req.IsPTT, req.IsViewOnce, msgCtx)
+	metrics.RecordSend("audio", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send audio message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -444,7 +527,7 @@ func (uc *WhatsappMessageUsecase) SendAudioMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendVideoMessage sends a video message (queued or direct).
@@ -454,13 +537,18 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	req waDomain.SendVideoMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Msisdn = to
 
 	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -488,17 +576,21 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "video",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(videoBytes),
-			MimeType:    mimeType,
-			Caption:     req.Caption,
-			IsGif:       req.IsGif,
-			IsViewOnce:  req.IsViewOnce,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "video",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(videoBytes),
+			MimeType:      mimeType,
+			Caption:       req.Caption,
+			IsGif:         req.IsGif,
+			IsViewOnce:    req.IsViewOnce,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -512,11 +604,16 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce)
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
+	messageID, err := uc.whatsappManager.SendVideoMessage(ctx, traceID, phoneNumber, req.Msisdn, videoBytes, mimeType, req.Caption, req.IsGif, req.IsViewOnce, msgCtx)
+	metrics.RecordSend("video", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send video message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -528,7 +625,7 @@ func (uc *WhatsappMessageUsecase) SendVideoMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendDocumentMessage sends a document (file) message (queued or direct).
@@ -538,13 +635,18 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	req waDomain.SendDocumentMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Msisdn = to
 
 	if err := validateLength(req.Caption, "caption", maxCaptionLen); err != nil {
+		return nil, nil, err
+	}
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -577,16 +679,20 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "document",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(docBytes),
-			MimeType:    mimeType,
-			FileName:    req.FileName,
-			Caption:     req.Caption,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "document",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(docBytes),
+			MimeType:      mimeType,
+			FileName:      req.FileName,
+			Caption:       req.Caption,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -600,11 +706,16 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption)
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
+	}
+
+	messageID, err := uc.whatsappManager.SendDocumentMessage(ctx, traceID, phoneNumber, req.Msisdn, docBytes, mimeType, req.FileName, req.Caption, msgCtx)
+	metrics.RecordSend("document", "direct", err)
 	if err != nil {
 		uc.logger.Error(traceID, "Failed to send document message", nil,
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
@@ -616,7 +727,7 @@ func (uc *WhatsappMessageUsecase) SendDocumentMessage(
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendLocationMessage sends a location message (queued or direct)
@@ -625,7 +736,7 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendLocationMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -635,6 +746,11 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 		return nil, nil, err
 	}
 	if err := validateLength(req.Address, "address", maxLocationAddress); err != nil {
+		return nil, nil, err
+	}
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -650,6 +766,10 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 			Longitude:       req.Longitude,
 			LocationName:    req.Name,
 			LocationAddress: req.Address,
+			ReplyToID:       msgCtx.ReplyToID,
+			ReplyToSender:   msgCtx.ReplyToSender,
+			ReplyToText:     msgCtx.ReplyToText,
+			Mentions:        msgCtx.Mentions,
 			CreatedAt:       time.Now().Unix(),
 		}
 
@@ -663,26 +783,23 @@ func (uc *WhatsappMessageUsecase) SendLocationMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
-	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address)
+	messageID, err := uc.whatsappManager.SendLocationMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Latitude, req.Longitude, req.Name, req.Address, msgCtx)
+	metrics.RecordSend("location", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendPollMessage sends a poll message (queued or direct)
@@ -691,7 +808,7 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 	traceID, phoneNumber string,
 	req waDomain.SendPollMessageRequest,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -712,6 +829,11 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 		}
 	}
 
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
@@ -723,6 +845,10 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 			Question:        req.Question,
 			Options:         req.Options,
 			SelectableCount: req.SelectableCount,
+			ReplyToID:       msgCtx.ReplyToID,
+			ReplyToSender:   msgCtx.ReplyToSender,
+			ReplyToText:     msgCtx.ReplyToText,
+			Mentions:        msgCtx.Mentions,
 			CreatedAt:       time.Now().Unix(),
 		}
 
@@ -736,26 +862,23 @@ func (uc *WhatsappMessageUsecase) SendPollMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
-	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount)
+	messageID, err := uc.whatsappManager.SendPollMessage(ctx, traceID, phoneNumber, req.Msisdn, req.Question, req.Options, req.SelectableCount, msgCtx)
+	metrics.RecordSend("poll", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // SendStickerMessage sends a sticker message (queued or direct)
@@ -765,11 +888,16 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	req waDomain.SendStickerMessageRequest,
 	fileHeader *multipart.FileHeader,
 ) (*waDomain.SendMessageResponse, *waDomain.SendMessageQueuedResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Msisdn = to
+
+	msgCtx, err := uc.buildMessageContext(req.ReplyToID, req.ReplyToSender, req.ReplyToText, req.Mentions)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if err := uc.validateMediaSize(fileHeader.Size); err != nil {
 		return nil, nil, err
@@ -793,14 +921,18 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 	if uc.queue != nil && uc.queue.IsHealthy() {
 		jobID := uuid.New().String()
 		job := domainQueue.OutgoingMessageJob{
-			TraceID:     traceID,
-			JobID:       jobID,
-			PhoneNumber: phoneNumber,
-			Type:        "sticker",
-			To:          req.Msisdn,
-			ImageData:   base64.StdEncoding.EncodeToString(stickerBytes),
-			MimeType:    mimeType,
-			CreatedAt:   time.Now().Unix(),
+			TraceID:       traceID,
+			JobID:         jobID,
+			PhoneNumber:   phoneNumber,
+			Type:          "sticker",
+			To:            req.Msisdn,
+			ImageData:     base64.StdEncoding.EncodeToString(stickerBytes),
+			MimeType:      mimeType,
+			ReplyToID:     msgCtx.ReplyToID,
+			ReplyToSender: msgCtx.ReplyToSender,
+			ReplyToText:   msgCtx.ReplyToText,
+			Mentions:      msgCtx.Mentions,
+			CreatedAt:     time.Now().Unix(),
 		}
 
 		if err := uc.queue.PublishOutgoingMessage(ctx, job); err != nil {
@@ -813,26 +945,23 @@ func (uc *WhatsappMessageUsecase) SendStickerMessage(
 				uc.logger.Error(traceID, "Failed to create job record", nil, customLog.String("job_id", jobID), customLog.Error(err))
 			}
 			uc.sendQueuedWebhook(ctx, traceID, job)
-			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID}, nil
+			return nil, &waDomain.SendMessageQueuedResponse{Success: true, Status: "queued", JobID: jobID, Chat: req.Msisdn}, nil
 		}
 	}
 
-	res, err := uc.limiter.Allow(ctx, phoneNumber)
-	if err != nil {
-		return nil, nil, errDomain.NewError(errDomain.ErrInternalFailure, err)
-	}
-	if !res.Allowed {
-		return nil, nil, errDomain.NewError(errDomain.ErrTooManyRequests, fmt.Errorf("rate limit exceeded, retry after %.0f seconds", res.RetryAfter.Seconds()))
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return nil, nil, err
 	}
 
-	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType)
+	messageID, err := uc.whatsappManager.SendStickerMessage(ctx, traceID, phoneNumber, req.Msisdn, stickerBytes, mimeType, msgCtx)
+	metrics.RecordSend("sticker", "direct", err)
 	if err != nil {
 		uc.sendDirectFailedWebhook(ctx, traceID, phoneNumber, req.Msisdn, err.Error())
 		return nil, nil, err
 	}
 
 	uc.sendDirectSentWebhook(ctx, traceID, phoneNumber, req.Msisdn, messageID)
-	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID}, nil, nil
+	return &waDomain.SendMessageResponse{Success: true, MessageID: messageID, Chat: req.Msisdn}, nil, nil
 }
 
 // ReactToMessage reacts to a message
@@ -841,7 +970,7 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageReactionRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
@@ -850,13 +979,18 @@ func (uc *WhatsappMessageUsecase) ReactToMessage(
 	// Sender is optional: omit it when reacting to your own outgoing message.
 	var senderJID string
 	if strings.TrimSpace(req.SenderMsisdn) != "" {
-		senderJID, rErr = validateRecipient(req.SenderMsisdn)
+		senderJID, rErr = resolveChat("", req.SenderMsisdn)
 		if rErr != nil {
 			return rErr
 		}
 	}
 
 	if err := validateLength(req.Emoji, "emoji", maxEmojiLen); err != nil {
+		return err
+	}
+
+	// Reactions are conversation actions — paced like any outbound op.
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
 		return err
 	}
 
@@ -879,11 +1013,15 @@ func (uc *WhatsappMessageUsecase) DeleteMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageDeleteRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
 	req.Msisdn = to
+
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
+		return err
+	}
 
 	err := uc.whatsappManager.DeleteMessage(ctx, traceID, phoneNumber, req.Msisdn, req.MessageID)
 	if err != nil {
@@ -904,13 +1042,17 @@ func (uc *WhatsappMessageUsecase) EditMessage(
 	traceID, phoneNumber string,
 	req waDomain.MessageEditRequest,
 ) error {
-	to, rErr := validateRecipient(req.Msisdn)
+	to, rErr := resolveChat(req.Chat, req.Msisdn)
 	if rErr != nil {
 		return rErr
 	}
 	req.Msisdn = to
 
 	if err := validateLength(req.NewMessage, "new_message", maxTextMessageLen); err != nil {
+		return err
+	}
+
+	if err := uc.pace(ctx, phoneNumber, req.Msisdn, 1); err != nil {
 		return err
 	}
 
@@ -935,7 +1077,7 @@ func (uc *WhatsappMessageUsecase) CheckNumber(
 	traceID, phoneNumber string,
 	req waDomain.ContactCheckRequest,
 ) (waDomain.ContactCheckResponse, error) {
-	to, err := validateRecipient(req.Msisdn)
+	to, err := resolveChat(req.Chat, req.Msisdn)
 	if err != nil {
 		return waDomain.ContactCheckResponse{}, err
 	}
@@ -1008,41 +1150,42 @@ func (uc *WhatsappMessageUsecase) GetJobStatus(
 	return response, nil
 }
 
+// dispatchDirectStatusWebhook fans a direct-mode status event out to every
+// subscription whose events filter matches (empty = all). Gated by the status
+// master kill-switch; each delivery is async with bounded retry (best-effort;
+// durable delivery requires RabbitMQ) and never blocks the HTTP response.
+func (uc *WhatsappMessageUsecase) dispatchDirectStatusWebhook(
+	ctx context.Context,
+	phoneNumber, event string,
+	payload map[string]interface{},
+) {
+	if !uc.config.WebhookStatusEventsEnabled {
+		return
+	}
+
+	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
+	if err != nil {
+		return
+	}
+	subs, err := uc.whatsappRepo.GetWebhookSubscriptions(ctx, JID)
+	if err != nil || len(subs) == 0 {
+		return
+	}
+
+	for _, sub := range subs {
+		if !domainQueue.EventMatches(sub.Events, event) {
+			continue
+		}
+		uc.webhookSender.SendAsync(sub.Url, sub.HmacSecret, event, payload)
+	}
+}
+
 // sendQueuedWebhook sends a message.queued webhook notification
 func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 	ctx context.Context,
 	traceID string,
 	job domainQueue.OutgoingMessageJob,
 ) {
-	// Check if webhook status events enabled
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	// Check if message.queued is in enabled events
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageQueued) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	// Get webhook config
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(job.PhoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
-	// Build payload
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageQueued),
 		"job_id":       job.JobID,
@@ -1050,13 +1193,7 @@ func (uc *WhatsappMessageUsecase) sendQueuedWebhook(
 		"phone_number": job.PhoneNumber,
 		"timestamp":    time.Now().Unix(),
 	}
-
-	// Send webhook
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send queued webhook", nil, customLog.Error(err))
-	} else {
-		uc.logger.Debug(traceID, fmt.Sprintf("Sent message.queued webhook for job %s", job.JobID), nil)
-	}
+	uc.dispatchDirectStatusWebhook(ctx, job.PhoneNumber, string(domainQueue.EventMessageQueued), payload)
 }
 
 // sendDirectSentWebhook sends a message.sent webhook in direct mode
@@ -1064,31 +1201,6 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 	ctx context.Context,
 	traceID, phoneNumber, to, messageID string,
 ) {
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageSent) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageSent),
 		"to":           to,
@@ -1096,12 +1208,7 @@ func (uc *WhatsappMessageUsecase) sendDirectSentWebhook(
 		"timestamp":    time.Now().Unix(),
 		"message_id":   messageID,
 	}
-
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send direct sent webhook", nil, customLog.Error(err))
-	} else {
-		uc.logger.Debug(traceID, "Sent message.sent webhook (direct mode)", nil)
-	}
+	uc.dispatchDirectStatusWebhook(ctx, phoneNumber, string(domainQueue.EventMessageSent), payload)
 }
 
 // sendDirectFailedWebhook sends a message.failed webhook in direct mode
@@ -1109,31 +1216,6 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 	ctx context.Context,
 	traceID, phoneNumber, to, errorMsg string,
 ) {
-	if !uc.config.WebhookStatusEventsEnabled {
-		return
-	}
-
-	enabledEvents := strings.Split(uc.config.WebhookStatusEvents, ",")
-	found := false
-	for _, evt := range enabledEvents {
-		if strings.TrimSpace(evt) == string(domainQueue.EventMessageFailed) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-
-	JID, err := uc.whatsappManager.GetJIDFromPhoneNumber(phoneNumber)
-	if err != nil {
-		return
-	}
-	webhook, err := uc.whatsappRepo.GetWebhook(ctx, JID)
-	if err != nil || webhook == nil || webhook.Url == "" {
-		return
-	}
-
 	payload := map[string]interface{}{
 		"event":        string(domainQueue.EventMessageFailed),
 		"to":           to,
@@ -1141,8 +1223,5 @@ func (uc *WhatsappMessageUsecase) sendDirectFailedWebhook(
 		"timestamp":    time.Now().Unix(),
 		"error":        errorMsg,
 	}
-
-	if err := uc.webhookSender.Send(ctx, webhook.Url, webhook.HmacSecret, payload); err != nil {
-		uc.logger.Error(traceID, "Failed to send direct failed webhook", nil, customLog.Error(err))
-	}
+	uc.dispatchDirectStatusWebhook(ctx, phoneNumber, string(domainQueue.EventMessageFailed), payload)
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	customLog "github.com/glennprays/log"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
@@ -415,8 +416,8 @@ func (h *WhatsappMessageHandler) CheckNumber(c *fiber.Ctx) error {
 		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
-	if req.Msisdn == "" {
-		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, errors.New("msisdn query param is required")))
+	if req.Msisdn == "" && req.Chat == "" {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, errors.New("chat (or msisdn) query param is required")))
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
@@ -426,6 +427,172 @@ func (h *WhatsappMessageHandler) CheckNumber(c *fiber.Ctx) error {
 		httpErr := httperror.FromError(err)
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) ListContacts(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	limit := c.QueryInt("limit", 0)
+	offset := c.QueryInt("offset", 0)
+
+	resp, err := h.whatsappMessageUsecase.ListContacts(c.Context(), traceID, phoneNumber, limit, offset)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) ListGroups(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.ListGroups(c.Context(), traceID, phoneNumber)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) GetGroupInfo(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.GetGroupInfo(c.Context(), traceID, phoneNumber, c.Query("chat"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) ListSubGroups(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.ListSubGroups(c.Context(), traceID, phoneNumber, c.Query("chat"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) ListCommunityParticipants(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.ListCommunityParticipants(c.Context(), traceID, phoneNumber, c.Query("chat"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) GetContactInfo(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	resp, err := h.whatsappMessageUsecase.GetContactInfo(c.Context(), traceID, phoneNumber, c.Query("chat"), c.Query("msisdn"))
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
+}
+
+func (h *WhatsappMessageHandler) MarkRead(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.MarkReadRequest
+	if err := c.BodyParser(&req); err != nil {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if err := h.whatsappMessageUsecase.MarkRead(c.Context(), traceID, phoneNumber, req); err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(fiber.Map{"success": true})
+}
+
+func (h *WhatsappMessageHandler) SendChatPresence(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	var req waDomain.ChatPresenceRequest
+	if err := c.BodyParser(&req); err != nil {
+		httpErr := httperror.FromError(errDomain.NewError(errDomain.ErrBadRequest, err))
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+
+	if err := h.whatsappMessageUsecase.SendChatPresence(c.Context(), traceID, phoneNumber, req); err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	return c.Status(http.StatusOK).JSON(fiber.Map{"success": true})
+}
+
+func (h *WhatsappMessageHandler) GetAvatar(c *fiber.Ctx) error {
+	traceID := middleware.GetTraceID(c)
+	phoneNumber, ok := utils.MustGetPhoneNumber(c)
+	if !ok {
+		h.logger.Error(traceID, constant.ErrPhoneNumberNotFound, nil)
+		return nil
+	}
+
+	preview := c.QueryBool("preview", false)
+	// If-None-Match carries a prior avatar ETag; strip the quotes WhatsApp's id lacks.
+	existingID := strings.Trim(c.Get("If-None-Match"), `"`)
+
+	resp, err := h.whatsappMessageUsecase.GetAvatar(c.Context(), traceID, phoneNumber, c.Query("chat"), c.Query("msisdn"), preview, existingID)
+	if err != nil {
+		httpErr := httperror.FromError(err)
+		return c.Status(httpErr.Status).JSON(httpErr)
+	}
+	if resp == nil {
+		// Unchanged relative to the caller's ETag.
+		return c.SendStatus(http.StatusNotModified)
+	}
+	c.Set("ETag", `"`+resp.ID+`"`)
 	return c.Status(http.StatusOK).JSON(resp)
 }
 

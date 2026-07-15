@@ -116,6 +116,12 @@ Your backend must:
 - **Route webhook events** only to authorized users
 - **Sanitize webhook data** before processing
 
+Each subscription carries its **own** HMAC secret. The gateway stores it
+encrypted at rest and **never returns it** — `GET /webhook` exposes only a
+`has_hmac` boolean per subscription. A subscription registered without a secret
+is delivered **unsigned** (empty signature key); if you require signatures,
+always register a secret and reject unsigned deliveries at your receiver.
+
 **Example Webhook Handler:**
 ```python
 @app.post("/webhook/whatsapp")
@@ -202,6 +208,87 @@ Implement comprehensive logging:
   - Change default username/password from `.env.example`
   - Consider IP whitelisting for documentation access
   - Monitor access to documentation endpoints
+
+### 8. Recipient Addressing
+
+- **Pass E.164 numbers only.** The gateway does **not** normalize national-format or
+  leading-zero numbers (e.g. `0812…`, `00812…`) — it has no caller-country context and will
+  address them literally, delivering to the wrong number. Normalizing to E.164 is the wrapping
+  backend's responsibility (consistent with "the gateway must be wrapped").
+- **`@lid` is best-effort.** A `@lid` recipient (a privacy-preserving linked id, e.g. from a
+  group participant) is **not guaranteed dialable** — delivery works only when a signal
+  session / PN mapping already exists. Do not treat a `@lid` as a phone number.
+- The `chat` field accepts group JIDs (`@g.us`); ensure your access control (below) authorizes
+  the account for the groups it sends into.
+
+### 9. Admin / Metrics Plane
+
+- The admin plane (`GET /admin/sessions`, `/admin/sessions/{phone}`, `/metrics`) is served at
+  the **ROOT path** and is **operator-only, cross-tenant** — any caller with the bearer sees
+  **every** account (masked). It is **NOT** for tenants. Keep it on a private network / behind
+  your reverse proxy, never on the public edge.
+- **Dark by default.** With `ADMIN_API_SECRET` unset, the routes are **not registered** and
+  return `404` — deliberately not a `401`, so an unconfigured plane never confirms it exists.
+  Set a strong, random `ADMIN_API_SECRET` (e.g. `openssl rand -base64 32`) before enabling.
+- The bearer is compared with `crypto/subtle.ConstantTimeCompare`. `/metrics` additionally
+  requires `METRICS_ENABLED=true` and is unreachable without the secret.
+- Metrics **never** label by phone number (bounded cardinality); per-account detail is only on
+  the bearer-gated `/admin/sessions`. The inventory is **per-instance** — behind a load balancer,
+  scrape/inspect each node.
+
+### 10. Group & Community Mutations (ban risk)
+
+Group/community mutations are the **highest-ban-risk** surface: mass-adding strangers to groups
+and mass-joining via invite links are exactly the automated-abuse patterns WhatsApp bans for. The
+gateway ships these gated **default-safe**, and the wrapping backend should keep them that way
+unless it has verified consent for the specific action.
+
+- **Master toggle, hidden when off.** `GROUP_MANAGEMENT_ENABLED` (default `true`) gates the entire
+  mutation/invite/join-request/community surface. When `false` those routes are **not registered**
+  → `404` (never `403`), so a disabled surface never confirms it exists. Reads stay up.
+- **Bulk add and mass-join now default ON, covered by pacing.** `GROUP_ADD_PARTICIPANTS_ENABLED`
+  (default `true`) allows `POST /group/participants action=add` and add-on-create;
+  `GROUP_JOIN_VIA_LINK_ENABLED` (default `true`) allows `POST /group/join`. These bulk-op vectors
+  were previously gated off as an interim measure; the outbound pacer + ban gate (see below) now cap
+  their rate and halt them under a ban, so the gates default on. Set either to `false` to
+  **hard-disable** that vector (`403`, before any server call) — do so if your backend cannot verify
+  the target consented to be added or the join is human/paced.
+- **Batch cap.** `GROUP_MAX_PARTICIPANTS_PER_REQUEST` (default `256`) bounds a single batch; the
+  gateway rejects oversized batches with `400` before hitting WhatsApp.
+- **Self-guard.** Removing/promoting/demoting your own number is rejected (`400`); use
+  `POST /group/leave`. Partial per-participant failures are a `200` with `results[]`, so a single
+  privacy-blocked or non-member entry never masquerades as a whole-request success.
+- **Non-admin actions surface as `403`.** The server rejects admin-only mutations by a non-admin;
+  the gateway maps that to `403` — do not retry-loop.
+
+### 11. Outbound Pacing & Ban Safety
+
+A single in-process **outbound pacer** governs **every** outbound WhatsApp action — all `POST
+/message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations
+— in **both** direct and queue modes. It is the primary defence against the send-rate patterns
+WhatsApp bans for, in three ordered layers:
+
+- **Ban gate (auto-resume).** While the account is under a WhatsApp temporary ban (read from the
+  persisted `session_status` store) every outbound action is rejected with `429` until the ban
+  expires; it resumes automatically. When no explicit `ban_expires_at` is known, a fallback hold of
+  `OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS` (default 3600) applies.
+- **Per-recipient hard cap.** More than `OUTBOUND_PACE_PER_RECIPIENT_REQUESTS` (default 10) actions
+  to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` (default 60) is
+  rejected with `429` — never paced or queued.
+- **Per-account token-bucket pace.** A sustained `OUTBOUND_PACE_RATE_PER_SECOND` (default 1/s) with
+  burst `OUTBOUND_PACE_BURST` (default 5). In `pace` mode (the default) an over-budget call
+  **blocks/waits** up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` (default 30) plus jitter for a token and
+  only `429`s if none frees up; in `reject` mode it `429`s immediately.
+
+This **replaces** the earlier best-effort per-account action cap that throttled mark-read/typing/
+react. It is also why the group bulk-add and join-via-link gates now default on — pacing plus the
+ban gate cover the bulk-op ban risk (both remain toggleable to `false` to hard-disable).
+
+> **The pacer is per gateway instance (single-node), not distributed.** Each node enforces its own
+> budget; a multi-instance deployment does **not** share one ceiling. For a cluster-wide outbound
+> limit, put an external limiter in front or route sends through the RabbitMQ queue. When
+> `OUTBOUND_PACE_ENABLED=false` the pacer is bypassed entirely and only the fallback reject-only
+> `MESSAGE_RATE_LIMIT_*` limiter applies.
 
 ## Encryption and Data Protection
 

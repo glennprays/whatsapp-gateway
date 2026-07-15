@@ -22,7 +22,7 @@ func ProvideQueueWorkers(
 	manager whatsapp.Manager,
 	logger *log.Logger,
 	jobRepo *queue.JobRepository,
-	limiter ratelimiter.Limiter,
+	pacer *ratelimiter.Pacer,
 	mediaDownloader whatsapp.MediaDownloader,
 ) (*pkgQueue.WorkerManager, error) {
 	if !cfg.RabbitMQEnabled {
@@ -44,9 +44,9 @@ func ProvideQueueWorkers(
 
 	// Create handlers
 	incomingHandler := &queueHandlers.IncomingEventHandler{
-		Repository:     repo,
-		Publisher:      rabbitMQ,
-		Logger:         logger,
+		Repository:      repo,
+		Publisher:       rabbitMQ,
+		Logger:          logger,
 		MediaDownloader: mediaDownloader,
 		ClientStore:     manager.GetClientStore(),
 		Dedup:           dedup,
@@ -65,7 +65,7 @@ func ProvideQueueWorkers(
 		Repository: repo,
 		Sender:     sender,
 		Config:     cfg,
-		Limiter:    limiter,
+		Pacer:      pacer,
 		Dedup:      dedup,
 	}
 
