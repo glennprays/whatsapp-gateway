@@ -22,6 +22,22 @@ At a high level, the system consists of:
 
 The system is deployed as a single service instance by default, with optional integration to external infrastructure components such as RabbitMQ and PostgreSQL.
 
+```mermaid
+flowchart LR
+    B[Backend App] --> API[HTTP API Layer]
+    subgraph Gateway
+        API --> Auth[JWT Auth]
+        Auth --> MP[Message Processing]
+        MP -. optional .-> Q[Queue Layer]
+        MP --> SM[WhatsApp Session Manager]
+        MP --> DB[(Database)]
+        SM --> WH[Webhook Dispatcher]
+    end
+    Q --> SM
+    SM --> WA[WhatsApp Network]
+    WH --> B
+```
+
 ## Logical Flow
 
 Outbound Message Flow:
@@ -122,13 +138,14 @@ Webhook dispatch is asynchronous from message handling.
 
 Recommended topology:
 
-Client Application
-    ↓
-Backend Service (Business Logic)
-    ↓
-Whatsapp Gateway
-    ↓
-WhatsApp Network
+```mermaid
+flowchart TD
+    C[Client Application] --> B[Backend Service - Business Logic]
+    B --> G[WhatsApp Gateway]
+    G --> WA[WhatsApp Network]
+    G -. optional .-> Q[RabbitMQ]
+    G -. optional .-> P[(PostgreSQL)]
+```
 
 Optional infrastructure components:
 

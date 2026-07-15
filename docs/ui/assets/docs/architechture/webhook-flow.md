@@ -213,6 +213,19 @@ Webhook delivery follows this sequence:
 
 A successful webhook delivery is defined as receiving a successful HTTP status code within the configured timeout.
 
+```mermaid
+flowchart TD
+    A[State change in gateway] --> B[Construct JSON payload]
+    B --> C[Generate HMAC signature]
+    C --> D[HTTP POST to backend endpoint]
+    D --> E{2xx within timeout?}
+    E -- Yes --> F[Delivered]
+    E -- No --> G{Retries remaining?}
+    G -- Yes --> H[Wait backoff]
+    H --> D
+    G -- No --> I[Stop: no further attempts]
+```
+
 ## Retry Policy
 
 If webhook delivery fails due to:

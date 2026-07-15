@@ -10,6 +10,30 @@ Understanding this flow is critical for backend integration, operational plannin
 
 The outbound message flow begins when a backend service submits a request to send a message.
 
+```mermaid
+sequenceDiagram
+    participant B as Backend
+    participant G as Gateway
+    participant Q as RabbitMQ
+    participant DB as Database
+    participant WA as WhatsApp
+    B->>G: POST /message/* (JWT)
+    G->>G: Auth, validate, rate limit
+    G->>DB: Persist message (initial status)
+    alt Queue enabled
+        G->>Q: Publish message
+        G-->>B: 202 Accepted (job_id)
+        Q->>G: Worker consumes
+        G->>WA: Dispatch via session
+    else Queue disabled (direct)
+        G->>WA: Dispatch via session
+        G-->>B: 200 OK (message_id)
+    end
+    WA-->>G: Delivery acknowledgement
+    G->>DB: Update status (sent / failed)
+    G->>B: Webhook (HMAC-signed)
+```
+
 ### Step 1 — API Request Reception
 
 The backend sends an HTTP request to the gateway containing:
@@ -109,6 +133,18 @@ After exceeding retry limit, no further attempts are made.
 ## Inbound Message Flow
 
 Inbound flow begins when WhatsApp sends an event to the active device session.
+
+```mermaid
+sequenceDiagram
+    participant WA as WhatsApp
+    participant G as Gateway
+    participant DB as Database
+    participant B as Backend
+    WA->>G: Inbound message / event
+    G->>DB: Persist inbound metadata
+    G->>B: Webhook (HMAC-signed)
+    Note over G,B: Retry on failure up to the configured max attempts
+```
 
 ### Step 1 — Event Reception
 

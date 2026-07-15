@@ -40,6 +40,18 @@ The outbound flow in queue mode follows these steps:
 
 The HTTP API response may indicate acceptance rather than delivery confirmation.
 
+```mermaid
+flowchart LR
+    A[API request] --> DB[(Persist metadata)]
+    DB --> Q[[RabbitMQ]]
+    Q --> W[Worker goroutine]
+    W --> RL{Within rate limit?}
+    RL -- No --> Q
+    RL -- Yes --> WA[Send to WhatsApp]
+    WA --> S[(Update status)]
+    S --> WH[Webhook event]
+```
+
 ## Worker Model
 
 Workers run inside the same gateway process.
