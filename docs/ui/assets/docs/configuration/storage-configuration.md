@@ -145,14 +145,14 @@ When `STORAGE_API_PATH` is configured (default: `/storage`), the gateway serves 
 - Cache-Control headers for efficient client caching
 - Content-Disposition for inline display
 - Last-Modified and ETag headers for conditional requests
-- Accept-Ranges support for partial content (video streaming)
+- Accept-Ranges header advertised (files are streamed in full; byte-range/partial-content requests are not yet served)
 
 **Example Usage:**
 
 ```
 # Upload a file
-POST /api/media
-Content-Type: multipart/form-data
+# (No public upload endpoint: storage is populated automatically
+# when inbound webhook media is downloaded)
 
 # Access the file
 GET /storage/uploads/photo.jpg
@@ -406,7 +406,7 @@ INFO cleanup-1234567890 Cleanup completed: 5 files deleted
 To disable auto-delete completely:
 
 ```bash
-# Option 1: Disable auto-delete (files never expire)
+# Option 1: Disable auto-delete (S3 only, local storage ignores this flag; use Option 2)
 STORAGE_AUTO_DELETE_ENABLED=false
 
 # Option 2: Set retention to 0 (files never expire)

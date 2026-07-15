@@ -20,7 +20,7 @@ This document provides a complete reference of all supported configuration optio
 Environment mode.
 
 Type: string  
-Default: development  
+Default: production  
 Options: development, production  
 
 Controls general runtime behavior and logging verbosity.
@@ -63,7 +63,7 @@ Set explicitly in production to restrict cross-origin access.
 Enable Documentation UI.
 
 Type: boolean  
-Default: true  
+Default: false  
 
 Should be disabled in hardened production environments.
 
@@ -145,7 +145,7 @@ Type: string
 
 SQLite default:
 
-file:dbs/whatsapp.db?_pragma=foreign_keys(1)  
+file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)  
 
 PostgreSQL example:
 
@@ -183,7 +183,7 @@ Must be a strong 32-byte secret in production.
 Application log level.
 
 Type: string  
-Default: debug  
+Default: info  
 Options: debug, info, warn, error  
 
 Use info or warn in production.
@@ -267,7 +267,7 @@ Default: 60
 
 ## Outbound Pacing
 
-A single in-process **pacer** governs every outbound WhatsApp action — all `POST /message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations — in both direct and queue modes, in three ordered layers: a **ban gate** (429 while the account is under a WhatsApp temporary ban, auto-resume), a **per-recipient hard cap** (429, never paced), and a **per-account token-bucket pace** (blocks/waits in `pace` mode, or 429s immediately in `reject` mode). This is the **primary** outbound governor; `MESSAGE_RATE_LIMIT_*` is the **fallback**, used only when `OUTBOUND_PACE_ENABLED=false`. The pacer is per-instance (single-node), not distributed — a multi-instance deployment needs an external limiter or the queue for a cluster-wide ceiling.
+A single in-process **pacer** governs every outbound WhatsApp action (all `POST /message/*` sends, react/edit/delete, mark-read, typing/presence, and all group/community mutations) in both direct and queue modes, in three ordered layers: a **ban gate** (429 while the account is under a WhatsApp temporary ban, auto-resume), a **per-recipient hard cap** (429, never paced), and a **per-account token-bucket pace** (blocks/waits in `pace` mode, or 429s immediately in `reject` mode). This is the **primary** outbound governor; `MESSAGE_RATE_LIMIT_*` is the **fallback**, used only when `OUTBOUND_PACE_ENABLED=false`. The pacer is per-instance (single-node), not distributed: a multi-instance deployment needs an external limiter or the queue for a cluster-wide ceiling.
 
 ### OUTBOUND_PACE_ENABLED
 
@@ -278,7 +278,7 @@ Default: true
 
 ### OUTBOUND_PACE_MODE
 
-`pace` blocks/waits for a token (up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` + jitter) before returning `429`; `reject` never waits — an over-budget call is an immediate `429`.
+`pace` blocks/waits for a token (up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` + jitter) before returning `429`; `reject` never waits: an over-budget call is an immediate `429`.
 
 Type: string  
 Default: pace  
@@ -288,16 +288,16 @@ Options:
 
 ### OUTBOUND_PACE_RATE_PER_SECOND
 
-Sustained per-account token-bucket refill rate (tokens per second).
+Sustained per-account token-bucket refill rate (tokens per second). Accepts fractional values (e.g. 0.5 = one send every 2s).
 
-Type: integer  
+Type: float  
 Default: 1  
 
 ### OUTBOUND_PACE_BURST
 
-Token-bucket burst capacity — how many actions can fire back-to-back before the sustained rate applies.
+Token-bucket burst capacity: how many actions can fire back-to-back before the sustained rate applies.
 
-Type: integer  
+Type: number  
 Default: 5  
 
 ### OUTBOUND_PACE_MAX_WAIT_SECONDS
@@ -316,7 +316,7 @@ Default: 250
 
 ### OUTBOUND_PACE_PER_RECIPIENT_REQUESTS
 
-Per-recipient hard cap — more than this many actions to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` is rejected with `429` (never paced/queued).
+Per-recipient hard cap: more than this many actions to the **same** recipient within `OUTBOUND_PACE_PER_RECIPIENT_WINDOW_SECONDS` is rejected with `429` (never paced/queued).
 
 Type: integer  
 Default: 10  
@@ -330,7 +330,7 @@ Default: 60
 
 ### OUTBOUND_PACE_BAN_DEFAULT_HOLD_SECONDS
 
-Fallback hold applied by the ban gate when a temporary ban carries no explicit `ban_expires_at` — outbound actions are `429`d for this long before auto-resuming.
+Fallback hold applied by the ban gate when a temporary ban carries no explicit `ban_expires_at`: outbound actions are `429`d for this long before auto-resuming.
 
 Type: integer (seconds)  
 Default: 3600  
@@ -384,14 +384,14 @@ Default: true
 
 ### GROUP_ADD_PARTICIPANTS_ENABLED
 
-Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Now defaults **on** — the outbound pacer + ban gate cover the bulk-add ban risk this gate guarded as an interim measure; set it to `false` to hard-disable bulk add.
+Gates bulk participant add (`POST /group/participants action=add` and add-on-create) → `403` when off. Now defaults **on**: the outbound pacer + ban gate cover the bulk-add ban risk this gate guarded as an interim measure; set it to `false` to hard-disable bulk add.
 
 Type: boolean  
 Default: true  
 
 ### GROUP_JOIN_VIA_LINK_ENABLED
 
-Gates `POST /group/join`, the mass-join vector → `403` when off. Now defaults **on** — outbound pacing + the ban gate cover the mass-join ban risk; set it to `false` to hard-disable join-via-link.
+Gates `POST /group/join`, the mass-join vector → `403` when off. Now defaults **on**: outbound pacing + the ban gate cover the mass-join ban risk; set it to `false` to hard-disable join-via-link.
 
 Type: boolean  
 Default: true  
@@ -432,7 +432,7 @@ Default: 10
 
 ## Admin / Metrics Plane
 
-An operator-only, cross-tenant plane at the ROOT path (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, `GET /metrics`. Dark by default — with no `ADMIN_API_SECRET` the routes are unregistered and return `404` (never a `401`). The session inventory is per-instance and phones are masked; metrics are never labelled by phone number.
+An operator-only, cross-tenant plane at the ROOT path (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, `GET /metrics`. Dark by default: with no `ADMIN_API_SECRET` the routes are unregistered and return `404` (never a `401`). The session inventory is per-instance and phones are masked; metrics are never labelled by phone number.
 
 ### ADMIN_API_SECRET
 
@@ -565,7 +565,7 @@ Default: true
 
 ### WEBHOOK_STATUS_EVENTS
 
-Comma-separated list of status events.
+Deprecated: comma-separated list of status events. No longer applied as a delivery filter: which events fire is controlled per-subscription via `POST /webhook` (`events[]`). Retained only so existing `.env` files still parse.
 
 Type: string  
 Default: message.sent,message.failed  
@@ -647,7 +647,7 @@ Should be true for production. May be false for local MinIO testing.
 Presigned URL expiration time in seconds.
 
 Type: integer
-Default: 3600
+Default: 86400 (24h)
 
 Maximum validity of presigned URLs for accessing S3 files. URLs are returned in webhooks and automatically expire after this duration.
 

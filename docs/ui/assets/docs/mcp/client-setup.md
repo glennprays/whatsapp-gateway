@@ -231,7 +231,7 @@ For production use with Basic Authentication:
       "url": "https://your-mcp-server.com/mcp",
       "enabled": true,
       "headers": {
-        "Authorization": "Bearer {env:WAGA_JWT_TOKEN}"
+        "Authorization": "Basic {env:MCP_BASIC_AUTH_BASE64}"
       },
       "oauth": false
     }

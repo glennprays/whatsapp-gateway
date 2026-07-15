@@ -10,7 +10,31 @@ Understanding this flow is critical for backend integration, operational plannin
 
 The outbound message flow begins when a backend service submits a request to send a message.
 
-### Step 1 — API Request Reception
+```mermaid
+sequenceDiagram
+    participant B as Backend
+    participant G as Gateway
+    participant Q as RabbitMQ
+    participant DB as Database
+    participant WA as WhatsApp
+    B->>G: POST /message/* (JWT)
+    G->>G: Auth, validate, rate limit
+    G->>DB: Persist message (initial status)
+    alt Queue enabled
+        G->>Q: Publish message
+        G-->>B: 202 Accepted (job_id)
+        Q->>G: Worker consumes
+        G->>WA: Dispatch via session
+    else Queue disabled (direct)
+        G->>WA: Dispatch via session
+        G-->>B: 200 OK (message_id)
+    end
+    WA-->>G: Delivery acknowledgement
+    G->>DB: Update status (sent / failed)
+    G->>B: Webhook (HMAC-signed)
+```
+
+### Step 1: API Request Reception
 
 The backend sends an HTTP request to the gateway containing:
 
@@ -26,7 +50,7 @@ The gateway:
 
 If authentication fails, the request is rejected immediately.
 
-### Step 2 — Rate Limit Evaluation
+### Step 2: Rate Limit Evaluation
 
 The gateway evaluates configured rate limits.
 
@@ -43,21 +67,20 @@ Queue Enabled:
 - The message is published to RabbitMQ.
 - Dispatch occurs asynchronously via worker routines.
 
-### Step 3 — Message Persistence
+### Step 3: Message Persistence
 
-Before dispatch, the gateway stores message metadata in the database.
+Persistence applies only in queue mode: after the message is successfully published to RabbitMQ, the gateway writes a job-tracking record to the database. In direct (queue-disabled) mode, no record is persisted before or after dispatch.
 
 Stored information includes:
 
-- Recipient
-- Message type
+- Sender account (phone number)
 - Timestamp
 - Initial status
 - Internal tracking identifiers
 
 This ensures traceability and status monitoring.
 
-### Step 4 — Message Dispatch
+### Step 4: Message Dispatch
 
 Queue Disabled:
 
@@ -70,7 +93,7 @@ Queue Enabled:
 - Worker dispatches message to WhatsApp.
 - Status updates are recorded in the database.
 
-### Step 5 — Delivery Status Tracking
+### Step 5: Delivery Status Tracking
 
 WhatsApp generates delivery-related events.
 
@@ -89,7 +112,7 @@ Possible lifecycle states may include:
 
 Exact state transitions are determined by WhatsApp event responses.
 
-### Step 6 — Webhook Notification
+### Step 6: Webhook Notification
 
 After state change, the gateway sends a webhook event to the backend.
 
@@ -110,7 +133,19 @@ After exceeding retry limit, no further attempts are made.
 
 Inbound flow begins when WhatsApp sends an event to the active device session.
 
-### Step 1 — Event Reception
+```mermaid
+sequenceDiagram
+    participant WA as WhatsApp
+    participant G as Gateway
+    participant DB as Database
+    participant B as Backend
+    WA->>G: Inbound message / event
+    G->>DB: Persist inbound metadata
+    G->>B: Webhook (HMAC-signed)
+    Note over G,B: Retry on failure up to the configured max attempts
+```
+
+### Step 1: Event Reception
 
 The WhatsApp session manager receives:
 
@@ -118,7 +153,7 @@ The WhatsApp session manager receives:
 - Supported media (image)
 - System events
 
-### Step 2 — Message Persistence
+### Step 2: Message Persistence
 
 Inbound message metadata is stored in the database.
 
@@ -129,7 +164,7 @@ Stored data includes:
 - Media reference (if applicable)
 - Timestamp
 
-### Step 3 — Webhook Dispatch
+### Step 3: Webhook Dispatch
 
 The gateway constructs a webhook payload and sends it to the configured backend endpoint.
 
@@ -165,7 +200,7 @@ The gateway does not guarantee eventual delivery beyond configured retry limits.
 
 Each API request is treated as a new operation.
 
-The gateway does not enforce idempotency keys.
+The gateway supports optional idempotency keys: a request carrying an `Idempotency-Key` header is deduplicated per account within a configurable window (`IDEMPOTENCY_TTL_SECONDS`, default 86400). A replayed key returns the stored response, the same key with a different body returns 422, and a key whose original request is still in progress returns 409.
 
 If backend systems require deduplication, it must be handled at the application level.
 

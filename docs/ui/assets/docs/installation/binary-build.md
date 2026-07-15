@@ -115,7 +115,7 @@ The application will fail to start if database connection cannot be established.
 If queue mode is enabled:
 
 - RabbitMQ 3.x must be running
-- `RABBITMQ_ENABLE` must be set to `true`
+- `RABBITMQ_ENABLED` must be set to `true`
 
 If queue mode is disabled:
 

@@ -198,7 +198,7 @@ There is no SLA guarantee.
 
 ## Media Storage (Future Planning)
 
-Support for S3 or S3-compatible object storage is planned.
+S3 or S3-compatible object storage (AWS S3, MinIO, DigitalOcean Spaces, etc.) is supported and production-ready. Set `STORAGE_PROVIDER=s3` along with the `STORAGE_S3_*` environment variables to enable it.
 
 Future production deployments should consider:
 
@@ -206,7 +206,7 @@ Future production deployments should consider:
 - Secure access credentials
 - Lifecycle policies
 
-At present, media handling is internal.
+External S3-compatible object storage is already supported: set `STORAGE_PROVIDER=s3` for S3-compatible storage, or keep the default local storage.
 
 ## Operational Responsibility
 

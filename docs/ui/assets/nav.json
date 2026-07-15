@@ -1,0 +1,65 @@
+{
+  "defaultDoc": "getting-started/introduction",
+  "sections": [
+    {
+      "title": "Getting Started",
+      "links": [
+        { "title": "Introduction", "file": "getting-started/introduction" },
+        { "title": "System Boundary", "file": "getting-started/system-boundary" },
+        { "title": "Design Principles", "file": "getting-started/design-principles" },
+        { "title": "Feature Matrix", "file": "getting-started/feature-matrix" },
+        { "title": "Group & Community Management", "file": "getting-started/group-management" }
+      ]
+    },
+    {
+      "title": "Architecture",
+      "links": [
+        { "title": "High Level Architecture", "file": "architechture/high-level-architecture" },
+        { "title": "Component Overview", "file": "architechture/component-overview" },
+        { "title": "Message Flow", "file": "architechture/message-flow" },
+        { "title": "Webhook Flow", "file": "architechture/webhook-flow" },
+        { "title": "Queue Processing", "file": "architechture/queue-processing" }
+      ]
+    },
+    {
+      "title": "Installation",
+      "links": [
+        { "title": "Prerequisites", "file": "installation/prerequisites" },
+        { "title": "Docker Deployment", "file": "installation/docker-deployment" },
+        { "title": "Binary Build", "file": "installation/binary-build" },
+        { "title": "Production Deployment", "file": "installation/production-deployment" },
+        { "title": "Reverse Proxy Setup", "file": "installation/reverse-proxy-setup" }
+      ]
+    },
+    {
+      "title": "Configuration",
+      "links": [
+        { "title": "Environment Variables", "file": "configuration/environment-variables" },
+        { "title": "Storage Configuration", "file": "configuration/storage-configuration" }
+      ]
+    },
+    {
+      "title": "Security",
+      "links": [
+        { "title": "Authentication and Security", "file": "security/authentication-and-security" },
+        { "title": "[IMPORTANT] Security Considerations", "file": "security/important-security-consideration" }
+      ]
+    },
+    {
+      "title": "MCP",
+      "links": [
+        { "title": "Introduction", "file": "mcp/introduction" },
+        { "title": "Quick Start", "file": "mcp/quick-start" },
+        { "title": "Configuration", "file": "mcp/configuration" },
+        { "title": "Tools Reference", "file": "mcp/tools-reference" },
+        { "title": "Client Setup", "file": "mcp/client-setup" }
+      ]
+    },
+    {
+      "title": "SDK",
+      "links": [
+        { "title": "Go", "file": "sdk/go" }
+      ]
+    }
+  ]
+}

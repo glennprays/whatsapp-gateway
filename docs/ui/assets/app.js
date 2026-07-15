@@ -11,12 +11,18 @@ function getBasePath() {
   // const lastSlashIndex = pathname.lastIndexOf('/');
   // const basePath = pathname.substring(0, lastSlashIndex);
 
-  // remove / index.html or .html from the end if present 
-  const basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
+  // remove / index.html or .html from the end if present
+  let basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
 
-  // Return the base path, ensuring it doesn't end with a slash
-  // unless it's the root path
-  return basePath === '' ? '' : basePath;
+  // Strip a trailing slash and normalize root to "" so buildUrl() produces
+  // "/assets/..." and never "//assets/..." (a protocol-relative URL the browser
+  // resolves against a bogus host). Root case matters on the static site (served
+  // at "/"); the trailing-slash case matters for the console at "/docs/".
+  if (basePath.endsWith('/')) {
+    basePath = basePath.slice(0, -1);
+  }
+
+  return basePath;
 }
 
 // Helper function to build relative URLs
@@ -36,79 +42,60 @@ function buildUrl(path) {
 }
 
 // ==========================================
-// CONFIGURATION: Edit this to customize your sidebar
+// SIDEBAR CONFIG
+// Loaded from assets/nav.json: the single source of truth shared by the Go
+// console and the static GitHub Pages build, so the nav can no longer drift
+// between them. To add/reorder docs, edit nav.json (not this file).
 // ==========================================
-const DOCS_CONFIG = {
-  sections: [
-    {
-      title: "Getting Started",
-      links: [
-        { title: "Introduction", file: "getting-started/introduction" },
-        { title: "System Boundary", file: "getting-started/system-boundary" },
-        { title: "Design Principles", file: "getting-started/design-principles" },
-        { title: "Feature Matrix", file: "getting-started/feature-matrix" },
-        { title: "Group & Community Management", file: "getting-started/group-management" }
-      ]
-    },
-    {
-      title: "Architecture",
-      links: [
-        { title: "High Level Architecture", file: "architechture/high-level-architecture" },
-        { title: "Component Overview", file: "architechture/component-overview" },
-        { title: "Message Flow", file: "architechture/message-flow" },
-        { title: "Webhook Flow", file: "architechture/webhook-flow" },
-        { title: "Queue Processing", file: "architechture/queue-processing" }
-      ]
-    },
-    {
-      title: "Installation",
-      links: [
-        { title: "Prerequisites", file: "installation/prerequisites" },
-        { title: "Docker Deployment", file: "installation/docker-deployment" },
-        { title: "Binary Build", file: "installation/binary-build" },
-        { title: "Production Deployment", file: "installation/production-deployment" },
-        { title: "Reverse Proxy Setup", file: "installation/reverse-proxy-setup" }
-      ]
-    },
-    {
-      title: "Configuration",
-      links: [
-        { title: "Environment Variables", file: "configuration/environment-variables" },
-        { title: "Storage Configuration", file: "configuration/storage-configuration" },
+let DOCS_CONFIG = { sections: [], defaultDoc: "" };
 
-      ]
-    },
-    {
-      title: "Security",
-      links: [
-        { title: "Authentication and Security", file: "security/authentication-and-security" },
-        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
-      ]
-    },
-    {
-      title: "MCP",
-      links: [
-        { title: "Introduction", file: "mcp/introduction" },
-        { title: "Quick Start", file: "mcp/quick-start" },
-        { title: "Configuration", file: "mcp/configuration" },
-        { title: "Tools Reference", file: "mcp/tools-reference" },
-        { title: "Client Setup", file: "mcp/client-setup" }
-      ]
-    },
-    {
-      title: "SDK",
-      links: [
-        { title: "Go", file: "sdk/go" }
-      ]
-    }
-  ],
-  defaultDoc: "getting-started/introduction" // First doc to load
-};
+async function loadNavConfig() {
+  const res = await fetch(buildUrl('assets/nav.json'));
+  if (!res.ok) {
+    throw new Error('assets/nav.json not found');
+  }
+  DOCS_CONFIG = await res.json();
+}
+
+// HAS_API is true only when the interactive API (RapiDoc) tab is present. The
+// authenticated Go console renders it; the public static site does not, so all
+// API-only behaviour below is gated on this instead of a separate build.
+const HAS_API = !!document.querySelector('[data-view="api"]');
 
 // ==========================================
 // CURRENT VIEW STATE
 // ==========================================
 let currentView = 'docs'; // Track current active view
+let currentDoc = null;    // Track the doc on screen (for theme re-render)
+
+// ==========================================
+// THEME TOGGLE (light / dark)
+// ==========================================
+const SUN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function setupThemeToggle() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const paint = () => {
+    const dark = currentTheme() === 'dark';
+    btn.innerHTML = dark ? SUN_SVG : MOON_SVG;
+    btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  };
+  paint();
+  btn.addEventListener('click', () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('waga-theme', next); } catch (e) {}
+    paint();
+    // Re-render current doc so mermaid diagrams pick up the new theme.
+    if (currentDoc) loadMarkdownDocs(currentDoc);
+  });
+}
 
 // ==========================================
 // HASH ROUTING UTILITIES
@@ -169,17 +156,19 @@ function generateSidebar() {
   const sidebar = document.getElementById('sidebar');
   let sidebarHTML = '';
 
-  // Add desktop-only notice for mobile users
-  sidebarHTML += `
-    <div class="mobile-desktop-notice">
-      <div class="note-box">
-        <strong>Mobile View</strong>
-        <p style="margin-top: 0.5rem; margin-bottom: 0;">
-          API Reference is available on desktop. Open this page on a larger screen for full features.
-        </p>
+  // Desktop-only notice for mobile users (only meaningful when the API tab exists)
+  if (HAS_API) {
+    sidebarHTML += `
+      <div class="mobile-desktop-notice">
+        <div class="note-box">
+          <strong>Mobile View</strong>
+          <p style="margin-top: 0.5rem; margin-bottom: 0;">
+            API Reference is available on desktop. Open this page on a larger screen for full features.
+          </p>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 
   DOCS_CONFIG.sections.forEach(section => {
     sidebarHTML += `
@@ -351,7 +340,260 @@ function addHeadingAnchors(htmlContent, docName) {
   return tempDiv.innerHTML;
 }
 
+// ==========================================
+// MERMAID DIAGRAMS (lazy-loaded)
+// ==========================================
+// mermaid.min.js is ~3.4MB, so it is fetched only when a rendered doc actually
+// contains a ```mermaid block, not on every page.
+let mermaidPromise = null;
+function ensureMermaid() {
+  if (window.mermaid) return Promise.resolve(window.mermaid);
+  if (mermaidPromise) return mermaidPromise;
+  mermaidPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = buildUrl('assets/mermaid.min.js');
+    s.onload = () => resolve(window.mermaid);
+    s.onerror = () => { mermaidPromise = null; reject(new Error('mermaid failed to load')); };
+    document.head.appendChild(s);
+  });
+  return mermaidPromise;
+}
+
+async function renderMermaidDiagrams(container) {
+  // marked renders ```mermaid as <pre><code class="language-mermaid">source</code></pre>
+  const blocks = container.querySelectorAll('code.language-mermaid');
+  if (!blocks.length) return;
+
+  let mermaid;
+  try {
+    mermaid = await ensureMermaid();
+  } catch (e) {
+    console.error(e);
+    return; // leave the raw code block in place on failure
+  }
+
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: isLight ? 'default' : 'dark',
+  });
+
+  const nodes = [];
+  blocks.forEach(code => {
+    const pre = code.closest('pre') || code;
+    const div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent; // decoded source, not HTML-escaped
+    pre.replaceWith(div);
+    nodes.push(div);
+  });
+
+  try {
+    await mermaid.run({ nodes });
+    nodes.forEach(attachDiagramControls);
+  } catch (e) {
+    console.error('mermaid render error', e);
+  }
+}
+
+// ==========================================
+// DIAGRAM VIEWER (fullscreen + pan/zoom for mermaid diagrams)
+// ==========================================
+const EXPAND_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+
+let diagramOverlay = null;
+function ensureDiagramOverlay() {
+  if (diagramOverlay) return diagramOverlay;
+  const ov = document.createElement('div');
+  ov.className = 'diagram-overlay';
+  ov.innerHTML =
+    '<div class="diagram-toolbar">' +
+      '<button type="button" data-act="out" aria-label="Zoom out">−</button>' +
+      '<button type="button" data-act="reset" aria-label="Reset zoom">Reset</button>' +
+      '<button type="button" data-act="in" aria-label="Zoom in">+</button>' +
+      '<button type="button" data-act="close" aria-label="Close (Esc)">✕</button>' +
+    '</div>' +
+    '<div class="diagram-stage"><div class="diagram-canvas"></div></div>';
+  document.body.appendChild(ov);
+
+  const stage = ov.querySelector('.diagram-stage');
+  const canvas = ov.querySelector('.diagram-canvas');
+  let scale = 1, tx = 0, ty = 0, dragging = false, lastX = 0, lastY = 0;
+
+  const apply = () => { canvas.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; };
+  const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
+  const zoom = factor => { scale = Math.min(Math.max(scale * factor, 0.2), 8); apply(); };
+  const close = () => { ov.classList.remove('open'); document.body.style.overflow = ''; };
+
+  stage.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
+  stage.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; stage.setPointerCapture(e.pointerId); stage.classList.add('grabbing'); });
+  stage.addEventListener('pointermove', e => { if (!dragging) return; tx += e.clientX - lastX; ty += e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; apply(); });
+  stage.addEventListener('pointerup', () => { dragging = false; stage.classList.remove('grabbing'); });
+  stage.addEventListener('dblclick', reset);
+
+  ov.querySelector('.diagram-toolbar').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    ({ in: () => zoom(1.2), out: () => zoom(1 / 1.2), reset: reset, close: close }[b.dataset.act] || (() => {}))();
+  });
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) close(); });
+
+  ov._show = svg => {
+    canvas.innerHTML = '';
+    const clone = svg.cloneNode(true);
+    // mermaid stamps inline width/height/max-width sizing on the svg; strip it so
+    // the clone fills the large canvas via its viewBox (big + crisp), not its
+    // small intrinsic size.
+    clone.removeAttribute('width');
+    clone.removeAttribute('height');
+    clone.style.maxWidth = 'none';
+    clone.style.maxHeight = 'none';
+    clone.style.width = '100%';
+    clone.style.height = '100%';
+    canvas.appendChild(clone);
+    reset();
+    ov.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+  diagramOverlay = ov;
+  return ov;
+}
+
+function openDiagramViewer(svg) {
+  if (svg) ensureDiagramOverlay()._show(svg);
+}
+
+function attachDiagramControls(container) {
+  if (!container || container.querySelector('.diagram-zoom-btn')) return;
+  const svg = container.querySelector('svg');
+  if (!svg) return;
+  const btn = document.createElement('button');
+  btn.className = 'diagram-zoom-btn';
+  btn.type = 'button';
+  btn.title = 'Fullscreen';
+  btn.setAttribute('aria-label', 'Open diagram fullscreen');
+  btn.innerHTML = EXPAND_SVG;
+  btn.addEventListener('click', () => openDiagramViewer(svg));
+  container.appendChild(btn);
+}
+
+// ==========================================
+// CODE BLOCKS: copy button + syntax highlighting (hljs lazy-loaded)
+// ==========================================
+let hljsPromise = null;
+function ensureHljs() {
+  if (window.hljs) return Promise.resolve(window.hljs);
+  if (hljsPromise) return hljsPromise;
+  hljsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = buildUrl('assets/highlight.min.js');
+    s.onload = () => resolve(window.hljs);
+    s.onerror = () => { hljsPromise = null; reject(new Error('hljs failed to load')); };
+    document.head.appendChild(s);
+  });
+  return hljsPromise;
+}
+
+function addCopyButton(code) {
+  const pre = code.closest('pre');
+  if (!pre || pre.querySelector('.code-copy')) return;
+  const btn = document.createElement('button');
+  btn.className = 'code-copy';
+  btn.type = 'button';
+  btn.textContent = 'Copy';
+  btn.setAttribute('aria-label', 'Copy code to clipboard');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(code.textContent);
+      btn.textContent = 'Copied';
+    } catch (e) {
+      btn.textContent = 'Error';
+    }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+  pre.appendChild(btn);
+}
+
+function enhanceCodeBlocks(container) {
+  // Skip mermaid: those blocks become diagrams, not code.
+  const blocks = container.querySelectorAll('pre > code:not(.language-mermaid)');
+  if (!blocks.length) return;
+  blocks.forEach(addCopyButton);
+  ensureHljs().then(hljs => {
+    if (!hljs) return;
+    blocks.forEach(code => { try { hljs.highlightElement(code); } catch (e) {} });
+  }).catch(() => {});
+}
+
+// ==========================================
+// ON-PAGE TABLE OF CONTENTS + SCROLL SPY
+// ==========================================
+let tocObserver = null;
+
+function buildTableOfContents(contentEl, docName) {
+  const toc = document.getElementById('docs-toc');
+  const inner = document.querySelector('.docs-inner');
+  if (!toc) return;
+  toc.innerHTML = '';
+  if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+
+  const items = [];
+  contentEl.querySelectorAll('h2, h3').forEach(h => {
+    const text = (h.textContent || '').replace(/#\s*$/, '').trim();
+    if (!text) return;
+    if (!h.id) h.id = generateSlug(text); // h3 has no id from addHeadingAnchors
+    items.push({ el: h, id: h.id, text: text, level: h.tagName === 'H3' ? 3 : 2 });
+  });
+
+  // Not worth a rail for a stub page.
+  if (items.length < 2) {
+    inner && inner.classList.remove('has-toc');
+    return;
+  }
+
+  const title = document.createElement('div');
+  title.className = 'docs-toc-title';
+  title.textContent = 'On this page';
+  toc.appendChild(title);
+
+  const links = {};
+  items.forEach(it => {
+    const a = document.createElement('a');
+    a.href = buildHash('docs', docName, it.id);
+    a.textContent = it.text;
+    a.dataset.id = it.id;
+    if (it.level === 3) a.classList.add('lvl-3');
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      window.history.pushState(null, '', buildHash('docs', docName, it.id));
+      it.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    toc.appendChild(a);
+    links[it.id] = a;
+  });
+  inner && inner.classList.add('has-toc');
+
+  // Scroll-spy: highlight the topmost heading currently in view. The scroll
+  // container is .docs-content, so the observer is rooted there.
+  const root = document.querySelector('.docs-content');
+  const visible = new Set();
+  tocObserver = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) visible.add(en.target.id);
+      else visible.delete(en.target.id);
+    });
+    let activeId = null;
+    for (const it of items) { if (visible.has(it.id)) { activeId = it.id; break; } }
+    if (!activeId) return;
+    Object.keys(links).forEach(id => links[id].classList.toggle('active', id === activeId));
+  }, { root: root, rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+  items.forEach(it => tocObserver.observe(it.el));
+}
+
 async function loadMarkdownDocs(docName) {
+  currentDoc = docName;
   const contentDiv = document.getElementById('markdown-content');
 
   // Show loading spinner
@@ -375,6 +617,15 @@ async function loadMarkdownDocs(docName) {
     html = addHeadingAnchors(html, docName);
 
     contentDiv.innerHTML = html;
+
+    // Render any mermaid diagrams (lazy-loads the lib only if present)
+    renderMermaidDiagrams(contentDiv);
+
+    // Add copy buttons + syntax highlighting to code blocks
+    enhanceCodeBlocks(contentDiv);
+
+    // Build the on-page table of contents + scroll spy
+    buildTableOfContents(contentDiv, docName);
 
     // Check if there's a section hash and scroll to it
     const hashData = parseHash();
@@ -430,7 +681,7 @@ async function loadMarkdownDocs(docName) {
 // ==========================================
 // INITIALIZATION
 // ==========================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   // Mobile sidebar toggle
   const mobileMenuBtn = document.getElementById('mobile-menu-btn');
   const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -445,6 +696,8 @@ window.addEventListener('DOMContentLoaded', () => {
   mobileMenuBtn?.addEventListener('click', toggleSidebar);
   sidebarOverlay?.addEventListener('click', toggleSidebar);
 
+  setupThemeToggle();
+
   // Set up logo link to refresh/go to home
   const logoLink = document.getElementById('logo-link');
   logoLink.href = window.location.pathname;
@@ -453,6 +706,16 @@ window.addEventListener('DOMContentLoaded', () => {
   const rapiDocElement = document.getElementById('rapi-doc-element');
   if (rapiDocElement) {
     rapiDocElement.setAttribute('spec-url', buildUrl('yaml'));
+  }
+
+  // Load the shared nav config (assets/nav.json) before building the sidebar.
+  try {
+    await loadNavConfig();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('markdown-content').innerHTML =
+      '<div style="padding:2rem;color:#ef4444;">Failed to load navigation (assets/nav.json).</div>';
+    return;
   }
 
   // Generate sidebar from config

@@ -22,6 +22,22 @@ At a high level, the system consists of:
 
 The system is deployed as a single service instance by default, with optional integration to external infrastructure components such as RabbitMQ and PostgreSQL.
 
+```mermaid
+flowchart LR
+    B[Backend App] --> API[HTTP API Layer]
+    subgraph Gateway
+        API --> Auth[JWT Auth]
+        Auth --> MP[Message Processing]
+        MP -. optional .-> Q[Queue Layer]
+        MP --> SM[WhatsApp Session Manager]
+        MP --> DB[(Database)]
+        SM --> WH[Webhook Dispatcher]
+    end
+    Q --> SM
+    SM --> WA[WhatsApp Network]
+    WH --> B
+```
+
 ## Logical Flow
 
 Outbound Message Flow:
@@ -122,13 +138,14 @@ Webhook dispatch is asynchronous from message handling.
 
 Recommended topology:
 
-Client Application
-    ↓
-Backend Service (Business Logic)
-    ↓
-Whatsapp Gateway
-    ↓
-WhatsApp Network
+```mermaid
+flowchart TD
+    C[Client Application] --> B[Backend Service - Business Logic]
+    B --> G[WhatsApp Gateway]
+    G --> WA[WhatsApp Network]
+    G -. optional .-> Q[RabbitMQ]
+    G -. optional .-> P[(PostgreSQL)]
+```
 
 Optional infrastructure components:
 
@@ -161,8 +178,8 @@ Queue Enabled:
 - Dispatch is controlled and serialized according to configuration.
 
 Queue Disabled:
-- Messages exceeding rate limits are rejected immediately.
-- No buffering occurs.
+- Over-budget sends are paced in-flight by the outbound pacer (default `OUTBOUND_PACE_MODE=pace`), blocking up to `OUTBOUND_PACE_MAX_WAIT_SECONDS` (default 30s) before being rejected with a 429.
+- Only the per-recipient hard cap and ban gate reject immediately; the same pacer governs queue mode as well.
 
 This ensures predictable backpressure behavior.
 

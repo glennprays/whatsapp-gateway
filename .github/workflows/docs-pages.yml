@@ -7,6 +7,10 @@ on:
       - 'docs/ui/**'
       - '.github/workflows/docs-pages.yml'
       - 'scripts/build-docs-pages.sh'
+      - 'cmd/docs-gen/**'
+      - 'pkg/docsgen/**'
+      - 'go.mod'
+      - 'go.sum'
       - 'llms.txt'
       - 'docs/openapi.yaml'
   workflow_dispatch:
@@ -46,6 +50,10 @@ jobs:
             'docs/ui/**' \
             '.github/workflows/docs-pages.yml' \
             'scripts/build-docs-pages.sh' \
+            'cmd/docs-gen/**' \
+            'pkg/docsgen/**' \
+            'go.mod' \
+            'go.sum' \
             'llms.txt' \
             'docs/openapi.yaml' \
             2>/dev/null || echo "")
@@ -69,6 +77,11 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Build docs
         run: |

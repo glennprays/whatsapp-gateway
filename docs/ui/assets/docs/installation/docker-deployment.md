@@ -139,7 +139,7 @@ Environtment variables in `.env` example:
 ```
 # Server
 PORT=3000
-BASIC_AUTH_SECRET_KEY=secret
+SECRET_KEY=your_secret_key
 ENV=production
 
 BASE_PATH=/api

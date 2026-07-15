@@ -3,6 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Apply the saved/preferred theme before paint to avoid a flash. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('waga-theme');
+        if (t) document.documentElement.setAttribute('data-theme', t);
+        else if (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches)
+          document.documentElement.setAttribute('data-theme', 'light');
+      } catch (e) {}
+    })();
+  </script>
   <title>WhatsApp Gateway - Open Source Go REST API</title>
 
   <!-- SEO Meta Tags -->
@@ -12,9 +23,9 @@
   <link rel="canonical" href="https://waga.glennprays.com/">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/{{ .BasePath }}/assets/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/{{ .BasePath }}/assets/favicon-16x16.png">
-  <link rel="shortcut icon" href="/{{ .BasePath }}/assets/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ .BasePath }}/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ .BasePath }}/assets/favicon-16x16.png">
+  <link rel="shortcut icon" href="{{ .BasePath }}/assets/favicon.ico">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
@@ -49,16 +60,16 @@
   </script>
 
   <!-- External CSS -->
-    <link rel="stylesheet" href="/{{ .BasePath }}/assets/styles.css">
-  
+    <link rel="stylesheet" href="{{ .BasePath }}/assets/styles.css">
+  {{ if .ShowAPI }}
   <!-- RapiDoc Web Component -->
   <script
     type="module"
-    src="/{{ .BasePath }}/assets/rapidoc-min.js">
+    src="{{ .BasePath }}/assets/rapidoc-min.js">
   </script>
-  
+  {{ end }}
   <!-- Marked.js for Markdown rendering -->
-  <script src="/{{ .BasePath }}/assets/marked.min.js"></script>
+  <script src="{{ .BasePath }}/assets/marked.min.js"></script>
   
   <!-- Load fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -81,11 +92,11 @@
         </a>
         <div class="nav-tabs">
           <button class="nav-tab active" data-view="docs">Docs</button>
-          <button class="nav-tab" data-view="api">API</button>
+          {{ if .ShowAPI }}<button class="nav-tab" data-view="api">API</button>{{ end }}
         </div>
       </div>
       <div class="header-right">
-        <!-- <span class="version-badge">v2.0.0</span> -->
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme"></button>
         <a href="https://github.com/glennprays/whatsapp-gateway" class="github-link" target="_blank">GitHub →</a>
       </div>
     </div>
@@ -104,16 +115,17 @@
         <!-- Main Content -->
         <main class="docs-content">
           <div class="docs-inner">
-            <div class="markdown-content" id="markdown-content">
+            <article class="markdown-content" id="markdown-content">
               <div class="loading-spinner">
                 <div class="spinner"></div>
               </div>
-            </div>
+            </article>
+            <aside class="docs-toc" id="docs-toc" aria-label="On this page"></aside>
           </div>
         </main>
       </div>
     </div>
-
+    {{ if .ShowAPI }}
     <!-- API Reference View (RapiDoc) -->
     <div id="api-view" class="content-view">
       <rapi-doc
@@ -143,9 +155,11 @@
       >
       </rapi-doc>
     </div>
+    {{ end }}
   </div>
 
   <!-- External JavaScript -->
-    <script src="/{{ .BasePath }}/assets/app.js"></script>
+    <script src="{{ .BasePath }}/assets/app.js"></script>
+    <script src="{{ .BasePath }}/assets/search.js"></script>
 </body>
 </html>

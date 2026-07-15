@@ -87,8 +87,8 @@ When media download is enabled, the gateway automatically:
 When media download is disabled, the gateway:
 
 1. Does NOT download incoming media from WhatsApp
-2. Does NOT include a `media` object in the webhook payload
-3. Only provides the `type` field to indicate the message type
+2. Still includes a `media` object for media messages (image/video/audio/document/sticker), with `mime_type`, `size`, and a `url` pointing to WhatsApp's temporary, unauthenticated URL instead of a stored URL
+3. Does not persist or re-host the media: the media object is still present, only its `url` differs
 
 **Example text message payload:**
 ```json
@@ -144,7 +144,7 @@ Webhook signature validation is mandatory for secure deployments.
 
 If you provided an `hmac_secret`, webhook requests will include an `X-Webhook-Signature` header of the form `sha256=<hex_signature>`, where the signature is the HMAC-SHA256 of the **raw request body**. Verify it like this:
 
-> The header is `X-Webhook-Signature` (not `X-Signature`) and includes the `sha256=` prefix — strip it before comparing. Compute the HMAC over the **raw bytes**, not a re-serialized object.
+> The header is `X-Webhook-Signature` (not `X-Signature`) and includes the `sha256=` prefix: strip it before comparing. Compute the HMAC over the **raw bytes**, not a re-serialized object.
 
 **Python Example:**
 ```python
@@ -199,8 +199,8 @@ func verifyWebhook(rawBody []byte, signatureHeader, secret string) bool {
 
 Incoming-message webhooks include an `addressing_mode` field alongside `from`:
 
-- `"pn"` — `from` is a callable `@s.whatsapp.net` phone number.
-- `"lid"` — the only available identifier was an opaque `@lid` (typically a group LID-only participant). Do **not** assume `from` is dialable; treat it as an opaque sender key.
+- `"pn"`: `from` is a callable `@s.whatsapp.net` phone number.
+- `"lid"`: the only available identifier was an opaque `@lid` (typically a group LID-only participant). Do **not** assume `from` is dialable; treat it as an opaque sender key.
 
 ## Delivery Process
 
@@ -212,6 +212,19 @@ Webhook delivery follows this sequence:
 4. Await HTTP response
 
 A successful webhook delivery is defined as receiving a successful HTTP status code within the configured timeout.
+
+```mermaid
+flowchart TD
+    A[State change in gateway] --> B[Construct JSON payload]
+    B --> C[Generate HMAC signature]
+    C --> D[HTTP POST to backend endpoint]
+    D --> E{2xx within timeout?}
+    E -- Yes --> F[Delivered]
+    E -- No --> G{Retries remaining?}
+    G -- Yes --> H[Wait backoff]
+    H --> D
+    G -- No --> I[Stop: no further attempts]
+```
 
 ## Retry Policy
 
@@ -235,7 +248,7 @@ After maximum retry count is reached:
 - Delivery attempts stop.
 - No further automatic recovery is attempted.
 
-The gateway does not provide dead-letter queue handling for webhook failures.
+Dead-letter queue handling depends on the delivery mode. In direct mode (default), the gateway does not provide dead-letter queue handling for webhook failures: delivery simply stops after the retry limit is reached. In queue (RabbitMQ) mode, webhook deliveries that exhaust their retries are routed to a dedicated dead-letter queue (`whatsapp.dlq.webhooks.delivery`), which a consumer drains for observability and manual follow-up.
 
 ## Failure Scenarios
 

@@ -108,7 +108,7 @@ When enabled:
 When disabled:
 
 - Outbound requests are processed immediately.
-- If rate limits are exceeded, the request is rejected.
+- If rate limits are exceeded, the request is paced (delayed) and only rejected if it cannot clear within the configured wait window.
 - No broker-based buffering occurs.
 
 ## Trust Boundary
@@ -143,6 +143,6 @@ While currently designed for single-instance deployment, the long-term roadmap i
 - Horizontal scalability
 - Distributed processing architecture
 - Improved worker isolation
-- MCP integration support
+- MCP integration is already available via a companion MCP server (mcp-whatsapp-gateway); see the MCP documentation section.
 
 Current documentation reflects the present architecture and should not assume distributed behavior unless explicitly stated.
