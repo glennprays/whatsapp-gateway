@@ -11,12 +11,18 @@ function getBasePath() {
   // const lastSlashIndex = pathname.lastIndexOf('/');
   // const basePath = pathname.substring(0, lastSlashIndex);
 
-  // remove / index.html or .html from the end if present 
-  const basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
+  // remove / index.html or .html from the end if present
+  let basePath = pathname.replace(/\/?[^\/]*\.html$/, '');
 
-  // Return the base path, ensuring it doesn't end with a slash
-  // unless it's the root path
-  return basePath === '' ? '' : basePath;
+  // Strip a trailing slash and normalize root to "" so buildUrl() produces
+  // "/assets/..." and never "//assets/..." (a protocol-relative URL the browser
+  // resolves against a bogus host). Root case matters on the static site (served
+  // at "/"); the trailing-slash case matters for the console at "/docs/".
+  if (basePath.endsWith('/')) {
+    basePath = basePath.slice(0, -1);
+  }
+
+  return basePath;
 }
 
 // Helper function to build relative URLs
