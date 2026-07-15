@@ -304,6 +304,62 @@ function addHeadingAnchors(htmlContent, docName) {
   return tempDiv.innerHTML;
 }
 
+// ==========================================
+// MERMAID DIAGRAMS (lazy-loaded)
+// ==========================================
+// mermaid.min.js is ~3.4MB, so it is fetched only when a rendered doc actually
+// contains a ```mermaid block, not on every page.
+let mermaidPromise = null;
+function ensureMermaid() {
+  if (window.mermaid) return Promise.resolve(window.mermaid);
+  if (mermaidPromise) return mermaidPromise;
+  mermaidPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = buildUrl('assets/mermaid.min.js');
+    s.onload = () => resolve(window.mermaid);
+    s.onerror = () => { mermaidPromise = null; reject(new Error('mermaid failed to load')); };
+    document.head.appendChild(s);
+  });
+  return mermaidPromise;
+}
+
+async function renderMermaidDiagrams(container) {
+  // marked renders ```mermaid as <pre><code class="language-mermaid">source</code></pre>
+  const blocks = container.querySelectorAll('code.language-mermaid');
+  if (!blocks.length) return;
+
+  let mermaid;
+  try {
+    mermaid = await ensureMermaid();
+  } catch (e) {
+    console.error(e);
+    return; // leave the raw code block in place on failure
+  }
+
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: isLight ? 'default' : 'dark',
+  });
+
+  const nodes = [];
+  blocks.forEach(code => {
+    const pre = code.closest('pre') || code;
+    const div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent; // decoded source, not HTML-escaped
+    pre.replaceWith(div);
+    nodes.push(div);
+  });
+
+  try {
+    await mermaid.run({ nodes });
+  } catch (e) {
+    console.error('mermaid render error', e);
+  }
+}
+
 async function loadMarkdownDocs(docName) {
   const contentDiv = document.getElementById('markdown-content');
 
@@ -328,6 +384,9 @@ async function loadMarkdownDocs(docName) {
     html = addHeadingAnchors(html, docName);
 
     contentDiv.innerHTML = html;
+
+    // Render any mermaid diagrams (lazy-loads the lib only if present)
+    renderMermaidDiagrams(contentDiv);
 
     // Check if there's a section hash and scroll to it
     const hashData = parseHash();
