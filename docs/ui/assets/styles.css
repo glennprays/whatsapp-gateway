@@ -289,9 +289,68 @@ body {
 }
 
 .docs-inner {
-  max-width: var(--content-max);
+  max-width: 860px;
   margin: 0 auto;
   padding: 3rem 2rem;
+}
+
+/* When the current doc has an on-page TOC, switch to a 3-column reading grid. */
+.docs-inner.has-toc {
+  max-width: var(--content-max);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--toc-w);
+  gap: 3rem;
+  align-items: start;
+}
+
+/* On-page "On this page" table of contents */
+.docs-toc {
+  position: sticky;
+  top: 2rem;
+  align-self: start;
+  max-height: calc(100vh - var(--header-h) - 4rem);
+  overflow-y: auto;
+  font-size: 0.8125rem;
+  border-left: 1px solid var(--border);
+}
+
+.docs-toc:empty { display: none; }
+
+.docs-toc-title {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  margin: 0 0 0.75rem 1rem;
+}
+
+.docs-toc a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0 0.25rem 1rem;
+  line-height: 1.4;
+  border-left: 2px solid transparent;
+  margin-left: -1px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.docs-toc a.lvl-3 { padding-left: 2rem; font-size: 0.78rem; }
+.docs-toc a:hover { color: var(--text); }
+
+.docs-toc a.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+
+@media (max-width: 1200px) {
+  .docs-toc { display: none; }
+  .docs-inner.has-toc {
+    max-width: 860px;
+    display: block;
+  }
 }
 
 /* ==========================================================================

@@ -390,6 +390,71 @@ async function renderMermaidDiagrams(container) {
   }
 }
 
+// ==========================================
+// ON-PAGE TABLE OF CONTENTS + SCROLL SPY
+// ==========================================
+let tocObserver = null;
+
+function buildTableOfContents(contentEl, docName) {
+  const toc = document.getElementById('docs-toc');
+  const inner = document.querySelector('.docs-inner');
+  if (!toc) return;
+  toc.innerHTML = '';
+  if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+
+  const items = [];
+  contentEl.querySelectorAll('h2, h3').forEach(h => {
+    const text = (h.textContent || '').replace(/#\s*$/, '').trim();
+    if (!text) return;
+    if (!h.id) h.id = generateSlug(text); // h3 has no id from addHeadingAnchors
+    items.push({ el: h, id: h.id, text: text, level: h.tagName === 'H3' ? 3 : 2 });
+  });
+
+  // Not worth a rail for a stub page.
+  if (items.length < 2) {
+    inner && inner.classList.remove('has-toc');
+    return;
+  }
+
+  const title = document.createElement('div');
+  title.className = 'docs-toc-title';
+  title.textContent = 'On this page';
+  toc.appendChild(title);
+
+  const links = {};
+  items.forEach(it => {
+    const a = document.createElement('a');
+    a.href = buildHash('docs', docName, it.id);
+    a.textContent = it.text;
+    a.dataset.id = it.id;
+    if (it.level === 3) a.classList.add('lvl-3');
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      window.history.pushState(null, '', buildHash('docs', docName, it.id));
+      it.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    toc.appendChild(a);
+    links[it.id] = a;
+  });
+  inner && inner.classList.add('has-toc');
+
+  // Scroll-spy: highlight the topmost heading currently in view. The scroll
+  // container is .docs-content, so the observer is rooted there.
+  const root = document.querySelector('.docs-content');
+  const visible = new Set();
+  tocObserver = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) visible.add(en.target.id);
+      else visible.delete(en.target.id);
+    });
+    let activeId = null;
+    for (const it of items) { if (visible.has(it.id)) { activeId = it.id; break; } }
+    if (!activeId) return;
+    Object.keys(links).forEach(id => links[id].classList.toggle('active', id === activeId));
+  }, { root: root, rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+  items.forEach(it => tocObserver.observe(it.el));
+}
+
 async function loadMarkdownDocs(docName) {
   currentDoc = docName;
   const contentDiv = document.getElementById('markdown-content');
@@ -418,6 +483,9 @@ async function loadMarkdownDocs(docName) {
 
     // Render any mermaid diagrams (lazy-loads the lib only if present)
     renderMermaidDiagrams(contentDiv);
+
+    // Build the on-page table of contents + scroll spy
+    buildTableOfContents(contentDiv, docName);
 
     // Check if there's a section hash and scroll to it
     const hashData = parseHash();
