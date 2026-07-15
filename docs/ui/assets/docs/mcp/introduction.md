@@ -15,12 +15,13 @@ The **Model Context Protocol (MCP)** is an open protocol that enables AI agents 
 
 ## Architecture
 
-```
-┌─────────────────────┐     MCP Protocol      ┌──────────────────────┐     HTTP/JWT     ┌─────────────────────┐
-│  AI Agent           │ ←────────────────────→ │  MCP WhatsApp        │ ←───────────────→ │  WhatsApp           │
-│  (Claude/Cursor     │   (stdio or HTTP+SSE)   │  Gateway Server      │   (REST API)      │  Gateway            │
-│   Claude Code)      │                         │                      │                   │  (waga)             │
-└─────────────────────┘                         └──────────────────────┘                   └─────────────────────┘
+```mermaid
+flowchart LR
+    A["AI Agent<br/>(Claude / Cursor / Claude Code)"]
+    M["MCP WhatsApp<br/>Gateway Server"]
+    W["WhatsApp Gateway<br/>(waga)"]
+    A <-->|"MCP Protocol<br/>(stdio or HTTP+SSE)"| M
+    M <-->|"HTTP / JWT<br/>(REST API)"| W
 ```
 
 ### Data Flow
