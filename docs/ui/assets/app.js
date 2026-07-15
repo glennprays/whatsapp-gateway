@@ -36,74 +36,25 @@ function buildUrl(path) {
 }
 
 // ==========================================
-// CONFIGURATION: Edit this to customize your sidebar
+// SIDEBAR CONFIG
+// Loaded from assets/nav.json — the single source of truth shared by the Go
+// console and the static GitHub Pages build, so the nav can no longer drift
+// between them. To add/reorder docs, edit nav.json (not this file).
 // ==========================================
-const DOCS_CONFIG = {
-  sections: [
-    {
-      title: "Getting Started",
-      links: [
-        { title: "Introduction", file: "getting-started/introduction" },
-        { title: "System Boundary", file: "getting-started/system-boundary" },
-        { title: "Design Principles", file: "getting-started/design-principles" },
-        { title: "Feature Matrix", file: "getting-started/feature-matrix" },
-        { title: "Group & Community Management", file: "getting-started/group-management" }
-      ]
-    },
-    {
-      title: "Architecture",
-      links: [
-        { title: "High Level Architecture", file: "architechture/high-level-architecture" },
-        { title: "Component Overview", file: "architechture/component-overview" },
-        { title: "Message Flow", file: "architechture/message-flow" },
-        { title: "Webhook Flow", file: "architechture/webhook-flow" },
-        { title: "Queue Processing", file: "architechture/queue-processing" }
-      ]
-    },
-    {
-      title: "Installation",
-      links: [
-        { title: "Prerequisites", file: "installation/prerequisites" },
-        { title: "Docker Deployment", file: "installation/docker-deployment" },
-        { title: "Binary Build", file: "installation/binary-build" },
-        { title: "Production Deployment", file: "installation/production-deployment" },
-        { title: "Reverse Proxy Setup", file: "installation/reverse-proxy-setup" }
-      ]
-    },
-    {
-      title: "Configuration",
-      links: [
-        { title: "Environment Variables", file: "configuration/environment-variables" },
-        { title: "Storage Configuration", file: "configuration/storage-configuration" },
+let DOCS_CONFIG = { sections: [], defaultDoc: "" };
 
-      ]
-    },
-    {
-      title: "Security",
-      links: [
-        { title: "Authentication and Security", file: "security/authentication-and-security" },
-        { title: "[IMPORTANT] Security Considerations", file: "security/important-security-consideration" },
-      ]
-    },
-    {
-      title: "MCP",
-      links: [
-        { title: "Introduction", file: "mcp/introduction" },
-        { title: "Quick Start", file: "mcp/quick-start" },
-        { title: "Configuration", file: "mcp/configuration" },
-        { title: "Tools Reference", file: "mcp/tools-reference" },
-        { title: "Client Setup", file: "mcp/client-setup" }
-      ]
-    },
-    {
-      title: "SDK",
-      links: [
-        { title: "Go", file: "sdk/go" }
-      ]
-    }
-  ],
-  defaultDoc: "getting-started/introduction" // First doc to load
-};
+async function loadNavConfig() {
+  const res = await fetch(buildUrl('assets/nav.json'));
+  if (!res.ok) {
+    throw new Error('assets/nav.json not found');
+  }
+  DOCS_CONFIG = await res.json();
+}
+
+// HAS_API is true only when the interactive API (RapiDoc) tab is present. The
+// authenticated Go console renders it; the public static site does not, so all
+// API-only behaviour below is gated on this instead of a separate build.
+const HAS_API = !!document.querySelector('[data-view="api"]');
 
 // ==========================================
 // CURRENT VIEW STATE
@@ -169,17 +120,19 @@ function generateSidebar() {
   const sidebar = document.getElementById('sidebar');
   let sidebarHTML = '';
 
-  // Add desktop-only notice for mobile users
-  sidebarHTML += `
-    <div class="mobile-desktop-notice">
-      <div class="note-box">
-        <strong>Mobile View</strong>
-        <p style="margin-top: 0.5rem; margin-bottom: 0;">
-          API Reference is available on desktop. Open this page on a larger screen for full features.
-        </p>
+  // Desktop-only notice for mobile users (only meaningful when the API tab exists)
+  if (HAS_API) {
+    sidebarHTML += `
+      <div class="mobile-desktop-notice">
+        <div class="note-box">
+          <strong>Mobile View</strong>
+          <p style="margin-top: 0.5rem; margin-bottom: 0;">
+            API Reference is available on desktop. Open this page on a larger screen for full features.
+          </p>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 
   DOCS_CONFIG.sections.forEach(section => {
     sidebarHTML += `
@@ -430,7 +383,7 @@ async function loadMarkdownDocs(docName) {
 // ==========================================
 // INITIALIZATION
 // ==========================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   // Mobile sidebar toggle
   const mobileMenuBtn = document.getElementById('mobile-menu-btn');
   const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -453,6 +406,16 @@ window.addEventListener('DOMContentLoaded', () => {
   const rapiDocElement = document.getElementById('rapi-doc-element');
   if (rapiDocElement) {
     rapiDocElement.setAttribute('spec-url', buildUrl('yaml'));
+  }
+
+  // Load the shared nav config (assets/nav.json) before building the sidebar.
+  try {
+    await loadNavConfig();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('markdown-content').innerHTML =
+      '<div style="padding:2rem;color:#ef4444;">Failed to load navigation (assets/nav.json).</div>';
+    return;
   }
 
   // Generate sidebar from config

@@ -12,9 +12,9 @@
   <link rel="canonical" href="https://waga.glennprays.com/">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/{{ .BasePath }}/assets/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/{{ .BasePath }}/assets/favicon-16x16.png">
-  <link rel="shortcut icon" href="/{{ .BasePath }}/assets/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ .BasePath }}/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ .BasePath }}/assets/favicon-16x16.png">
+  <link rel="shortcut icon" href="{{ .BasePath }}/assets/favicon.ico">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
@@ -49,16 +49,16 @@
   </script>
 
   <!-- External CSS -->
-    <link rel="stylesheet" href="/{{ .BasePath }}/assets/styles.css">
-  
+    <link rel="stylesheet" href="{{ .BasePath }}/assets/styles.css">
+  {{ if .ShowAPI }}
   <!-- RapiDoc Web Component -->
   <script
     type="module"
-    src="/{{ .BasePath }}/assets/rapidoc-min.js">
+    src="{{ .BasePath }}/assets/rapidoc-min.js">
   </script>
-  
+  {{ end }}
   <!-- Marked.js for Markdown rendering -->
-  <script src="/{{ .BasePath }}/assets/marked.min.js"></script>
+  <script src="{{ .BasePath }}/assets/marked.min.js"></script>
   
   <!-- Load fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -81,7 +81,7 @@
         </a>
         <div class="nav-tabs">
           <button class="nav-tab active" data-view="docs">Docs</button>
-          <button class="nav-tab" data-view="api">API</button>
+          {{ if .ShowAPI }}<button class="nav-tab" data-view="api">API</button>{{ end }}
         </div>
       </div>
       <div class="header-right">
@@ -113,7 +113,7 @@
         </main>
       </div>
     </div>
-
+    {{ if .ShowAPI }}
     <!-- API Reference View (RapiDoc) -->
     <div id="api-view" class="content-view">
       <rapi-doc
@@ -143,9 +143,10 @@
       >
       </rapi-doc>
     </div>
+    {{ end }}
   </div>
 
   <!-- External JavaScript -->
-    <script src="/{{ .BasePath }}/assets/app.js"></script>
+    <script src="{{ .BasePath }}/assets/app.js"></script>
 </body>
 </html>
