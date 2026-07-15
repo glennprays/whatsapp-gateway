@@ -13,21 +13,21 @@
 
   // --- styling (kept here so search.js is a drop-in; Phase 3 CSS can override) ---
   var css = `
-  .search-trigger{display:inline-flex;align-items:center;gap:.5rem;background:#0a0a0a;border:1px solid #262626;color:#a1a1a1;border-radius:8px;padding:.4rem .7rem;font:inherit;font-size:.85rem;cursor:pointer}
-  .search-trigger:hover{border-color:#3b82f6;color:#ededed}
-  .search-trigger kbd{border:1px solid #262626;border-radius:4px;padding:0 .35rem;font-size:.75rem;color:#737373}
+  .search-trigger{display:inline-flex;align-items:center;gap:.5rem;background:var(--bg-1,#0a0a0a);border:1px solid var(--border,#262626);color:var(--text-muted,#a1a1a1);border-radius:8px;padding:.4rem .7rem;font:inherit;font-size:.85rem;cursor:pointer}
+  .search-trigger:hover{border-color:var(--accent,#3b82f6);color:var(--text,#ededed)}
+  .search-trigger kbd{border:1px solid var(--border,#262626);border-radius:4px;padding:0 .35rem;font-size:.75rem;color:var(--text-faint,#737373)}
   .search-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);display:none;z-index:1000;align-items:flex-start;justify-content:center}
   .search-overlay.open{display:flex}
-  .search-box{margin-top:10vh;width:min(640px,92vw);background:#0a0a0a;border:1px solid #262626;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
-  .search-box input{width:100%;box-sizing:border-box;background:transparent;border:0;border-bottom:1px solid #262626;color:#ededed;font:inherit;font-size:1rem;padding:1rem 1.1rem;outline:none}
+  .search-box{margin-top:10vh;width:min(640px,92vw);background:var(--bg-1,#0a0a0a);border:1px solid var(--border,#262626);border-radius:12px;overflow:hidden;box-shadow:var(--shadow,0 20px 60px rgba(0,0,0,.5))}
+  .search-box input{width:100%;box-sizing:border-box;background:transparent;border:0;border-bottom:1px solid var(--border,#262626);color:var(--text,#ededed);font:inherit;font-size:1rem;padding:1rem 1.1rem;outline:none}
   .search-results{max-height:60vh;overflow-y:auto;margin:0;padding:.4rem;list-style:none}
   .search-results li{padding:.6rem .8rem;border-radius:8px;cursor:pointer}
-  .search-results li.active,.search-results li:hover{background:#171717}
-  .search-crumb{font-size:.75rem;color:#3b82f6;margin-bottom:.2rem}
-  .search-crumb .sep{color:#525252;margin:0 .35rem}
-  .search-snippet{font-size:.85rem;color:#a1a1a1;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .search-snippet mark{background:rgba(59,130,246,.25);color:#ededed;border-radius:2px}
-  .search-empty{padding:1.2rem;color:#737373;font-size:.9rem;text-align:center}
+  .search-results li.active,.search-results li:hover{background:var(--bg-2,#171717)}
+  .search-crumb{font-size:.75rem;color:var(--accent,#3b82f6);margin-bottom:.2rem}
+  .search-crumb .sep{color:var(--text-faint,#525252);margin:0 .35rem}
+  .search-snippet{font-size:.85rem;color:var(--text-muted,#a1a1a1);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .search-snippet mark{background:rgba(59,130,246,.25);color:var(--text,#ededed);border-radius:2px}
+  .search-empty{padding:1.2rem;color:var(--text-faint,#737373);font-size:.9rem;text-align:center}
   `;
   var style = document.createElement('style');
   style.textContent = css;

@@ -60,6 +60,36 @@ const HAS_API = !!document.querySelector('[data-view="api"]');
 // CURRENT VIEW STATE
 // ==========================================
 let currentView = 'docs'; // Track current active view
+let currentDoc = null;    // Track the doc on screen (for theme re-render)
+
+// ==========================================
+// THEME TOGGLE (light / dark)
+// ==========================================
+const SUN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function setupThemeToggle() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const paint = () => {
+    const dark = currentTheme() === 'dark';
+    btn.innerHTML = dark ? SUN_SVG : MOON_SVG;
+    btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  };
+  paint();
+  btn.addEventListener('click', () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('waga-theme', next); } catch (e) {}
+    paint();
+    // Re-render current doc so mermaid diagrams pick up the new theme.
+    if (currentDoc) loadMarkdownDocs(currentDoc);
+  });
+}
 
 // ==========================================
 // HASH ROUTING UTILITIES
@@ -361,6 +391,7 @@ async function renderMermaidDiagrams(container) {
 }
 
 async function loadMarkdownDocs(docName) {
+  currentDoc = docName;
   const contentDiv = document.getElementById('markdown-content');
 
   // Show loading spinner
@@ -456,6 +487,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   mobileMenuBtn?.addEventListener('click', toggleSidebar);
   sidebarOverlay?.addEventListener('click', toggleSidebar);
+
+  setupThemeToggle();
 
   // Set up logo link to refresh/go to home
   const logoLink = document.getElementById('logo-link');
