@@ -453,6 +453,7 @@ body {
 }
 
 .markdown-content pre {
+  position: relative;
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -469,6 +470,60 @@ body {
   border: none;
   font-size: 0.875rem;
 }
+
+/* Copy-to-clipboard button (revealed on hover / keyboard focus) */
+.code-copy {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.2s, border-color 0.2s;
+}
+
+.markdown-content pre:hover .code-copy,
+.code-copy:focus-visible { opacity: 1; }
+
+.code-copy:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* Syntax highlighting (highlight.js), themed off tokens */
+:root {
+  --hl-comment: #8b949e;
+  --hl-keyword: #c792ea;
+  --hl-string: #a5d6a7;
+  --hl-number: #f78c6c;
+  --hl-title: #82aaff;
+  --hl-attr: #ffcb6b;
+}
+:root[data-theme="light"] {
+  --hl-comment: #6a737d;
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-attr: #953800;
+}
+.hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type { color: var(--hl-keyword); }
+.hljs-string, .hljs-attr, .hljs-meta .hljs-string, .hljs-template-tag { color: var(--hl-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: var(--hl-number); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-built_in,
+.hljs-title.class_, .hljs-title.function_ { color: var(--hl-title); }
+.hljs-attribute, .hljs-variable, .hljs-tag, .hljs-meta { color: var(--hl-attr); }
+.hljs-deletion { color: #ef5350; }
+.hljs-addition { color: #22863a; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
 
 /* Mermaid diagrams (rendered client-side from ```mermaid blocks) */
 .markdown-content .mermaid {

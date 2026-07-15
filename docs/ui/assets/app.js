@@ -391,6 +391,54 @@ async function renderMermaidDiagrams(container) {
 }
 
 // ==========================================
+// CODE BLOCKS: copy button + syntax highlighting (hljs lazy-loaded)
+// ==========================================
+let hljsPromise = null;
+function ensureHljs() {
+  if (window.hljs) return Promise.resolve(window.hljs);
+  if (hljsPromise) return hljsPromise;
+  hljsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = buildUrl('assets/highlight.min.js');
+    s.onload = () => resolve(window.hljs);
+    s.onerror = () => { hljsPromise = null; reject(new Error('hljs failed to load')); };
+    document.head.appendChild(s);
+  });
+  return hljsPromise;
+}
+
+function addCopyButton(code) {
+  const pre = code.closest('pre');
+  if (!pre || pre.querySelector('.code-copy')) return;
+  const btn = document.createElement('button');
+  btn.className = 'code-copy';
+  btn.type = 'button';
+  btn.textContent = 'Copy';
+  btn.setAttribute('aria-label', 'Copy code to clipboard');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(code.textContent);
+      btn.textContent = 'Copied';
+    } catch (e) {
+      btn.textContent = 'Error';
+    }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+  pre.appendChild(btn);
+}
+
+function enhanceCodeBlocks(container) {
+  // Skip mermaid: those blocks become diagrams, not code.
+  const blocks = container.querySelectorAll('pre > code:not(.language-mermaid)');
+  if (!blocks.length) return;
+  blocks.forEach(addCopyButton);
+  ensureHljs().then(hljs => {
+    if (!hljs) return;
+    blocks.forEach(code => { try { hljs.highlightElement(code); } catch (e) {} });
+  }).catch(() => {});
+}
+
+// ==========================================
 // ON-PAGE TABLE OF CONTENTS + SCROLL SPY
 // ==========================================
 let tocObserver = null;
@@ -483,6 +531,9 @@ async function loadMarkdownDocs(docName) {
 
     // Render any mermaid diagrams (lazy-loads the lib only if present)
     renderMermaidDiagrams(contentDiv);
+
+    // Add copy buttons + syntax highlighting to code blocks
+    enhanceCodeBlocks(contentDiv);
 
     // Build the on-page table of contents + scroll spy
     buildTableOfContents(contentDiv, docName);

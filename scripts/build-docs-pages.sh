@@ -27,6 +27,7 @@ cp docs/ui/assets/nav.json "$SITE_DIR/assets/"
 cp docs/ui/assets/styles.css "$SITE_DIR/assets/"
 cp docs/ui/assets/marked.min.js "$SITE_DIR/assets/"
 cp docs/ui/assets/mermaid.min.js "$SITE_DIR/assets/"
+cp docs/ui/assets/highlight.min.js "$SITE_DIR/assets/"
 
 echo "Copying favicons + og image..."
 cp docs/ui/assets/favicon-32x32.png "$SITE_DIR/assets/"
