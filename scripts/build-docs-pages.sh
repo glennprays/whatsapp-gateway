@@ -22,6 +22,7 @@ cp -r docs/ui/assets/docs/* "$SITE_DIR/assets/docs/"
 
 echo "Copying engine + assets..."
 cp docs/ui/assets/app.js "$SITE_DIR/assets/"
+cp docs/ui/assets/search.js "$SITE_DIR/assets/"
 cp docs/ui/assets/nav.json "$SITE_DIR/assets/"
 cp docs/ui/assets/styles.css "$SITE_DIR/assets/"
 cp docs/ui/assets/marked.min.js "$SITE_DIR/assets/"

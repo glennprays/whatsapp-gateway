@@ -10,6 +10,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -70,6 +71,24 @@ func run() error {
 		return err
 	}
 
-	fmt.Printf("docs-gen: wrote %s/index.html (%d docs in nav)\n", outDir, len(keys))
+	// Write the full-text search index for the static site.
+	index, err := docsgen.BuildSearchIndex(docsDir)
+	if err != nil {
+		return err
+	}
+	indexJSON, err := json.Marshal(index)
+	if err != nil {
+		return err
+	}
+	assetsDir := filepath.Join(outDir, "assets")
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(assetsDir, "search-index.json"), indexJSON, 0o644); err != nil {
+		return err
+	}
+
+	fmt.Printf("docs-gen: wrote %s/index.html + search-index.json (%d docs, %d sections)\n",
+		outDir, len(keys), len(index))
 	return nil
 }
