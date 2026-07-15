@@ -20,7 +20,7 @@ This document provides a complete reference of all supported configuration optio
 Environment mode.
 
 Type: string  
-Default: development  
+Default: production  
 Options: development, production  
 
 Controls general runtime behavior and logging verbosity.
@@ -63,7 +63,7 @@ Set explicitly in production to restrict cross-origin access.
 Enable Documentation UI.
 
 Type: boolean  
-Default: true  
+Default: false  
 
 Should be disabled in hardened production environments.
 
@@ -145,7 +145,7 @@ Type: string
 
 SQLite default:
 
-file:dbs/whatsapp.db?_pragma=foreign_keys(1)  
+file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)  
 
 PostgreSQL example:
 
@@ -183,7 +183,7 @@ Must be a strong 32-byte secret in production.
 Application log level.
 
 Type: string  
-Default: debug  
+Default: info  
 Options: debug, info, warn, error  
 
 Use info or warn in production.
@@ -288,16 +288,16 @@ Options:
 
 ### OUTBOUND_PACE_RATE_PER_SECOND
 
-Sustained per-account token-bucket refill rate (tokens per second).
+Sustained per-account token-bucket refill rate (tokens per second). Accepts fractional values (e.g. 0.5 = one send every 2s).
 
-Type: integer  
+Type: float  
 Default: 1  
 
 ### OUTBOUND_PACE_BURST
 
 Token-bucket burst capacity: how many actions can fire back-to-back before the sustained rate applies.
 
-Type: integer  
+Type: number  
 Default: 5  
 
 ### OUTBOUND_PACE_MAX_WAIT_SECONDS
@@ -565,7 +565,7 @@ Default: true
 
 ### WEBHOOK_STATUS_EVENTS
 
-Comma-separated list of status events.
+Deprecated: comma-separated list of status events. No longer applied as a delivery filter: which events fire is controlled per-subscription via `POST /webhook` (`events[]`). Retained only so existing `.env` files still parse.
 
 Type: string  
 Default: message.sent,message.failed  
@@ -647,7 +647,7 @@ Should be true for production. May be false for local MinIO testing.
 Presigned URL expiration time in seconds.
 
 Type: integer
-Default: 3600
+Default: 86400 (24h)
 
 Maximum validity of presigned URLs for accessing S3 files. URLs are returned in webhooks and automatically expire after this duration.
 

@@ -57,7 +57,7 @@ The system follows these core principles:
 ## High-Level Capability Summary
 
 - Send text messages
-- Send media messages (image support)
+- Send media messages (image, audio, video, document, sticker)
 - Receive inbound messages and media via webhook
 - Delivery status tracking
 - Rate limiting with optional queue-based processing

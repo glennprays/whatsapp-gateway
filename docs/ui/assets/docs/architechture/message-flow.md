@@ -69,12 +69,11 @@ Queue Enabled:
 
 ### Step 3: Message Persistence
 
-Before dispatch, the gateway stores message metadata in the database.
+Persistence applies only in queue mode: after the message is successfully published to RabbitMQ, the gateway writes a job-tracking record to the database. In direct (queue-disabled) mode, no record is persisted before or after dispatch.
 
 Stored information includes:
 
-- Recipient
-- Message type
+- Sender account (phone number)
 - Timestamp
 - Initial status
 - Internal tracking identifiers
@@ -201,7 +200,7 @@ The gateway does not guarantee eventual delivery beyond configured retry limits.
 
 Each API request is treated as a new operation.
 
-The gateway does not enforce idempotency keys.
+The gateway supports optional idempotency keys: a request carrying an `Idempotency-Key` header is deduplicated per account within a configurable window (`IDEMPOTENCY_TTL_SECONDS`, default 86400). A replayed key returns the stored response, the same key with a different body returns 422, and a key whose original request is still in progress returns 409.
 
 If backend systems require deduplication, it must be handled at the application level.
 

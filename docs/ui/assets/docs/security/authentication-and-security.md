@@ -92,7 +92,7 @@ WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY
 
 This key must:
 
-- Be 32+ bytes
+- Be exactly 32 bytes
 - Be randomly generated
 - Remain confidential
 
@@ -109,9 +109,7 @@ Failure to validate HMAC allows forged requests.
 
 ## CORS Configuration
 
-Controlled via:
-
-HTTP_ORIGIN
+The gateway does not implement CORS. The `HTTP_ORIGIN` variable exists in configuration but is not read by any middleware, so setting it has no effect. Apply CORS policy at your reverse proxy or load balancer instead.
 
 Default: *
 
@@ -199,7 +197,7 @@ Logs may contain metadata that must be treated as sensitive.
 
 ## Documentation UI Exposure
 
-Documentation UI is enabled by default.
+Documentation UI is disabled by default and must be explicitly enabled via ENABLE_DOCUMENTATION=true.
 
 In production, either:
 

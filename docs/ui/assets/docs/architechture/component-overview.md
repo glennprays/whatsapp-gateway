@@ -56,8 +56,8 @@ Queue Enabled:
 - Controlled release ensures compliance with configured rate.
 
 Queue Disabled:
-- Requests exceeding rate limits are rejected immediately.
-- No internal buffering is performed.
+- Outbound requests are paced in-process by the outbound pacer (enabled by default), which blocks up to a configured maximum wait (OUTBOUND_PACE_MAX_WAIT_SECONDS, default 30s) before returning a 429.
+- Immediate rejection occurs only when the pacer runs in reject mode or is disabled, in which case it falls back to the legacy per-message reject limiter.
 
 Rate limiting is applied at the gateway instance level.
 
@@ -137,7 +137,7 @@ Responsibilities:
 - Persist WhatsApp session state
 - Store outbound message metadata
 - Track delivery status
-- Store inbound message metadata
+- Inbound message metadata is NOT database-backed: received messages are held only in a per-account in-memory ring buffer (INCOMING_MESSAGE_BUFFER_SIZE, default 100), served via GET /api/message/incoming, and lost on restart
 - Maintain operational records
 
 The database is the source of truth for system state.

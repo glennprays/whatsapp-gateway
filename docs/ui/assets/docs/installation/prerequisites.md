@@ -94,9 +94,9 @@ Persistent storage is required for:
 - Database data
 - Optional RabbitMQ persistence
 
-Future Support:
+Optional External Storage:
 
-Planned support for S3-compatible object storage will enable external media storage. This feature is not yet mandatory but should be considered in long-term infrastructure planning.
+S3-compatible object storage is supported for external media storage. Set STORAGE_PROVIDER=s3 (default is local) to store downloaded webhook media in an S3-compatible bucket; both providers are production-ready. This remains optional but should be considered when local disk storage is not suitable for retaining media.
 
 ## Recommended Production Stack
 

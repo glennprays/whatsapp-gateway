@@ -39,7 +39,7 @@ Outbound communication must respect WhatsApp rate constraints.
 
 The system enforces rate limiting through:
 
-- Immediate rejection when queue mode is disabled
+- Controlled pacing in direct dispatch mode (requests are briefly blocked, then rejected with a 429 only when pacing limits are exceeded)
 - Controlled dispatch when queue mode is enabled
 
 Rate handling must be deterministic and observable.
@@ -57,7 +57,7 @@ When enabled:
 When disabled:
 
 - The gateway operates in direct dispatch mode
-- Backpressure is enforced through request rejection
+- Backpressure is enforced by the outbound pacer, which paces (blocks) requests by default and rejects them (HTTP 429) only after the configured max-wait deadline
 
 This design allows flexible deployment models without altering the API contract.
 

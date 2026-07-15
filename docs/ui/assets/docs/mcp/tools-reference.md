@@ -68,7 +68,7 @@ Reply/mention fields (`reply_to_id`, `reply_to_sender`, `reply_to_text`, `mentio
 {
   "message_id": "3EB0xxxxxxxxxxxxx",
   "status": "sent",
-  "to": "6281234567890@s.whatsapp.net"
+  "success": true
 }
 ```
 
@@ -97,10 +97,9 @@ Send an image message to a WhatsApp contact or group.
 
 ```json
 {
+  "success": true,
   "message_id": "3EB0xxxxxxxxxxxxx",
-  "status": "sent",
-  "to": "6281234567890@s.whatsapp.net",
-  "type": "image"
+  "status": "sent"
 }
 ```
 
@@ -207,8 +206,8 @@ Edit a previously sent message.
 
 ```json
 {
-  "status": "success",
-  "message_id": "3EB0xxxxxxxxxxxxx"
+  "success": true,
+  "status": "edited"
 }
 ```
 
@@ -268,7 +267,8 @@ React to a message with an emoji.
 {
   "status": "success",
   "message_id": "3EB0xxxxxxxxxxxxx",
-  "emoji": "👍"
+  "success": true,
+  "status": "reacted"
 }
 ```
 
@@ -384,7 +384,7 @@ Check if the WhatsApp session is active and authenticated.
   "authenticated": true,
   "phone_number": "6281234567890",
   "connected": true,
-  "connection_status": "connected"
+  "status": "connected"
 }
 ```
 
@@ -412,7 +412,7 @@ Check if the WhatsApp Gateway service is reachable and healthy.
 ```json
 {
   "status": "healthy",
-  "gateway_version": "1.0.0",
+  "message": "Gateway service is reachable and healthy",
   "timestamp": "2024-01-15T10:30:45Z"
 }
 ```
@@ -441,7 +441,7 @@ Get the currently registered webhook URL and configuration.
 ```json
 {
   "webhook_url": "https://example.com/webhook",
-  "registered": true,
+  "status": "registered",
   "hmac_enabled": true
 }
 ```
@@ -468,8 +468,9 @@ Register a webhook URL to receive incoming message notifications.
 ```json
 {
   "status": "success",
-  "webhook_url": "https://example.com/webhook",
-  "hmac_enabled": true
+  "url": "https://example.com/webhook",
+  "status": "registered",
+  "description": "Webhook registered successfully. Incoming WhatsApp messages will be sent to this URL."
 }
 ```
 
@@ -483,7 +484,7 @@ Register webhook URL https://example.com/webhook with HMAC secret my_secret_key
 
 ```json
 {
-  "event": "message.received",
+  "event": "message.incoming",
   "data": {
     "message_id": "3EB0xxxxxxxxxxxxx",
     "from": "6289876543210@s.whatsapp.net",

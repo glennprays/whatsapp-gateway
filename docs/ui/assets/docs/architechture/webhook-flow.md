@@ -87,8 +87,8 @@ When media download is enabled, the gateway automatically:
 When media download is disabled, the gateway:
 
 1. Does NOT download incoming media from WhatsApp
-2. Does NOT include a `media` object in the webhook payload
-3. Only provides the `type` field to indicate the message type
+2. Still includes a `media` object for media messages (image/video/audio/document/sticker), with `mime_type`, `size`, and a `url` pointing to WhatsApp's temporary, unauthenticated URL instead of a stored URL
+3. Does not persist or re-host the media: the media object is still present, only its `url` differs
 
 **Example text message payload:**
 ```json
@@ -248,7 +248,7 @@ After maximum retry count is reached:
 - Delivery attempts stop.
 - No further automatic recovery is attempted.
 
-The gateway does not provide dead-letter queue handling for webhook failures.
+Dead-letter queue handling depends on the delivery mode. In direct mode (default), the gateway does not provide dead-letter queue handling for webhook failures: delivery simply stops after the retry limit is reached. In queue (RabbitMQ) mode, webhook deliveries that exhaust their retries are routed to a dedicated dead-letter queue (`whatsapp.dlq.webhooks.delivery`), which a consumer drains for observability and manual follow-up.
 
 ## Failure Scenarios
 

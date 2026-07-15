@@ -14,7 +14,7 @@ When queue mode is:
 
 Disabled:
 - Messages are dispatched immediately.
-- Rate limit violations result in immediate request rejection.
+- Rate-limited requests are paced by default: the request blocks briefly (up to the configured max wait) and returns 429 only if still over budget. Immediate rejection applies only in reject mode, when pacing is disabled, or for the per-recipient and ban hard caps.
 - No buffering or broker dependency exists.
 
 Enabled:
@@ -76,7 +76,7 @@ This enables:
 - Controlled release of messages.
 - Predictable throughput.
 
-Messages exceeding dispatch capacity remain in the queue until processed.
+Messages exceeding dispatch capacity are re-queued and retried after a delay. Retries are bounded by `QUEUE_MAX_RETRIES` (default 3); once that limit is exceeded, the message is routed to the dead-letter queue rather than held until processed.
 
 ## Retry Behavior in Queue Mode
 
@@ -90,7 +90,7 @@ Webhook Delivery Failure:
 - Webhook retry policy operates independently of queue retry.
 
 RabbitMQ Failure:
-- If message publication fails, API request fails.
+- If message publication fails, the gateway falls back to direct (synchronous) send rather than failing the request.
 - If consumer fails, RabbitMQ retains unacknowledged message.
 
 The gateway does not implement distributed dead-letter queue management by default.
