@@ -391,9 +391,92 @@ async function renderMermaidDiagrams(container) {
 
   try {
     await mermaid.run({ nodes });
+    nodes.forEach(attachDiagramControls);
   } catch (e) {
     console.error('mermaid render error', e);
   }
+}
+
+// ==========================================
+// DIAGRAM VIEWER (fullscreen + pan/zoom for mermaid diagrams)
+// ==========================================
+const EXPAND_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+
+let diagramOverlay = null;
+function ensureDiagramOverlay() {
+  if (diagramOverlay) return diagramOverlay;
+  const ov = document.createElement('div');
+  ov.className = 'diagram-overlay';
+  ov.innerHTML =
+    '<div class="diagram-toolbar">' +
+      '<button type="button" data-act="out" aria-label="Zoom out">−</button>' +
+      '<button type="button" data-act="reset" aria-label="Reset zoom">Reset</button>' +
+      '<button type="button" data-act="in" aria-label="Zoom in">+</button>' +
+      '<button type="button" data-act="close" aria-label="Close (Esc)">✕</button>' +
+    '</div>' +
+    '<div class="diagram-stage"><div class="diagram-canvas"></div></div>';
+  document.body.appendChild(ov);
+
+  const stage = ov.querySelector('.diagram-stage');
+  const canvas = ov.querySelector('.diagram-canvas');
+  let scale = 1, tx = 0, ty = 0, dragging = false, lastX = 0, lastY = 0;
+
+  const apply = () => { canvas.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; };
+  const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
+  const zoom = factor => { scale = Math.min(Math.max(scale * factor, 0.2), 8); apply(); };
+  const close = () => { ov.classList.remove('open'); document.body.style.overflow = ''; };
+
+  stage.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
+  stage.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; stage.setPointerCapture(e.pointerId); stage.classList.add('grabbing'); });
+  stage.addEventListener('pointermove', e => { if (!dragging) return; tx += e.clientX - lastX; ty += e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; apply(); });
+  stage.addEventListener('pointerup', () => { dragging = false; stage.classList.remove('grabbing'); });
+  stage.addEventListener('dblclick', reset);
+
+  ov.querySelector('.diagram-toolbar').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    ({ in: () => zoom(1.2), out: () => zoom(1 / 1.2), reset: reset, close: close }[b.dataset.act] || (() => {}))();
+  });
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) close(); });
+
+  ov._show = svg => {
+    canvas.innerHTML = '';
+    const clone = svg.cloneNode(true);
+    // mermaid stamps inline width/height/max-width sizing on the svg; strip it so
+    // the clone fills the large canvas via its viewBox (big + crisp), not its
+    // small intrinsic size.
+    clone.removeAttribute('width');
+    clone.removeAttribute('height');
+    clone.style.maxWidth = 'none';
+    clone.style.maxHeight = 'none';
+    clone.style.width = '100%';
+    clone.style.height = '100%';
+    canvas.appendChild(clone);
+    reset();
+    ov.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+  diagramOverlay = ov;
+  return ov;
+}
+
+function openDiagramViewer(svg) {
+  if (svg) ensureDiagramOverlay()._show(svg);
+}
+
+function attachDiagramControls(container) {
+  if (!container || container.querySelector('.diagram-zoom-btn')) return;
+  const svg = container.querySelector('svg');
+  if (!svg) return;
+  const btn = document.createElement('button');
+  btn.className = 'diagram-zoom-btn';
+  btn.type = 'button';
+  btn.title = 'Fullscreen';
+  btn.setAttribute('aria-label', 'Open diagram fullscreen');
+  btn.innerHTML = EXPAND_SVG;
+  btn.addEventListener('click', () => openDiagramViewer(svg));
+  container.appendChild(btn);
 }
 
 // ==========================================

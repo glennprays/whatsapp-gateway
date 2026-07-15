@@ -527,6 +527,7 @@ body {
 
 /* Mermaid diagrams (rendered client-side from ```mermaid blocks) */
 .markdown-content .mermaid {
+  position: relative;
   margin: 1.5rem 0;
   padding: 1.5rem;
   background: var(--bg-1);
@@ -539,6 +540,91 @@ body {
   max-width: 100%;
   height: auto;
 }
+
+/* Fullscreen button on a rendered diagram (revealed on hover / focus) */
+.diagram-zoom-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.2s, border-color 0.2s;
+}
+.markdown-content .mermaid:hover .diagram-zoom-btn,
+.diagram-zoom-btn:focus-visible { opacity: 1; }
+.diagram-zoom-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* Fullscreen diagram viewer (pan + zoom) */
+.diagram-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(3px);
+}
+:root[data-theme="light"] .diagram-overlay { background: rgba(255, 255, 255, 0.9); }
+.diagram-overlay.open { display: block; }
+
+.diagram-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+.diagram-stage.grabbing { cursor: grabbing; }
+
+.diagram-canvas {
+  /* A large box the SVG fills via its viewBox, so the diagram opens big and
+     stays crisp. No will-change: that would cache a bitmap and blur on zoom. */
+  width: 90vw;
+  height: 85vh;
+  transform-origin: center center;
+}
+.diagram-canvas svg {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.diagram-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.4rem;
+}
+.diagram-toolbar button {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  min-width: 34px;
+  height: 34px;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.diagram-toolbar button:hover { border-color: var(--border-strong); }
 
 .markdown-content ul, .markdown-content ol {
   margin-left: 1.5rem;
