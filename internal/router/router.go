@@ -43,6 +43,13 @@ func SetupRouter(
 		DisableStartupMessage: true,
 		ErrorHandler:          middleware.ErrorHandler(),
 		Views:                 NewHtmlEngine(),
+		// Only read the client IP from ProxyHeader for requests coming from
+		// TrustedProxies; otherwise c.IP() is the direct socket peer. With an
+		// empty allowlist this trusts no proxy, so a spoofed X-Forwarded-For
+		// can't poison the per-IP register limiter.
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          cfg.TrustedProxies,
+		ProxyHeader:             cfg.ProxyHeader,
 	})
 
 	// Apply trace ID middleware first (must be before any other middleware)
