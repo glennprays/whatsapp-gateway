@@ -130,6 +130,19 @@ body {
   border-radius: 4px;
 }
 
+/* Running-server version badge next to the wordmark. */
+.version-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  white-space: nowrap;
+}
+
 /* Brand wordmark keeps its WhatsApp-green animated gradient in both themes. */
 .logo-text {
   font-size: 1.125rem;

@@ -66,7 +66,9 @@ func run() error {
 	defer f.Close()
 
 	// ShowAPI=false strips the RapiDoc tab; BasePath="" serves assets from root.
-	data := map[string]any{"BasePath": "", "ShowAPI": false}
+	// Version drives the header badge (empty ⇒ hidden); scripts/build-docs-pages.sh
+	// sets DOCS_VERSION from `git describe`.
+	data := map[string]any{"BasePath": "", "ShowAPI": false, "Version": os.Getenv("DOCS_VERSION")}
 	if err := tmpl.ExecuteTemplate(f, filepath.Base(indexTemplate), data); err != nil {
 		return err
 	}

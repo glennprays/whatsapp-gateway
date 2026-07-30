@@ -60,6 +60,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ steps.tag.outputs.VERSION }}
           tags: |
             ${{ vars.DOCKER_IMAGE }}:${{ steps.tag.outputs.VERSION }}
             ${{ vars.DOCKER_IMAGE }}:latest

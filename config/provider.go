@@ -6,7 +6,12 @@ import (
 
 // ProvideConfig loads application configuration
 func ProvideConfig() (*Config, error) {
-	return Load()
+	cfg, err := Load()
+	if err != nil {
+		return nil, err
+	}
+	cfg.AppVersion = AppVersion
+	return cfg, nil
 }
 
 // ProvideLogger initializes logger based on configuration

@@ -12,7 +12,16 @@ import (
 	"github.com/spf13/viper"
 )
 
+// AppVersion is the running build version, injected at build time via
+// -ldflags "-X main.version=..." and copied into Config by ProvideConfig.
+// Defaults to "dev" for local `go run`.
+var AppVersion = "dev"
+
 type Config struct {
+	// AppVersion is the running build version (see the package var above). Not
+	// loaded from env; ProvideConfig sets it from AppVersion.
+	AppVersion string `mapstructure:"-"`
+
 	Env                                    Environment `mapstructure:"ENV" default:"production"`
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`

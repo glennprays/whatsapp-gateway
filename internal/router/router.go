@@ -63,6 +63,7 @@ func SetupRouter(
 		response := fiber.Map{
 			"timestamp": time.Now().Format(time.RFC3339),
 			"trace_id":  traceID,
+			"version":   cfg.AppVersion,
 		}
 
 		// Database health check
