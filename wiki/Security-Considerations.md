@@ -158,6 +158,28 @@ def handle_webhook(request):
 - **Use VPC or private networks** in cloud environments
 - **Enable firewall rules** to restrict access
 
+#### Reverse Proxy & Forwarded Headers (HTTP 463)
+
+`HTTP 463 (too many forwarded IP addresses)` is returned by the **load balancer**,
+not by the gateway — it fires when the inbound `X-Forwarded-For` header carries
+more IPs than the LB permits (commonly 30, AWS/GCP L7 style). It happens when a
+long proxy chain (Cloudflare → nginx → LB → gateway) each *appends* to the header,
+or when a client sends a pre-populated / spoofed `X-Forwarded-For` that keeps
+growing.
+
+**Fix it at the edge, not in the gateway:**
+
+- At the **outermost trusted proxy**, *reset/replace* `X-Forwarded-For` with the
+  real client IP rather than appending to whatever the client sent
+  (e.g. nginx `proxy_set_header X-Forwarded-For $remote_addr;`, or Cloudflare's
+  `CF-Connecting-IP`). This is the definitive fix for 463.
+- **Keep the proxy chain short** — every hop that appends adds an IP.
+- On the gateway, set **`TRUSTED_PROXIES`** to your immediate hop(s) and
+  (optionally) **`PROXY_HEADER`** so `c.IP()` resolves the real client from a
+  trusted source. With `TRUSTED_PROXIES` empty the gateway trusts no proxy and a
+  spoofed `X-Forwarded-For` is ignored, but this does **not** prevent the LB-level
+  463 — that must be handled at the edge.
+
 ### 3. Database Security
 
 - **Encrypt the database** at rest (especially for PostgreSQL)

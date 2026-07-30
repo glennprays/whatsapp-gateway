@@ -1434,6 +1434,12 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >
+        Per-account JWT returned by `POST /register`. Send
+        `Authorization: Bearer <token>`. Use THIS token for all messaging,
+        session, group, contact, and webhook calls — it is the one you almost
+        always want. (The separate "adminBearer" below is the operator-only
+        admin plane; do not paste your account JWT there.)
     adminBearer:
       type: http
       scheme: bearer
@@ -1609,7 +1615,10 @@ paths:
         - Whatsapp Authentication
       summary: Get WhatsApp session status
       description: >
-        Retrieves the current WhatsApp session status, including whether the user is logged in.
+        Retrieves the current WhatsApp session state for the account behind the
+        JWT. Note: reaching this endpoint already means the JWT was accepted —
+        the booleans below describe the WhatsApp device-pairing/ban state, not
+        API-token validity.
       responses:
         '200':
           description: Session status retrieved successfully.
@@ -1618,10 +1627,30 @@ paths:
               schema:
                 type: object
                 properties:
+                  logged_in:
+                    type: boolean
+                    description: >
+                      WhatsApp session (device-pairing) state — true when the
+                      device is linked and connected. This is the field to use.
+                    example: true
                   authenticated:
                     type: boolean
-                    description: Indicates if the user is authenticated with WhatsApp.
+                    description: >
+                      Deprecated alias for `logged_in`, kept for backward
+                      compatibility. Despite the name it reflects WhatsApp
+                      device-pairing state, not API-token validity.
                     example: true
+                  banned:
+                    type: boolean
+                    description: True when the account is under a WhatsApp temporary ban.
+                    example: false
+                  ban_expires_at:
+                    type: string
+                    format: date-time
+                    description: >
+                      RFC3339 timestamp when the temporary ban lifts. Present
+                      only while `banned` is true.
+                    example: '2026-07-30T18:00:00Z'
       security:
         - accountBearerAuth: []
   /contact/check:

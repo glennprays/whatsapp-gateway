@@ -159,15 +159,6 @@ func (p *Pacer) fallbackReject(ctx context.Context, phone string, n int64) error
 	return nil
 }
 
-// Drain empties an account's token bucket (called on ban entry so no burst is
-// available the instant a ban lifts). The ban gate already blocks sends, so
-// this is belt-and-suspenders.
-func (p *Pacer) Drain(phone string) {
-	if p.account != nil {
-		_ = p.account.Reset(context.Background(), phone)
-	}
-}
-
 func (p *Pacer) randJitter() time.Duration {
 	if p.jitter <= 0 {
 		return 0

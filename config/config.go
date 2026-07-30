@@ -12,11 +12,28 @@ import (
 	"github.com/spf13/viper"
 )
 
+// AppVersion is the running build version, injected at build time via
+// -ldflags "-X main.version=..." and copied into Config by ProvideConfig.
+// Defaults to "dev" for local `go run`.
+var AppVersion = "dev"
+
 type Config struct {
+	// AppVersion is the running build version (see the package var above). Not
+	// loaded from env; ProvideConfig sets it from AppVersion.
+	AppVersion string `mapstructure:"-"`
+
 	Env                                    Environment `mapstructure:"ENV" default:"production"`
 	Port                                   string      `mapstructure:"PORT" default:"3000"`
 	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
 	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
+	// TrustedProxies is a comma-separated allowlist of proxy IPs/CIDRs. When set,
+	// the gateway reads the client IP from ProxyHeader only for requests arriving
+	// from these hops; XFF from any other source is ignored (unspoofable). Empty
+	// (default) trusts no proxy, so c.IP() is the direct socket peer.
+	TrustedProxies []string `mapstructure:"TRUSTED_PROXIES"`
+	// ProxyHeader is the header consulted for the real client IP when the request
+	// comes from a trusted proxy (see TrustedProxies).
+	ProxyHeader string `mapstructure:"PROXY_HEADER" default:"X-Forwarded-For"`
 	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"false"`
 	DocumentationUser                      string      `mapstructure:"DOCUMENTATION_USER" default:"user"`
 	DocumentationPassword                  string      `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`

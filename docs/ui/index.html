@@ -90,6 +90,7 @@
           <!-- <div class="logo-icon"></div> -->
             <span class="logo-text">WhatsApp Gateway</span>
         </a>
+        {{ if .Version }}<span class="version-badge" title="Running server version">{{ .Version }}</span>{{ end }}
         <div class="nav-tabs">
           <button class="nav-tab active" data-view="docs">Docs</button>
           {{ if .ShowAPI }}<button class="nav-tab" data-view="api">API</button>{{ end }}

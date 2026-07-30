@@ -16,9 +16,12 @@ COPY . .
 # Build the Go application
 ARG TARGETOS
 ARG TARGETARCH
+# Running-server version, injected into the binary (see cmd/api/main.go). The
+# Docker workflow passes the resolved release tag; defaults to "dev" locally.
+ARG VERSION=dev
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -o /app/main ./cmd/api/main.go
+    go build -ldflags "-X main.version=${VERSION}" -o /app/main ./cmd/api/main.go
 
 # Stage 2: Prepare CA certificates, timezone data, and directories
 FROM debian:bullseye-slim AS certs-and-tzdata

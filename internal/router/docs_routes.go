@@ -43,6 +43,8 @@ func initDocumentationRoutes(r *fiber.App, cfg *config.Config) {
 			// The Go console gets the interactive API (RapiDoc) tab; the public
 			// static build (cmd/docs-gen) renders this template with ShowAPI=false.
 			"ShowAPI": true,
+			// Running server version, shown as a small badge next to the logo.
+			"Version": cfg.AppVersion,
 		})
 	})
 }

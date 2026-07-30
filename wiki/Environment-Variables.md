@@ -40,6 +40,19 @@ cp .env.example .env
 - **Usage**: If set to `/api`, all endpoints will be accessible at `http://localhost:3000/api/v1/*`
 - **Note**: This is dynamic and can be changed to match your infrastructure needs (e.g., if using a reverse proxy or API gateway)
 
+#### `TRUSTED_PROXIES`
+- **Description**: Comma-separated allowlist of proxy IPs/CIDRs. When set, the gateway reads the client IP from `PROXY_HEADER` only for requests arriving from these hops; an `X-Forwarded-For` from any other source is ignored and can't spoof the per-IP register limiter.
+- **Type**: Comma-separated list
+- **Default**: empty (trust no proxy — `c.IP()` is the direct socket peer)
+- **Example**: `TRUSTED_PROXIES=10.0.0.0/8,172.16.0.1`
+- **Note**: This does not fix load-balancer `HTTP 463 (too many forwarded IP addresses)`; that is emitted by the LB before the request reaches the gateway. See Security Considerations for the 463 runbook.
+
+#### `PROXY_HEADER`
+- **Description**: Header consulted for the real client IP when the request comes from a trusted proxy (see `TRUSTED_PROXIES`).
+- **Type**: String
+- **Default**: `X-Forwarded-For`
+- **Example**: `PROXY_HEADER=CF-Connecting-IP`
+
 ---
 
 ### Swagger Documentation Configuration

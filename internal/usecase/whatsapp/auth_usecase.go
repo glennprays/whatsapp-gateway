@@ -3,6 +3,7 @@ package whatsapp_usecase
 import (
 	"context"
 	"errors"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	errDomain "github.com/glennprays/whatsapp-gateway/domain/error"
@@ -33,6 +34,15 @@ type QRCodeResponse struct {
 type PairCodeResponse struct {
 	PairCode  string
 	ExpiresIn int
+}
+
+// LoginStatusResponse describes the WhatsApp session state for /login/status.
+// LoggedIn is the whatsmeow device-pairing state (IsLoggedIn), not API-token
+// validity — reaching this usecase already means the JWT was accepted.
+type LoginStatusResponse struct {
+	LoggedIn     bool
+	Banned       bool
+	BanExpiresAt *time.Time
 }
 
 // LoginQRCode generates QR code for WhatsApp login
@@ -89,7 +99,7 @@ func (uc *WhatsappAuthUsecase) LoginPairCode(ctx context.Context, traceID, phone
 }
 
 // GetLoginStatus returns the current login status
-func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phoneNumber string) (bool, error) {
+func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phoneNumber string) (*LoginStatusResponse, error) {
 	// Ensure a client exists (restoring a persisted session if there is one)
 	// so status is a safe first call: it reports not-linked (false) rather than
 	// a 404 "client not found" when the in-memory client is missing after a
@@ -103,10 +113,15 @@ func (uc *WhatsappAuthUsecase) GetLoginStatus(ctx context.Context, traceID, phon
 			customLog.String("phone_number", whatsapp.MaskedPhoneNumber(phoneNumber)),
 			customLog.Error(err),
 		)
-		return false, err
+		return nil, err
 	}
 
-	return status, nil
+	resp := &LoginStatusResponse{LoggedIn: status}
+	if until, banned := uc.whatsappManager.BanState(phoneNumber); banned {
+		resp.Banned = true
+		resp.BanExpiresAt = &until
+	}
+	return resp, nil
 }
 
 // Logout handles WhatsApp logout

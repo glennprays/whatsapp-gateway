@@ -40,8 +40,10 @@ cp llms.txt "$SITE_DIR/"
 cp docs/openapi.yaml "$SITE_DIR/"
 
 # Render the docs-only index.html from the shared template (and validate nav).
+# DOCS_VERSION drives the header version badge (empty ⇒ hidden).
 echo "Rendering index.html (cmd/docs-gen)..."
-go run ./cmd/docs-gen "$SITE_DIR"
+DOCS_VERSION="${DOCS_VERSION:-$(git describe --tags --always 2>/dev/null || echo "")}" \
+  go run ./cmd/docs-gen "$SITE_DIR"
 
 # Prevent Jekyll processing on GitHub Pages
 touch "$SITE_DIR/.nojekyll"
