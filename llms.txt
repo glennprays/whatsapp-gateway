@@ -182,7 +182,7 @@ def send_whatsapp_message(user_phone, recipient, message):
             'Content-Type': 'application/json'
         },
         json={
-            'msisdn': recipient,
+            'chat': recipient,
             'message': message
         }
     )
