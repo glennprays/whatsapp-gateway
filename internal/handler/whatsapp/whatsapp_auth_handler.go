@@ -3,6 +3,7 @@ package whatsapp_handler
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	customLog "github.com/glennprays/log"
 	"github.com/glennprays/whatsapp-gateway/internal/constant"
@@ -143,9 +144,18 @@ func (h *WhatsappAuthHandler) GetLoginStatus(c *fiber.Ctx) error {
 		return c.Status(httpErr.Status).JSON(httpErr)
 	}
 
-	return c.Status(http.StatusOK).JSON(fiber.Map{
-		"authenticated": status,
-	})
+	// "authenticated" is a deprecated alias kept for back-compat; it reports the
+	// WhatsApp device-pairing state (IsLoggedIn), not API-token validity. Prefer
+	// "logged_in". "banned"/"ban_expires_at" surface an active temporary ban.
+	resp := fiber.Map{
+		"authenticated": status.LoggedIn,
+		"logged_in":     status.LoggedIn,
+		"banned":        status.Banned,
+	}
+	if status.BanExpiresAt != nil {
+		resp["ban_expires_at"] = status.BanExpiresAt.UTC().Format(time.RFC3339)
+	}
+	return c.Status(http.StatusOK).JSON(resp)
 }
 
 func (h *WhatsappAuthHandler) Logout(c *fiber.Ctx) error {
