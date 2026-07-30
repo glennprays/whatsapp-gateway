@@ -40,9 +40,11 @@ cp llms.txt "$SITE_DIR/"
 cp docs/openapi.yaml "$SITE_DIR/"
 
 # Render the docs-only index.html from the shared template (and validate nav).
-# DOCS_VERSION drives the header version badge (empty ⇒ hidden).
+# DOCS_VERSION drives the header version badge (empty ⇒ hidden). Resolve it to
+# the highest release tag (clean, never an offset/SHA) the same way docker.yml
+# does; needs tags present (the workflow checks out with fetch-depth: 0).
 echo "Rendering index.html (cmd/docs-gen)..."
-DOCS_VERSION="${DOCS_VERSION:-$(git describe --tags --always 2>/dev/null || echo "")}" \
+DOCS_VERSION="${DOCS_VERSION:-$(git tag -l 'v*' --sort=-v:refname 2>/dev/null | head -n 1)}" \
   go run ./cmd/docs-gen "$SITE_DIR"
 
 # Prevent Jekyll processing on GitHub Pages

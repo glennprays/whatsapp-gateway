@@ -14,6 +14,12 @@ on:
       - 'llms.txt'
       - 'docs/openapi.yaml'
   workflow_dispatch:
+  # Redeploy once "Release (Create Tag)" finishes so the version badge picks up
+  # the freshly-created tag (the push-triggered build above races tag creation
+  # and would only see the previous tag).
+  workflow_run:
+    workflows: ["Release (Create Tag)"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -26,6 +32,12 @@ concurrency:
 
 jobs:
   check-changes:
+    # For release-tag redeploys, only proceed when the release actually
+    # succeeded on main; other events always evaluate the diff below.
+    if: >
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
@@ -38,9 +50,10 @@ jobs:
       - name: Check for actual changes
         id: check
         run: |
-          # Manual dispatch always rebuilds + redeploys, regardless of diff.
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "Manual trigger: forcing build + deploy"
+          # Manual dispatch and post-release redeploys always rebuild, regardless
+          # of diff (the release redeploy exists purely to refresh the tag badge).
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] || [ "${GITHUB_EVENT_NAME}" = "workflow_run" ]; then
+            echo "Forced trigger (${GITHUB_EVENT_NAME}): forcing build + deploy"
             echo "has_changes=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -74,6 +87,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history + tags so build-docs-pages.sh's `git describe --tags`
+          # resolves the version badge to a real tag instead of a bare commit SHA.
+          fetch-depth: 0
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -97,7 +114,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run'
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
