@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Whatsapp Gateway API
-  version: 0.25.0
+  version: 0.26.0
   description: >
     API documentation for Whatsapp Gateway.
 
@@ -146,7 +146,8 @@ components:
             type: string
             enum: [message.incoming, message.queued, message.sent, message.failed,
                    session.logged_out, session.banned, session.connect_failure,
-                   session.connected, session.disconnected, session.replaced]
+                   session.connected, session.disconnected, session.replaced,
+                   session.reachout_timelocked]
           description: >
             Event types this subscription receives. Omit or leave empty to
             receive all events (matches the legacy single-URL behavior). An
@@ -200,8 +201,9 @@ components:
             session.* lifecycle payloads. Field presence depends on the event:
             session.logged_out → on_connect/reason/reason_text; session.banned →
             code/reason_text/expires_in; session.connect_failure →
-            reason/reason_text/message; session.connected/disconnected/replaced →
-            no extra fields.
+            reason/reason_text/message; session.reachout_timelocked →
+            is_active/enforcement_type/time_enforcement_ends;
+            session.connected/disconnected/replaced → no extra fields.
           properties:
             on_connect:
               type: boolean
@@ -221,6 +223,19 @@ components:
             expires_in:
               type: integer
               description: (session.banned) seconds until the ban expires (0 if unknown).
+            is_active:
+              type: boolean
+              description: >
+                (session.reachout_timelocked) true while the reach-out time lock
+                applies, false when it lifts.
+            enforcement_type:
+              type: string
+              description: (session.reachout_timelocked) WhatsApp's enforcement label, when supplied.
+            time_enforcement_ends:
+              type: integer
+              description: >
+                (session.reachout_timelocked) unix seconds when the lock lifts.
+                Omitted when WhatsApp did not say.
           example:
             event: session.banned
             phone_number: "628123456789"

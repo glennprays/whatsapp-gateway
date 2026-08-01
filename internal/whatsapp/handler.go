@@ -173,6 +173,25 @@ func (h *handler) HandleEvent(phoneNumber string, evt any) {
 		clients.Delete(phoneNumber)
 		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionReplaced), baseSessionPayload(string(domainQueue.EventSessionReplaced), phoneNumber, jid))
 
+	case *events.NotifyAccountReachoutTimelock:
+		// WhatsApp restricted this account from starting conversations with
+		// people it has no history with — the enforcement behind ack code 463.
+		// The socket and session stay healthy, so record and notify but never
+		// evict the client. deriveItem keeps reporting a live client as
+		// "connected"; this status only surfaces once the client is gone.
+		jid := sessionJID(phoneNumber)
+		if v.IsActive {
+			var exp *time.Time
+			if !v.TimeEnforcementEnds.IsZero() {
+				t := v.TimeEnforcementEnds.Time
+				exp = &t
+			}
+			h.recordSessionStatus(phoneNumber, "reachout_timelocked", reachoutTimelockReason(v), exp)
+		} else {
+			h.recordSessionStatus(phoneNumber, "connected", "reachout_timelock_cleared", nil)
+		}
+		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionReachoutTimelocked), reachoutTimelockPayload(phoneNumber, jid, v))
+
 	case *events.Connected:
 		jid := sessionJID(phoneNumber)
 		h.dispatch(traceID, phoneNumber, jid, string(domainQueue.EventSessionConnected), baseSessionPayload(string(domainQueue.EventSessionConnected), phoneNumber, jid))
@@ -209,6 +228,30 @@ func bannedPayload(phoneNumber, jid string, v *events.TemporaryBan) map[string]i
 	p["code"] = int(v.Code)
 	p["reason_text"] = v.Code.String()
 	p["expires_in"] = int(v.Expire.Seconds())
+	return p
+}
+
+// reachoutTimelockReason renders the persisted status reason for a reach-out
+// timelock, keeping the enforcement type when WhatsApp supplied one.
+func reachoutTimelockReason(v *events.NotifyAccountReachoutTimelock) string {
+	if v.EnforcementType == "" {
+		return "reachout_timelock"
+	}
+	return "reachout_timelock:" + v.EnforcementType
+}
+
+// reachoutTimelockPayload maps *events.NotifyAccountReachoutTimelock to its
+// webhook payload. time_enforcement_ends is omitted when WhatsApp did not say
+// when the lock lifts.
+func reachoutTimelockPayload(phoneNumber, jid string, v *events.NotifyAccountReachoutTimelock) map[string]interface{} {
+	p := baseSessionPayload(string(domainQueue.EventSessionReachoutTimelocked), phoneNumber, jid)
+	p["is_active"] = v.IsActive
+	if v.EnforcementType != "" {
+		p["enforcement_type"] = v.EnforcementType
+	}
+	if !v.TimeEnforcementEnds.IsZero() {
+		p["time_enforcement_ends"] = v.TimeEnforcementEnds.Unix()
+	}
 	return p
 }
 

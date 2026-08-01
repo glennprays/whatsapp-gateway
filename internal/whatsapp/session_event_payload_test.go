@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -60,6 +61,50 @@ func TestSessionEventPayloadMapping(t *testing.T) {
 		}
 		if p["message"] != "boom" {
 			t.Fatalf("message = %v, want boom", p["message"])
+		}
+	})
+
+	t.Run("reachout_timelock_active", func(t *testing.T) {
+		ends := time.Now().Add(3 * time.Hour).Truncate(time.Second)
+		v := &events.NotifyAccountReachoutTimelock{
+			IsActive:            true,
+			EnforcementType:     "TIMELOCK",
+			TimeEnforcementEnds: jsontime.UnixString{Time: ends},
+		}
+		p := reachoutTimelockPayload(phone, jid, v)
+		if p["event"] != "session.reachout_timelocked" {
+			t.Fatalf("event = %v", p["event"])
+		}
+		if p["is_active"] != true {
+			t.Fatalf("is_active = %v, want true", p["is_active"])
+		}
+		if p["enforcement_type"] != "TIMELOCK" {
+			t.Fatalf("enforcement_type = %v", p["enforcement_type"])
+		}
+		if p["time_enforcement_ends"] != ends.Unix() {
+			t.Fatalf("time_enforcement_ends = %v, want %v", p["time_enforcement_ends"], ends.Unix())
+		}
+		if got := reachoutTimelockReason(v); got != "reachout_timelock:TIMELOCK" {
+			t.Fatalf("reason = %q", got)
+		}
+	})
+
+	// WhatsApp does not always say when the lock lifts; the payload must omit the
+	// field rather than publish a zero epoch that a consumer would read as 1970.
+	t.Run("reachout_timelock_cleared_without_end_time", func(t *testing.T) {
+		v := &events.NotifyAccountReachoutTimelock{IsActive: false}
+		p := reachoutTimelockPayload(phone, jid, v)
+		if p["is_active"] != false {
+			t.Fatalf("is_active = %v, want false", p["is_active"])
+		}
+		if _, ok := p["time_enforcement_ends"]; ok {
+			t.Fatalf("zero end time should be omitted, got %v", p["time_enforcement_ends"])
+		}
+		if _, ok := p["enforcement_type"]; ok {
+			t.Fatalf("empty enforcement_type should be omitted")
+		}
+		if got := reachoutTimelockReason(v); got != "reachout_timelock" {
+			t.Fatalf("reason = %q", got)
 		}
 	})
 
