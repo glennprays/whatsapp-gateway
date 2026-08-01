@@ -160,6 +160,12 @@ def handle_webhook(request):
 
 #### Reverse Proxy & Forwarded Headers (HTTP 463)
 
+> **Two unrelated things are numbered 463.** This section is about the
+> **load-balancer HTTP status**. If you are chasing a log line that reads
+> `failed to send message: server returned error 463`, that is a **WhatsApp
+> message-send nack**, not an HTTP status and nothing to do with proxies — see
+> [Reach-out time lock](#reach-out-time-lock-whatsapp-send-error-463) below.
+
 `HTTP 463 (too many forwarded IP addresses)` is returned by the **load balancer**,
 not by the gateway — it fires when the inbound `X-Forwarded-For` header carries
 more IPs than the LB permits (commonly 30, AWS/GCP L7 style). It happens when a
@@ -179,6 +185,34 @@ growing.
   trusted source. With `TRUSTED_PROXIES` empty the gateway trusts no proxy and a
   spoofed `X-Forwarded-For` is ignored, but this does **not** prevent the LB-level
   463 — that must be handled at the edge.
+
+#### Reach-out time lock (WhatsApp send error 463)
+
+`failed to send message: server returned error 463` is a **nack from WhatsApp on
+an outbound message** — the reach-out time lock
+(`NackCallerReachoutTimelocked`). WhatsApp requires a privacy token (`tctoken`)
+before an account may open a conversation with someone it has no prior history
+with, and rate-limits accounts that reach out to strangers. It is enforcement,
+not a fault, and it lifts on its own.
+
+The gateway answers it with **`429 Too Many Requests`**, so treat it as a
+back-off signal:
+
+- **Do not retry the same recipient in a loop.** Retrying is what escalates the
+  enforcement toward a full temporary ban.
+- Subscribe to **`session.reachout_timelocked`** (fields: `is_active`,
+  `enforcement_type`, `time_enforcement_ends`) to learn about the restriction
+  proactively instead of inferring it from failed sends. `is_active: false` is
+  emitted when the lock lifts.
+
+**It is most likely to bite a freshly-paired number**, which has no conversation
+history and therefore no tokens. To avoid it:
+
+- **Warm the account before bulk outreach** — let recipients message it first,
+  or start with numbers that already have history.
+- Keep the outbound pacer enabled (`OUTBOUND_PACE_*`); its per-recipient cap and
+  token bucket are the main defence against tripping this at all.
+- Do not treat a newly-registered number as immediately usable for cold sends.
 
 ### 3. Database Security
 

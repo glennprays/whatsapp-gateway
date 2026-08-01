@@ -383,7 +383,8 @@ optional per-subscription `events` filter (`POST /webhook` with `events: [...]`)
 An empty/omitted filter receives **all** events. Event catalog:
 `message.incoming`, `message.queued`, `message.sent`, `message.failed`,
 `session.logged_out`, `session.banned`, `session.connect_failure`,
-`session.connected`, `session.disconnected`, `session.replaced`. The `session.*`
+`session.connected`, `session.disconnected`, `session.replaced`,
+`session.reachout_timelocked`. The `session.*`
 lifecycle events are **not** gated by `WEBHOOK_STATUS_EVENTS_ENABLED` (that flag
 only gates the `message.queued/sent/failed` family).
 `GET /webhook` returns the legacy top-level `url` (first subscription) plus a

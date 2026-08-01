@@ -22,6 +22,11 @@ const (
 	EventSessionConnected      StatusWebhookEvent = "session.connected"
 	EventSessionDisconnected   StatusWebhookEvent = "session.disconnected"
 	EventSessionReplaced       StatusWebhookEvent = "session.replaced"
+	// EventSessionReachoutTimelocked indicates WhatsApp has restricted this
+	// account from starting conversations with people it has no history with —
+	// the same enforcement that nacks sends with ack code 463. The session
+	// itself stays healthy; only cold outreach is blocked.
+	EventSessionReachoutTimelocked StatusWebhookEvent = "session.reachout_timelocked"
 )
 
 // WebhookEventCatalog is the single source of truth for every webhook event a
@@ -39,6 +44,8 @@ var WebhookEventCatalog = map[string]struct{}{
 	string(EventSessionConnected):      {},
 	string(EventSessionDisconnected):   {},
 	string(EventSessionReplaced):       {},
+
+	string(EventSessionReachoutTimelocked): {},
 }
 
 // IsKnownEvent reports whether e is a recognized webhook event type.

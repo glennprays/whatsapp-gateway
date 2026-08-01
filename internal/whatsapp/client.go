@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,12 +210,55 @@ func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) 
 	if mapped, ok := mapIQError(err); ok {
 		return mapped
 	}
+	// Outbound send-ack codes (ErrServerReturnedError). Runs after the IQ
+	// fallback because the two error shapes are disjoint.
+	if mapped, ok := mapSendAckError(err); ok {
+		return mapped
+	}
 	// Recipient problems (e.g. "can't send message to unknown server") are
 	// caller input errors, not server faults — surface as 400, not 500.
 	if isRecipientError(err) {
 		return errDomain.NewError(errDomain.ErrBadRequest, err)
 	}
 	return errDomain.NewError(errDomain.ErrInternalFailure, err)
+}
+
+// ackReachoutTimelocked (463, NackCallerReachoutTimelocked) is WhatsApp's
+// reach-out time lock: the account may not open a conversation with a recipient
+// it has no prior history with until a privacy token (tctoken) exists for them.
+// It is enforcement, not a fault, and it lifts on its own — so it maps to 429
+// (back off, retry later) and never to 500, which reads to a caller as "gateway
+// glitch, retry now" and only deepens the enforcement.
+const ackReachoutTimelocked = 463
+
+// mapSendAckError maps a WhatsApp outbound-message nack to a domain error,
+// returning ok=false for codes with no better mapping than the 500 fallback.
+//
+// whatsmeow surfaces these as a bare fmt.Errorf("%w %d", ErrServerReturnedError,
+// code) with no typed accessor, so the sentinel is matched with errors.Is (never
+// a substring — ADR 0002) and only the trailing integer is read off the message.
+func mapSendAckError(err error) (error, bool) {
+	if !errors.Is(err, whatsmeow.ErrServerReturnedError) {
+		return nil, false
+	}
+	switch sendAckCode(err) {
+	case ackReachoutTimelocked:
+		return errDomain.NewError(errDomain.ErrTooManyRequests, errors.New(
+			"whatsapp reach-out time lock: this account cannot start a new conversation with that "+
+				"recipient yet; message a contact with existing history, or retry after the lock lifts")), true
+	}
+	return nil, false
+}
+
+// sendAckCode reads the integer whatsmeow appends to ErrServerReturnedError,
+// returning 0 when the message carries no numeric suffix.
+func sendAckCode(err error) int {
+	msg := err.Error()
+	code, convErr := strconv.Atoi(msg[strings.LastIndexByte(msg, ' ')+1:])
+	if convErr != nil {
+		return 0
+	}
+	return code
 }
 
 // mapIQError maps a raw *whatsmeow.IQError to a domain error by its server IQ
