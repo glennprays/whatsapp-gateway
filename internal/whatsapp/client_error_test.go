@@ -45,6 +45,62 @@ func TestMapWhatsmeowErr_IQError(t *testing.T) {
 	}
 }
 
+// TestMapWhatsmeowErr_SendAck covers the outbound-nack branch. The regression
+// that matters is 463: it used to fall through to ErrInternalFailure, so the
+// gateway answered a WhatsApp reach-out time lock with a 500 and every caller
+// read that as "gateway glitch, retry now".
+func TestMapWhatsmeowErr_SendAck(t *testing.T) {
+	c := &client{}
+	// Built exactly as whatsmeow does in send.go, then wrapped the way the send
+	// helpers in this package wrap it, so the test breaks if either shape moves.
+	ack := func(code int) error {
+		return fmt.Errorf("failed to send message: %w",
+			fmt.Errorf("%w %d", whatsmeow.ErrServerReturnedError, code))
+	}
+	cases := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"463 reach-out time lock -> 429", ack(ackReachoutTimelocked), errDomain.ErrTooManyRequests},
+		{"unmapped ack code stays internal", ack(479), errDomain.ErrInternalFailure},
+		{"bare sentinel with no code stays internal", whatsmeow.ErrServerReturnedError, errDomain.ErrInternalFailure},
+		{"unrelated error untouched", errors.New("connection reset by peer"), errDomain.ErrInternalFailure},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mapped := c.mapWhatsmeowErr("trace", "628111", tc.err)
+			var de errDomain.Error
+			if !errors.As(mapped, &de) {
+				t.Fatalf("expected errDomain.Error, got %v", mapped)
+			}
+			if de.ServiceError() != tc.want {
+				t.Fatalf("%v: got %v, want %v", tc.err, de.ServiceError(), tc.want)
+			}
+		})
+	}
+}
+
+// TestSendAckCode pins the suffix parsing, which is the one fragile part of the
+// mapping: whatsmeow exposes no typed accessor for the nack code.
+func TestSendAckCode(t *testing.T) {
+	cases := []struct {
+		err  error
+		want int
+	}{
+		{fmt.Errorf("%w %d", whatsmeow.ErrServerReturnedError, 463), 463},
+		{fmt.Errorf("failed to send message: %w", fmt.Errorf("%w %d", whatsmeow.ErrServerReturnedError, 463)), 463},
+		{whatsmeow.ErrServerReturnedError, 0},
+		{errors.New("no spaces"), 0},
+		{errors.New(""), 0},
+	}
+	for _, tc := range cases {
+		if got := sendAckCode(tc.err); got != tc.want {
+			t.Errorf("sendAckCode(%q) = %d, want %d", tc.err, got, tc.want)
+		}
+	}
+}
+
 func TestIsRecipientError(t *testing.T) {
 	cases := []struct {
 		name string
