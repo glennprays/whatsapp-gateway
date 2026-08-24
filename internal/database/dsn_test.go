@@ -7,8 +7,10 @@ import (
 )
 
 // TestNormalizePostgresDSN_URLForm covers the production DSN shape
-// (postgresql://...?sslmode=disable): keepalive + connect-timeout params are
-// injected, existing values win, and the %40-encoded password must survive.
+// (postgresql://...?sslmode=disable): connect_timeout is injected, but
+// keepalives_* must NOT be — lib/pq forwards unknown URL query params to the
+// server as startup runtime parameters, which reject with 42704 (observed as a
+// crash loop in prod). The %40-encoded password must survive.
 func TestNormalizePostgresDSN_URLForm(t *testing.T) {
 	got := normalizePostgresDSN("postgresql://waga_user:sup%40secret@10.10.10.3:58379/whatsapp_gateway?sslmode=disable")
 	u, err := url.Parse(got)
@@ -20,16 +22,17 @@ func TestNormalizePostgresDSN_URLForm(t *testing.T) {
 	}
 	q := u.Query()
 	want := map[string]string{
-		"sslmode":             "disable",
-		"connect_timeout":     "10",
-		"keepalives":          "1",
-		"keepalives_idle":     "30",
-		"keepalives_interval": "10",
-		"keepalives_count":    "5",
+		"sslmode":         "disable",
+		"connect_timeout": "10",
 	}
 	for k, v := range want {
 		if q.Get(k) != v {
 			t.Errorf("%s = %q, want %q (dsn %q)", k, q.Get(k), v, got)
+		}
+	}
+	for _, banned := range []string{"keepalives", "keepalives_idle", "keepalives_interval", "keepalives_count"} {
+		if q.Get(banned) != "" {
+			t.Errorf("%s leaked into URL-form DSN: %q", banned, got)
 		}
 	}
 }
