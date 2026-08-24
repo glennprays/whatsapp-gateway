@@ -12,13 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
-// postgresKeepaliveParams are appended to a Postgres DSN (when not already set)
-// so a silently-dropped pooled connection is detected in ~1 minute instead of
-// never. Without them, a NAT/firewall black-hole between the gateway and the DB
-// leaves any goroutine that picks the dead connection blocked forever inside
-// lib/pq's socket read — observed in production as whatsmeow sends and inbound
-// message decryption hanging indefinitely while other connections worked fine.
-// Detection math: idle 30s, then probes every 10s, give up after 5 failures.
+// postgresKeepaliveParams are appended to a keyword/value Postgres DSN (when
+// not already set) so a silently-dropped pooled connection is detected in ~1
+// minute instead of never. Without them, a NAT/firewall black-hole between the
+// gateway and the DB leaves any goroutine that picks the dead connection
+// blocked forever inside lib/pq's socket read — observed in production as
+// whatsmeow sends and inbound message decryption hanging indefinitely while
+// other connections worked fine. Detection math: idle 30s, then probes every
+// 10s, give up after 5 failures.
+//
+// lib/pq quirk (lib/pq#698): these parameters are only honored client-side in
+// KEYWORD form. In URL form they are forwarded to the server as startup
+// runtime parameters and rejected with SQLSTATE 42704 ("unrecognized
+// configuration parameter"). So URL-form DSNs get connect_timeout only; see
+// urlKeepaliveParams below.
 var postgresKeepaliveParams = []struct{ key, val string }{
 	{"connect_timeout", "10"},
 	{"keepalives", "1"},
@@ -27,7 +34,13 @@ var postgresKeepaliveParams = []struct{ key, val string }{
 	{"keepalives_count", "5"},
 }
 
-// normalizePostgresDSN injects the keepalive/connect-timeout parameters into a
+// urlKeepaliveParams is the URL-form-safe subset: parseURL consumes
+// connect_timeout client-side but forwards everything else to the server.
+var urlKeepaliveParams = []struct{ key, val string }{
+	{"connect_timeout", "10"},
+}
+
+// normalizePostgresDSN injects keepalive/connect-timeout parameters into a
 // Postgres DSN. Both supported forms are handled: URL form
 // (postgresql://user:pass@host/db?sslmode=...) and lib/pq keyword form
 // ("host=... user=... ..."). Parameters already present in the DSN win.
@@ -38,7 +51,7 @@ func normalizePostgresDSN(dsn string) string {
 			return dsn // unparseable: let the driver surface the error as-is
 		}
 		q := u.Query()
-		for _, p := range postgresKeepaliveParams {
+		for _, p := range urlKeepaliveParams {
 			if q.Get(p.key) == "" {
 				q.Set(p.key, p.val)
 			}
