@@ -6,4 +6,5 @@ const (
 	ErrClientAlreadyLoggedIn = "client already logged in"
 	ErrClientNotLoggedIn     = "client not logged in"
 	ErrClientSessionDeleted  = "WhatsApp session was deleted by server, please re-pair via QR or pair code"
+	ErrWhatsappTimeout       = "whatsapp did not respond in time; the operation was aborted before completion"
 )

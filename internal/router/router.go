@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	// Side-effect import: registers pprof handlers on http.DefaultServeMux.
+	// They are only reachable through the bearer-gated /debug/pprof/* routes.
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/glennprays/log"
@@ -17,6 +20,7 @@ import (
 	"github.com/glennprays/whatsapp-gateway/internal/middleware"
 	"github.com/glennprays/whatsapp-gateway/internal/whatsapp"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/template/html/v2"
 	"github.com/google/uuid"
@@ -192,6 +196,13 @@ func SetupRouter(
 			metrics.SetSessionsSource(func() map[string]int { return tallyStates(manager) })
 			app.Get("/metrics", adminAuth, metrics.Handler())
 		}
+
+		// pprof (goroutine/heap profiles) behind the same admin bearer. The
+		// goroutine dump (/debug/pprof/goroutine?debug=2) is the diagnostic for
+		// wedged whatsmeow clients: it shows the exact blocked stack when sends
+		// or inbound node handling hang. Dark without ADMIN_API_SECRET.
+		app.All("/debug/pprof/*", adminAuth, adaptor.HTTPHandler(http.DefaultServeMux))
+		app.All("/debug/pprof", adminAuth, adaptor.HTTPHandler(http.DefaultServeMux))
 	}
 
 	return app

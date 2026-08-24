@@ -42,6 +42,8 @@ func FromError(err error) APIError {
 			apiError.Status = http.StatusTooManyRequests
 		case errDomain.ErrGone:
 			apiError.Status = http.StatusGone
+		case errDomain.ErrGatewayTimeout:
+			apiError.Status = http.StatusGatewayTimeout
 		}
 	} else {
 		apiError.Message = err.Error()
