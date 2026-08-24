@@ -93,6 +93,30 @@ func NewClient(container *sqlstore.Container, cfg *config.Config, repo WhatsAppR
 	}
 }
 
+// outboundCtx derives a context hard-bounded by SEND_TIMEOUT_SECONDS for one
+// WhatsApp network round-trip. whatsmeow can block indefinitely on a zombie
+// socket (dead-but-undetected), which used to hang the HTTP handler until the
+// caller's own timeout fired with no response ever written. The derived
+// deadline makes every whatsmeow call abort on time; mapWhatsmeowErr turns the
+// resulting context.DeadlineExceeded into a 504. A non-positive configured
+// timeout disables bounding (cancel is then a no-op).
+func (c *client) outboundCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	var timeout time.Duration
+	if c.cfg != nil {
+		timeout = time.Duration(c.cfg.SendTimeoutSeconds) * time.Second
+	}
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+// gatewayTimeoutErr builds the canonical 504 for upload paths that bypass
+// mapWhatsmeowErr (media Upload errors are wrapped as internal failures).
+func (c *client) gatewayTimeoutErr() error {
+	return errDomain.NewError(errDomain.ErrGatewayTimeout, errors.New(constant.ErrWhatsappTimeout))
+}
+
 func (c *client) InitClient(traceID string, phoneNumber string, device *store.Device, eventHandler func(string, any)) {
 	binary.IndentXML = true
 	if clients.Get(phoneNumber) == nil {
@@ -170,6 +194,13 @@ func (c *client) Reconnect(traceID string, phoneNumber string) error {
 func (c *client) mapWhatsmeowErr(traceID string, phoneNumber string, err error) error {
 	if err == nil {
 		return nil
+	}
+	// A bounded outbound op that outlived SEND_TIMEOUT_SECONDS surfaces as
+	// context.DeadlineExceeded (possibly through %w wrapping). Map to 504 so
+	// the caller sees "upstream didn't answer in time" instead of a generic
+	// 500 (or worse, an indefinite hang).
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errDomain.NewError(errDomain.ErrGatewayTimeout, errors.New(constant.ErrWhatsappTimeout))
 	}
 	if errors.Is(err, store.ErrDeviceDeleted) {
 		c.logger.Warn(traceID, "WhatsApp session was deleted by server; re-pair required",
@@ -398,7 +429,9 @@ func (c *client) CheckNumber(ctx context.Context, traceID string, phoneNumber st
 		return waDomain.ContactCheckResponse{}, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
-	resp, err := cli.IsOnWhatsApp(ctx, []string{msisdn})
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	resp, err := cli.IsOnWhatsApp(octx, []string{msisdn})
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return waDomain.ContactCheckResponse{}, c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -472,7 +505,9 @@ func (c *client) ListGroups(ctx context.Context, traceID string, phoneNumber str
 		return nil, errDomain.NewError(errDomain.ErrUnauthorized, errors.New("client not logged in"))
 	}
 
-	groups, err := cli.GetJoinedGroups(ctx)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	groups, err := cli.GetJoinedGroups(octx)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, fmt.Errorf("failed to list groups: %w", err))
 	}
@@ -518,7 +553,9 @@ func (c *client) GetGroupInfo(ctx context.Context, traceID string, phoneNumber s
 			fmt.Errorf("chat must be a group JID (@g.us): %q", groupJID))
 	}
 
-	g, err := cli.GetGroupInfo(ctx, jid)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	g, err := cli.GetGroupInfo(octx, jid)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -611,7 +648,9 @@ func (c *client) ListSubGroups(ctx context.Context, traceID string, phoneNumber 
 			fmt.Errorf("chat must be a community JID (@g.us): %q", communityJID))
 	}
 
-	subs, err := cli.GetSubGroups(ctx, jid)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	subs, err := cli.GetSubGroups(octx, jid)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -648,7 +687,9 @@ func (c *client) ListCommunityParticipants(ctx context.Context, traceID string, 
 			fmt.Errorf("chat must be a community JID (@g.us): %q", communityJID))
 	}
 
-	members, err := cli.GetLinkedGroupsParticipants(ctx, jid)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	members, err := cli.GetLinkedGroupsParticipants(octx, jid)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -750,7 +791,9 @@ func (c *client) CreateGroup(ctx context.Context, traceID string, phoneNumber st
 		req.GroupLinkedParent = types.GroupLinkedParent{LinkedParentJID: pjid}
 	}
 
-	info, err := cli.CreateGroup(ctx, req)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	info, err := cli.CreateGroup(octx, req)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -767,7 +810,9 @@ func (c *client) LeaveGroup(ctx context.Context, traceID string, phoneNumber str
 	if err != nil {
 		return err
 	}
-	if err := cli.LeaveGroup(ctx, jid); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.LeaveGroup(octx, jid); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -793,7 +838,9 @@ func (c *client) UpdateGroupParticipants(ctx context.Context, traceID string, ph
 			}
 		}
 	}
-	res, err := cli.UpdateGroupParticipants(ctx, jid, participants, whatsmeow.ParticipantChange(action))
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	res, err := cli.UpdateGroupParticipants(octx, jid, participants, whatsmeow.ParticipantChange(action))
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -806,7 +853,9 @@ func (c *client) SetGroupAnnounce(ctx context.Context, traceID string, phoneNumb
 	if err != nil {
 		return err
 	}
-	if err := cli.SetGroupAnnounce(ctx, jid, announce); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.SetGroupAnnounce(octx, jid, announce); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -818,7 +867,9 @@ func (c *client) SetGroupLocked(ctx context.Context, traceID string, phoneNumber
 	if err != nil {
 		return err
 	}
-	if err := cli.SetGroupLocked(ctx, jid, locked); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.SetGroupLocked(octx, jid, locked); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -830,7 +881,9 @@ func (c *client) SetGroupName(ctx context.Context, traceID string, phoneNumber s
 	if err != nil {
 		return err
 	}
-	if err := cli.SetGroupName(ctx, jid, name); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.SetGroupName(octx, jid, name); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -843,7 +896,9 @@ func (c *client) SetGroupTopic(ctx context.Context, traceID string, phoneNumber 
 	if err != nil {
 		return err
 	}
-	if err := cli.SetGroupTopic(ctx, jid, "", "", topic); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.SetGroupTopic(octx, jid, "", "", topic); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -856,7 +911,9 @@ func (c *client) SetGroupPhoto(ctx context.Context, traceID string, phoneNumber 
 	if err != nil {
 		return "", err
 	}
-	id, err := cli.SetGroupPhoto(ctx, jid, photo)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	id, err := cli.SetGroupPhoto(octx, jid, photo)
 	if err != nil {
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -870,7 +927,9 @@ func (c *client) GetGroupInviteLink(ctx context.Context, traceID string, phoneNu
 	if err != nil {
 		return "", err
 	}
-	link, err := cli.GetGroupInviteLink(ctx, jid, reset)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	link, err := cli.GetGroupInviteLink(octx, jid, reset)
 	if err != nil {
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -885,7 +944,9 @@ func (c *client) JoinGroupWithLink(ctx context.Context, traceID string, phoneNum
 	if err != nil {
 		return "", err
 	}
-	jid, err := cli.JoinGroupWithLink(ctx, code)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	jid, err := cli.JoinGroupWithLink(octx, code)
 	if err != nil {
 		return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -898,7 +959,9 @@ func (c *client) GetGroupInfoFromLink(ctx context.Context, traceID string, phone
 	if err != nil {
 		return nil, err
 	}
-	g, err := cli.GetGroupInfoFromLink(ctx, code)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	g, err := cli.GetGroupInfoFromLink(octx, code)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -911,7 +974,9 @@ func (c *client) GetGroupRequestParticipants(ctx context.Context, traceID string
 	if err != nil {
 		return nil, err
 	}
-	reqs, err := cli.GetGroupRequestParticipants(ctx, jid)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	reqs, err := cli.GetGroupRequestParticipants(octx, jid)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -941,7 +1006,9 @@ func (c *client) UpdateGroupRequestParticipants(ctx context.Context, traceID str
 	if approve {
 		action = whatsmeow.ParticipantChangeApprove
 	}
-	res, err := cli.UpdateGroupRequestParticipants(ctx, jid, participants, action)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	res, err := cli.UpdateGroupRequestParticipants(octx, jid, participants, action)
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -959,7 +1026,9 @@ func (c *client) LinkSubGroup(ctx context.Context, traceID string, phoneNumber s
 		return errDomain.NewError(errDomain.ErrBadRequest,
 			fmt.Errorf("child_jid must be a group JID (@g.us): %q", childJID))
 	}
-	if err := cli.LinkGroup(ctx, parent, child); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.LinkGroup(octx, parent, child); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -976,7 +1045,9 @@ func (c *client) UnlinkSubGroup(ctx context.Context, traceID string, phoneNumber
 		return errDomain.NewError(errDomain.ErrBadRequest,
 			fmt.Errorf("child_jid must be a group JID (@g.us): %q", childJID))
 	}
-	if err := cli.UnlinkGroup(ctx, parent, child); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.UnlinkGroup(octx, parent, child); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -998,7 +1069,9 @@ func (c *client) GetContactInfo(ctx context.Context, traceID string, phoneNumber
 		return nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", userJID))
 	}
 
-	infos, err := cli.GetUserInfo(ctx, []types.JID{jid})
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	infos, err := cli.GetUserInfo(octx, []types.JID{jid})
 	if err != nil {
 		return nil, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
@@ -1039,7 +1112,9 @@ func (c *client) GetAvatar(ctx context.Context, traceID string, phoneNumber stri
 		return nil, errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", targetJID))
 	}
 
-	info, err := cli.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	info, err := cli.GetProfilePictureInfo(octx, jid, &whatsmeow.GetProfilePictureParams{
 		Preview:    preview,
 		ExistingID: existingID,
 	})
@@ -1096,7 +1171,9 @@ func (c *client) MarkRead(ctx context.Context, traceID string, phoneNumber strin
 		ids[i] = types.MessageID(id)
 	}
 
-	if err := cli.MarkRead(ctx, ids, time.Now(), chatJID, senderJID); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.MarkRead(octx, ids, time.Now(), chatJID, senderJID); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -1118,7 +1195,9 @@ func (c *client) SendChatPresence(ctx context.Context, traceID string, phoneNumb
 		return errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid recipient %q", chat))
 	}
 
-	if err := cli.SendChatPresence(ctx, chatJID, types.ChatPresence(state), types.ChatPresenceMedia(media)); err != nil {
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	if err := cli.SendChatPresence(octx, chatJID, types.ChatPresence(state), types.ChatPresenceMedia(media)); err != nil {
 		return c.mapWhatsmeowErr(traceID, phoneNumber, err)
 	}
 	return nil
@@ -1246,7 +1325,9 @@ func (c *client) SendTextMessage(ctx context.Context, traceID string, phoneNumbe
 		msg = &waE2E.Message{Conversation: proto.String(message)}
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1273,8 +1354,13 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 	}
 
 	// Upload image to WhatsApp servers
-	uploaded, err := cli.Upload(ctx, imageBytes, whatsmeow.MediaImage)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	uploaded, err := cli.Upload(octx, imageBytes, whatsmeow.MediaImage)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", c.gatewayTimeoutErr()
+		}
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
@@ -1315,7 +1401,7 @@ func (c *client) SendImageMessage(ctx context.Context, traceID string, phoneNumb
 		}
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1349,8 +1435,13 @@ func (c *client) SendAudioMessage(ctx context.Context, traceID string, phoneNumb
 		mimeType = "audio/mpeg"
 	}
 
-	uploaded, err := cli.Upload(ctx, audioBytes, whatsmeow.MediaAudio)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	uploaded, err := cli.Upload(octx, audioBytes, whatsmeow.MediaAudio)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", c.gatewayTimeoutErr()
+		}
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
@@ -1379,7 +1470,7 @@ func (c *client) SendAudioMessage(ctx context.Context, traceID string, phoneNumb
 		}
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1403,8 +1494,13 @@ func (c *client) SendVideoMessage(ctx context.Context, traceID string, phoneNumb
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	uploaded, err := cli.Upload(ctx, videoBytes, whatsmeow.MediaVideo)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	uploaded, err := cli.Upload(octx, videoBytes, whatsmeow.MediaVideo)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", c.gatewayTimeoutErr()
+		}
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
@@ -1436,7 +1532,7 @@ func (c *client) SendVideoMessage(ctx context.Context, traceID string, phoneNumb
 		}
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1460,8 +1556,13 @@ func (c *client) SendDocumentMessage(ctx context.Context, traceID string, phoneN
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	uploaded, err := cli.Upload(ctx, docBytes, whatsmeow.MediaDocument)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	uploaded, err := cli.Upload(octx, docBytes, whatsmeow.MediaDocument)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", c.gatewayTimeoutErr()
+		}
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
@@ -1498,7 +1599,7 @@ func (c *client) SendDocumentMessage(ctx context.Context, traceID string, phoneN
 		msg = &waE2E.Message{DocumentMessage: docMsg}
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1537,7 +1638,9 @@ func (c *client) ReactToMessage(ctx context.Context, traceID string, phoneNumber
 
 	msg := cli.BuildReaction(toJID, sender, messageID, emoji)
 
-	_, err = cli.SendMessage(ctx, toJID, msg)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	_, err = cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1564,7 +1667,9 @@ func (c *client) DeleteMessage(ctx context.Context, traceID string, phoneNumber 
 	}
 
 	// Build revoke message
-	_, err = cli.SendMessage(ctx, toJID, cli.BuildRevoke(toJID, types.EmptyJID, messageID))
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	_, err = cli.SendMessage(octx, toJID, cli.BuildRevoke(toJID, types.EmptyJID, messageID))
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1595,7 +1700,9 @@ func (c *client) EditMessage(ctx context.Context, traceID string, phoneNumber st
 		Conversation: proto.String(newText),
 	}
 
-	_, err = cli.SendMessage(ctx, toJID, cli.BuildEdit(toJID, messageID, editMsg))
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	_, err = cli.SendMessage(octx, toJID, cli.BuildEdit(toJID, messageID, editMsg))
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1632,7 +1739,9 @@ func (c *client) SendLocationMessage(ctx context.Context, traceID string, phoneN
 	}
 	locationMsg.ContextInfo = buildContextInfo(msgCtx)
 
-	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{LocationMessage: locationMsg})
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	resp, err := cli.SendMessage(octx, toJID, &waE2E.Message{LocationMessage: locationMsg})
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1672,7 +1781,9 @@ func (c *client) SendPollMessage(ctx context.Context, traceID string, phoneNumbe
 		msg.PollCreationMessage.ContextInfo = buildContextInfo(msgCtx)
 	}
 
-	resp, err := cli.SendMessage(ctx, toJID, msg)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	resp, err := cli.SendMessage(octx, toJID, msg)
 	if err != nil {
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
@@ -1696,8 +1807,13 @@ func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNu
 		return "", errDomain.NewError(errDomain.ErrBadRequest, fmt.Errorf("invalid JID format: %w", err))
 	}
 
-	uploaded, err := cli.Upload(ctx, stickerBytes, whatsmeow.MediaImage)
+	octx, cancel := c.outboundCtx(ctx)
+	defer cancel()
+	uploaded, err := cli.Upload(octx, stickerBytes, whatsmeow.MediaImage)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", c.gatewayTimeoutErr()
+		}
 		if errors.Is(err, store.ErrDeviceDeleted) {
 			return "", c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
@@ -1705,7 +1821,7 @@ func (c *client) SendStickerMessage(ctx context.Context, traceID string, phoneNu
 	}
 
 	fileLen := uint64(len(stickerBytes))
-	resp, err := cli.SendMessage(ctx, toJID, &waE2E.Message{
+	resp, err := cli.SendMessage(octx, toJID, &waE2E.Message{
 		StickerMessage: &waE2E.StickerMessage{
 			URL:           &uploaded.URL,
 			DirectPath:    &uploaded.DirectPath,

@@ -12,6 +12,7 @@ var (
 	ErrMethodNotAllowed = errors.New("method not allowed")
 	ErrTooManyRequests  = errors.New("too many requests")
 	ErrGone             = errors.New("gone")
+	ErrGatewayTimeout   = errors.New("gateway timeout")
 )
 
 type Error struct {

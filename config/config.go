@@ -66,6 +66,12 @@ type Config struct {
 	// Upload limits
 	MaxUploadBytes int64 `mapstructure:"MAX_UPLOAD_BYTES" default:"16777216"` // 16 MiB cap on outbound media
 
+	// Send timeout: hard deadline for every outbound WhatsApp round-trip
+	// (sends, reads, group ops) at the whatsmeow boundary. Bounds zombie-socket
+	// hangs so callers get a 504 instead of waiting on their own client timeout.
+	// 0 disables; positive values below 5s clamp to 5.
+	SendTimeoutSeconds int64 `mapstructure:"SEND_TIMEOUT_SECONDS" default:"20"`
+
 	// Graceful shutdown: overall bound for disconnecting all whatsmeow clients
 	ShutdownClientDisconnectTimeoutSeconds int64 `mapstructure:"SHUTDOWN_CLIENT_DISCONNECT_TIMEOUT_SECONDS" default:"10"`
 
@@ -281,6 +287,14 @@ func (c *Config) normalize() {
 	}
 	if c.OutboundPaceMode != "reject" {
 		c.OutboundPaceMode = "pace"
+	}
+	// Send timeout clamps: negative disables (0 sentinel); sub-5s positives are
+	// indistinguishable from a WhatsApp server round-trip blip and would flap.
+	if c.SendTimeoutSeconds < 0 {
+		c.SendTimeoutSeconds = 0
+	}
+	if c.SendTimeoutSeconds > 0 && c.SendTimeoutSeconds < 5 {
+		c.SendTimeoutSeconds = 5
 	}
 }
 

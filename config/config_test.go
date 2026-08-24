@@ -89,3 +89,30 @@ func TestNormalize_ClampsJWTDurationOverflow(t *testing.T) {
 	}
 }
 
+// TestNormalize_ClampsSendTimeout covers the SEND_TIMEOUT_SECONDS clamps:
+// negative disables (0), sub-5s positives clamp to 5 (too flappy otherwise),
+// sane values pass through.
+func TestNormalize_ClampsSendTimeout(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int64
+		want int64
+	}{
+		{"negative disables", -1, 0},
+		{"zero stays disabled", 0, 0},
+		{"one second clamps to five", 1, 5},
+		{"four seconds clamps to five", 4, 5},
+		{"five seconds passes through", 5, 5},
+		{"twenty passes through", 20, 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{SendTimeoutSeconds: tt.in}
+			cfg.normalize()
+			if cfg.SendTimeoutSeconds != tt.want {
+				t.Errorf("SendTimeoutSeconds = %d, want %d", cfg.SendTimeoutSeconds, tt.want)
+			}
+		})
+	}
+}
+
