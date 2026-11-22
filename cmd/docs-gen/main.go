@@ -1,10 +1,14 @@
 // Command docs-gen renders the public, docs-only static site artifacts from the
 // same sources the Go console uses, so there is no hand-maintained second copy.
 //
-// Today it renders index.html from docs/ui/index.html with ShowAPI=false and a
-// root asset prefix, and validates that assets/nav.json covers every markdown
-// doc (a build-time drift guard). scripts/build-docs-pages.sh invokes it in
-// place of the old inline heredocs.
+// It renders two pages from docs/ui/:
+//   - landing.html -> <out>/index.html           (the marketing landing page)
+//   - index.html   -> <out>/docs/index.html      (the docs-only console, ShowAPI=false)
+//
+// It also validates that assets/nav.json covers every markdown doc (a
+// build-time drift guard) and writes the full-text search index under
+// <out>/docs/assets/. scripts/build-docs-pages.sh invokes it in place of the
+// old inline heredocs.
 //
 // Usage: docs-gen <outDir>   (default outDir: _site); run from the repo root.
 package main
@@ -20,9 +24,10 @@ import (
 )
 
 const (
-	indexTemplate = "docs/ui/index.html"
-	navPath       = "docs/ui/assets/nav.json"
-	docsDir       = "docs/ui/assets/docs"
+	landingTemplate = "docs/ui/landing.html"
+	indexTemplate   = "docs/ui/index.html"
+	navPath         = "docs/ui/assets/nav.json"
+	docsDir         = "docs/ui/assets/docs"
 )
 
 func main() {
@@ -51,29 +56,29 @@ func run() error {
 		return err
 	}
 
-	// Render the docs-only index.html from the shared console template.
-	tmpl, err := template.ParseFiles(indexTemplate)
+	tmpl, err := template.ParseFiles(landingTemplate, indexTemplate)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(filepath.Join(outDir, "index.html"))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
-	// ShowAPI=false strips the RapiDoc tab; BasePath="" serves assets from root.
-	// Version drives the header badge (empty ⇒ hidden); scripts/build-docs-pages.sh
-	// sets DOCS_VERSION from `git describe`.
-	data := map[string]any{"BasePath": "", "ShowAPI": false, "Version": os.Getenv("DOCS_VERSION")}
-	if err := tmpl.ExecuteTemplate(f, filepath.Base(indexTemplate), data); err != nil {
+	// Render the landing page at the site root. BasePath="" points asset refs
+	// at /assets/ (favicon set + og-image copied there by the build script).
+	// Version drives the header badge (empty ⇒ hidden).
+	landingData := map[string]any{"BasePath": "", "Version": os.Getenv("DOCS_VERSION")}
+	if err := renderTo(tmpl, filepath.Base(landingTemplate), filepath.Join(outDir, "index.html"), landingData); err != nil {
 		return err
 	}
 
-	// Write the full-text search index for the static site.
+	// Render the docs-only index.html from the shared console template under
+	// /docs/. ShowAPI=false strips the RapiDoc tab; BasePath="/docs" serves
+	// engine assets from /docs/assets/.
+	docsData := map[string]any{"BasePath": "/docs", "ShowAPI": false, "Version": os.Getenv("DOCS_VERSION")}
+	if err := renderTo(tmpl, filepath.Base(indexTemplate), filepath.Join(outDir, "docs", "index.html"), docsData); err != nil {
+		return err
+	}
+
+	// Write the full-text search index for the static site. The docs engine at
+	// /docs/ requests it via buildUrl, i.e. /docs/assets/search-index.json.
 	index, err := docsgen.BuildSearchIndex(docsDir)
 	if err != nil {
 		return err
@@ -82,15 +87,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	assetsDir := filepath.Join(outDir, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+	docsAssetsDir := filepath.Join(outDir, "docs", "assets")
+	if err := os.MkdirAll(docsAssetsDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(assetsDir, "search-index.json"), indexJSON, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(docsAssetsDir, "search-index.json"), indexJSON, 0o644); err != nil {
 		return err
 	}
 
-	fmt.Printf("docs-gen: wrote %s/index.html + search-index.json (%d docs, %d sections)\n",
-		outDir, len(keys), len(index))
+	fmt.Printf("docs-gen: wrote %s/index.html (landing) + %s/index.html + search-index.json (%d docs, %d sections)\n",
+		outDir, filepath.Join(outDir, "docs"), len(keys), len(index))
 	return nil
+}
+
+func renderTo(tmpl *template.Template, name, path string, data any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return tmpl.ExecuteTemplate(f, name, data)
 }
