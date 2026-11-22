@@ -258,7 +258,7 @@
     .btn:hover .arrow { transform: translateX(3px); }
 
     /* ------------------------------------------------------------- sections */
-    .section { position: relative; padding: 112px 0; border-top: 1px solid var(--line); }
+    .section { position: relative; padding: 96px 0; border-top: 1px solid var(--line); }
     .section-head {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -648,8 +648,160 @@
     .flow-step p { color: var(--muted); font-size: 14.5px; }
     .flow-step code { white-space: nowrap; font-size: 12.5px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
 
+    /* ---------------------------------------------------------------- bento */
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card {
+      position: relative;
+      background: var(--bg);
+      padding: 28px 28px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 280px;
+      transition: background .2s var(--ease);
+    }
+    .card:hover { background: #0a0d0e; }
+    .card .label { font-size: 11px; }
+    .card h3 { font-size: 22px; letter-spacing: -0.03em; line-height: 1.15; }
+    .card p { color: var(--muted); font-size: 15px; max-width: 46ch; }
+    .card .viz { margin-top: auto; padding-top: 18px; }
+    .span-7 { grid-column: span 7; }
+    .span-5 { grid-column: span 5; }
+    .span-4 { grid-column: span 4; }
+    .span-12 { grid-column: span 12; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      padding: 4px 9px;
+      border-radius: 5px;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      background: var(--surface);
+      white-space: nowrap;
+    }
+    .chip.msg { color: #a9d0ff; border-color: rgba(124, 183, 255, 0.25); background: rgba(124, 183, 255, 0.06); }
+    .chip.ses { color: #9ff0bd; border-color: rgba(37, 211, 102, 0.25); background: rgba(37, 211, 102, 0.06); }
+    .chip.hot { color: var(--text-strong); border-color: var(--signal); box-shadow: 0 0 14px -2px rgba(37, 211, 102, 0.5); }
+
+    .mini-rows { display: grid; gap: 6px; }
+    .mini-row {
+      display: grid;
+      grid-template-columns: 14px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .mini-row .muted { color: var(--faint); font-size: 11px; }
+
+    .bucket { display: grid; gap: 10px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+    .tokens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+    .tokens i { height: 26px; border-radius: 4px; background: var(--signal-dim); border: 1px solid rgba(37, 211, 102, 0.35); }
+    .tokens i.on { background: var(--signal); border-color: var(--signal); box-shadow: 0 0 10px -2px var(--signal); }
+    .bucket-meta { display: flex; justify-content: space-between; }
+    .bucket-meta strong { color: var(--text); font-weight: 500; }
+
+    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-family: var(--font-mono); font-size: 11.5px; }
+    .mode { border: 1px solid var(--line-strong); border-radius: 6px; padding: 10px 12px; background: var(--surface); color: var(--muted); }
+    .mode strong { display: block; color: var(--text); font-weight: 500; font-size: 12.5px; margin-bottom: 2px; }
+    .mode.active { border-color: rgba(37, 211, 102, 0.5); }
+    .mode.active strong::after { content: " \25CF"; color: var(--signal); font-size: 9px; vertical-align: middle; }
+
+    .card-wide { flex-direction: row; align-items: center; gap: 48px; min-height: 0; }
+    .card-wide > div:first-child { flex: 0 0 40%; display: grid; gap: 10px; }
+    .card-wide .viz { margin: 0; padding: 0; flex: 1; min-width: 0; }
+    .term-line {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.9;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 18px;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--muted);
+    }
+
+    /* ------------------------------------------------------------ endpoints */
+    .ep-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .ep-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ep-head .base { color: var(--text); }
+    .ep-head a { margin-left: auto; color: var(--signal); }
+    .ep-head a:hover { color: var(--signal-soft); }
+    .ep-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .ep-col { list-style: none; }
+    .ep-col + .ep-col { border-left: 1px solid var(--line); }
+    .ep {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      font-family: var(--font-mono);
+      font-size: 12.75px;
+      transition: background .15s var(--ease);
+    }
+    .ep:hover { background: var(--surface); }
+    .ep-col .ep:last-child { border-bottom: 0; }
+    .ep .path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ep .path span { color: var(--faint); }
+    .ep .desc { color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+    .m {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-align: center;
+      padding: 3px 0;
+      border-radius: 4px;
+    }
+    .m.get { color: var(--blue); background: rgba(124, 183, 255, 0.1); }
+    .m.post { color: var(--signal); background: var(--signal-dim); }
+    .m.put, .m.patch { color: var(--amber); background: rgba(245, 184, 61, 0.1); }
+    .m.del { color: var(--red); background: rgba(255, 92, 92, 0.1); }
+
     /* ----------------------------------------------------------- responsive */
     @media (max-width: 980px) {
+      .span-7, .span-5 { grid-column: span 12; }
+      .span-4 { grid-column: span 6; }
+      .span-4.tail { grid-column: span 12; }
+      .card-wide { flex-direction: column; align-items: stretch; gap: 20px; }
+      .ep-grid { grid-template-columns: 1fr; }
+      .ep-col + .ep-col { border-left: 0; border-top: 1px solid var(--line); }
       .spec-grid { grid-template-columns: repeat(3, 1fr); }
       .spec-cell { border-bottom: 1px solid var(--line); }
       .spec-cell:nth-child(3n) { border-right: 1px solid var(--line); }
@@ -663,6 +815,9 @@
       .section-head { grid-template-columns: 1fr; gap: 20px; }
     }
     @media (max-width: 760px) {
+      .span-4 { grid-column: span 12; }
+      .ep .desc { display: none; }
+      .ep { grid-template-columns: 58px minmax(0, 1fr); }
       .flow-svg { display: none; }
       .flow-steps { border-top: 0; }
       .nav, .strip-right { display: none; }
@@ -916,6 +1071,138 @@
               <h3>Signed events back</h3>
               <p>Incoming messages and session changes fan out to every subscribed URL, signed with <code>X-Webhook-Signature</code>.</p>
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================== CAPABILITIES -->
+    <section class="section" id="capabilities" aria-labelledby="cap-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="label">[ 02 / CAPABILITIES ]</span>
+            <h2 id="cap-title">Everything between your backend <em>and WhatsApp.</em></h2>
+          </div>
+          <p class="lede">The parts you would otherwise build yourself: event fan-out, session tracking, pacing, media handling and delivery retries.</p>
+        </div>
+
+        <div class="bento">
+          <article class="card span-7">
+            <span class="label"><b>&#9679;</b> Webhooks</span>
+            <h3>11 events, filtered per subscription</h3>
+            <p>Register several URLs per account, each with its own event filter and HMAC secret. Secrets are never returned by the API.</p>
+            <div class="viz chips" aria-label="Webhook events">
+              <span class="chip msg hot">message.incoming</span>
+              <span class="chip msg">message.queued</span>
+              <span class="chip msg">message.sent</span>
+              <span class="chip msg">message.failed</span>
+              <span class="chip ses">session.connected</span>
+              <span class="chip ses">session.disconnected</span>
+              <span class="chip ses">session.logged_out</span>
+              <span class="chip ses">session.banned</span>
+              <span class="chip ses">session.connect_failure</span>
+              <span class="chip ses">session.replaced</span>
+              <span class="chip ses">session.reachout_timelocked</span>
+            </div>
+          </article>
+
+          <article class="card span-5">
+            <span class="label"><b>&#9679;</b> Multi-device</span>
+            <h3>Many accounts, one instance</h3>
+            <p>QR or pairing-code login per number, with automatic reconnects and honest session states.</p>
+            <div class="viz mini-rows">
+              <div class="mini-row"><span class="dot"></span><span>62812345xxxx</span><span class="muted">connected</span></div>
+              <div class="mini-row"><span class="dot"></span><span>62877812xxxx</span><span class="muted">connected</span></div>
+              <div class="mini-row"><span class="dot warn"></span><span>14155550xxxx</span><span class="muted">never_paired</span></div>
+            </div>
+          </article>
+
+          <article class="card span-4">
+            <span class="label"><b>&#9679;</b> Outbound pacer</span>
+            <h3>Bursts get smoothed</h3>
+            <p>Every send and mutation passes a ban gate, a per-recipient cap and a per-account token bucket.</p>
+            <div class="viz bucket" aria-label="Token bucket: 1 per second, burst 5">
+              <div class="tokens"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+              <div class="bucket-meta"><span>rate <strong>1/s</strong></span><span>burst <strong>5</strong></span><span>recipient <strong>10/60s</strong></span></div>
+            </div>
+          </article>
+
+          <article class="card span-4">
+            <span class="label"><b>&#9679;</b> Media</span>
+            <h3>8 message types</h3>
+            <p>Send them all, plus replies, mentions, reactions, edits and deletes. Incoming media is stored and linked in the webhook.</p>
+            <div class="viz chips" aria-label="Message types">
+              <span class="chip">text</span><span class="chip">image</span><span class="chip">audio</span><span class="chip">video</span>
+              <span class="chip">document</span><span class="chip">location</span><span class="chip">poll</span><span class="chip">sticker</span>
+            </div>
+          </article>
+
+          <article class="card span-4 tail">
+            <span class="label"><b>&#9679;</b> Delivery</span>
+            <h3>Queue it, or don't</h3>
+            <p>Run RabbitMQ for retries and a dead-letter queue, or go direct and keep failed deliveries encrypted for 7 days.</p>
+            <div class="viz modes">
+              <div class="mode"><strong>rabbitmq</strong>retries &middot; DLQ</div>
+              <div class="mode active"><strong>direct</strong>encrypted &middot; 7d</div>
+            </div>
+          </article>
+
+          <article class="card span-12 card-wide">
+            <div>
+              <span class="label"><b>&#9679;</b> Self-hosted</span>
+              <h3>One binary. Your servers, your data.</h3>
+              <p>Docker or bare metal, SQLite to start and PostgreSQL in production. MIT licensed, no per-message pricing.</p>
+            </div>
+<div class="viz term-line"><span class="c-ok">$</span> <span class="c-cmd">go build</span> -o waga ./cmd/api
+<span class="c-ok">$</span> <span class="c-cmd">./waga</span>
+<span class="c-dim"># restores every paired session from SQLite or PostgreSQL</span>
+<span class="c-dim"># then serves REST on</span> <span class="c-ok">:3000</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= ENDPOINTS -->
+    <section class="section" id="endpoints" aria-labelledby="ep-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="label">[ 03 / ENDPOINTS ]</span>
+            <h2 id="ep-title">A REST surface <em>you can read in a minute.</em></h2>
+          </div>
+          <p class="lede">Every recipient field accepts a bare number, a user JID, a group <code class="c-dim">@g.us</code> or a <code class="c-dim">@lid</code>. Send responses echo the resolved chat.</p>
+        </div>
+
+        <div class="ep-wrap">
+          <div class="ep-head"><span>BASE</span><span class="base">/api/v1</span><span>&middot; JWT bearer</span><a href="/docs/">Full reference &rarr;</a></div>
+          <div class="ep-grid">
+            <ul class="ep-col">
+              <li class="ep"><span class="m post">POST</span><span class="path">/register</span><span class="desc">issue JWT</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/login/qr_code<span>/:format</span></span><span class="desc">pair via QR</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/login/pair_code</span><span class="desc">pair via code</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/login/status</span><span class="desc">session state</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/session/reconnect</span><span class="desc">reconnect</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/text</span><span class="desc">send text</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/image</span><span class="desc">send image</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/document</span><span class="desc">send file</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/poll</span><span class="desc">send poll</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/react</span><span class="desc">react</span></li>
+              <li class="ep"><span class="m put">PUT</span><span class="path">/message</span><span class="desc">edit</span></li>
+            </ul>
+            <ul class="ep-col">
+              <li class="ep"><span class="m del">DEL</span><span class="path">/message</span><span class="desc">delete</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/read</span><span class="desc">blue ticks</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/message/incoming</span><span class="desc">recent inbound</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/chat/presence</span><span class="desc">typing&hellip;</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/contact/check<span>?chat=</span></span><span class="desc">on WhatsApp?</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/contact/</span><span class="desc">synced contacts</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/group/info<span>?chat=</span></span><span class="desc">group roster</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/group/participants</span><span class="desc">add &middot; remove &middot; promote</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/webhook/</span><span class="desc">list subs</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/webhook/</span><span class="desc">upsert sub</span></li>
+              <li class="ep"><span class="m del">DEL</span><span class="path">/webhook/</span><span class="desc">remove sub</span></li>
+            </ul>
           </div>
         </div>
       </div>

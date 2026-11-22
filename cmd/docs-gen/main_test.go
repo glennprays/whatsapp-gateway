@@ -174,3 +174,17 @@ func TestLandingHeroConsole(t *testing.T) {
 		}
 	}
 }
+
+func TestLandingListsAllWebhookEvents(t *testing.T) {
+	out := renderLanding(t, "")
+	for _, ev := range []string{
+		"message.incoming", "message.queued", "message.sent", "message.failed",
+		"session.logged_out", "session.banned", "session.connect_failure",
+		"session.connected", "session.disconnected", "session.replaced",
+		"session.reachout_timelocked",
+	} {
+		if !strings.Contains(out, ">"+ev+"<") {
+			t.Errorf("landing page missing webhook event chip %q", ev)
+		}
+	}
+}
