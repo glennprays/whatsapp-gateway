@@ -21,11 +21,11 @@ cp .env.example .env
 - **Example**: `PORT=3000`
 - **Note**: If running in Docker, ensure this matches the exposed port in your Docker configuration
 
-#### `BASIC_AUTH_SECRET_KEY`
+#### `SECRET_KEY`
 - **Description**: Secret key for basic authentication (if used)
 - **Type**: String
 - **Default**: `secret`
-- **Example**: `BASIC_AUTH_SECRET_KEY=my_secure_secret_key_123`
+- **Example**: `SECRET_KEY=my_secure_secret_key_123`
 - **Security**: Change this in production environments
 
 ---
@@ -195,7 +195,7 @@ cp .env.example .env
 
 ### Rate Limiting Configuration
 
-The `/register` endpoint is throttled per client IP to prevent brute-forcing of `BASIC_AUTH_SECRET_KEY` and mass token minting. The limiter is in-process (memory) so it works without Redis.
+The `/register` endpoint is throttled per client IP to prevent brute-forcing of `SECRET_KEY` and mass token minting. The limiter is in-process (memory) so it works without Redis.
 
 #### `REGISTER_RATE_LIMIT_ENABLED`
 - **Description**: Toggle per-IP throttling on `POST /register`
@@ -444,7 +444,7 @@ Operators replay dead letters through the admin plane: `GET /admin/webhook-dlq?l
 
 Use these commands to generate secure random strings:
 
-**For JWT_SECRET and BASIC_AUTH_SECRET_KEY:**
+**For JWT_SECRET and SECRET_KEY:**
 ```bash
 openssl rand -base64 32
 ```
@@ -459,7 +459,7 @@ openssl rand -hex 16
 ### Development (.env.development)
 ```env
 PORT=3000
-BASIC_AUTH_SECRET_KEY=dev_secret
+SECRET_KEY=dev_secret
 BASE_PATH=/api
 ENABLE_SWAGGER=true
 SWAGGER_USER=admin
@@ -477,7 +477,7 @@ WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY=0123456789abcdef0123456789abcdef
 ### Production (.env.production)
 ```env
 PORT=3000
-BASIC_AUTH_SECRET_KEY=<strong-random-secret>
+SECRET_KEY=<strong-random-secret>
 BASE_PATH=/api
 ENABLE_SWAGGER=false
 SWAGGER_USER=<secure-username>

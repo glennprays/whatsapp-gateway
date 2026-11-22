@@ -25,7 +25,6 @@ type Config struct {
 	Env        Environment `mapstructure:"ENV" default:"production"`
 	Port       string      `mapstructure:"PORT" default:"3000"`
 	BasePath   string      `mapstructure:"BASE_PATH" default:"/"`
-	HttpOrigin string      `mapstructure:"HTTP_ORIGIN" default:"*"`
 	// TrustedProxies is a comma-separated allowlist of proxy IPs/CIDRs. When set,
 	// the gateway reads the client IP from ProxyHeader only for requests arriving
 	// from these hops; XFF from any other source is ignored (unspoofable). Empty
