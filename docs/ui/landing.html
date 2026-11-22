@@ -322,7 +322,7 @@
     }
 
     /* ----------------------------------------------------------------- hero */
-    .hero { position: relative; padding: 88px 0 96px; }
+    .hero { position: relative; padding: 88px 0 80px; }
     .hero-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
@@ -587,8 +587,75 @@
     .log-line.enter { animation: logIn .5s var(--ease); }
     @keyframes logIn { from { opacity: 0; transform: translateY(8px); background: rgba(37,211,102,0.08); } }
 
+    /* ----------------------------------------------------------- spec band */
+    .spec {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(13, 16, 18, 0.6);
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+    .spec-cell {
+      padding: 34px 24px 30px;
+      border-left: 1px solid var(--line);
+      position: relative;
+    }
+    .spec-cell:last-child { border-right: 1px solid var(--line); }
+    .spec-cell .idx { position: absolute; top: 12px; right: 14px; font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
+    .spec-num {
+      font-size: clamp(2.5rem, 4vw, 3.5rem);
+      font-weight: 600;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      color: var(--text-strong);
+      font-variant-numeric: tabular-nums;
+    }
+    .spec-num small { font-size: 0.42em; letter-spacing: -0.02em; color: var(--signal); margin-left: 2px; vertical-align: top; }
+    .spec-cell .label { display: block; margin-top: 12px; font-size: 11px; }
+
+    /* ----------------------------------------------------------------- flow */
+    .flow-frame {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        radial-gradient(ellipse 50% 70% at 50% 50%, rgba(37, 211, 102, 0.07), transparent 70%),
+        var(--surface);
+      overflow-x: auto;
+    }
+    .flow-svg { display: block; width: 100%; min-width: 760px; height: auto; }
+    .flow-svg text { font-family: var(--font-mono); }
+    .flow-svg text.sans { font-family: var(--font-sans); }
+    .wire { fill: none; stroke: var(--line-strong); stroke-width: 1.25; }
+    .packets { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 2 34; }
+    .packets.out { stroke: var(--blue); animation: flowRight 2.2s linear infinite; filter: drop-shadow(0 0 4px var(--blue)); }
+    .packets.in { stroke: var(--signal); animation: flowLeft 2.2s linear infinite; filter: drop-shadow(0 0 4px var(--signal)); }
+    @keyframes flowRight { to { stroke-dashoffset: -36; } }
+    @keyframes flowLeft { to { stroke-dashoffset: 36; } }
+    .core-ring { fill: none; stroke: var(--signal); stroke-opacity: 0.35; transform-origin: 600px 180px; animation: ring 3s var(--ease) infinite; }
+    @keyframes ring { 0% { transform: scale(0.92); stroke-opacity: 0.5; } 100% { transform: scale(1.18); stroke-opacity: 0; } }
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line);
+    }
+    .flow-step { padding: 22px 24px 24px; border-left: 1px solid var(--line); }
+    .flow-step:first-child { border-left: 0; }
+    .flow-step h3 { font-size: 17px; letter-spacing: -0.02em; margin: 10px 0 6px; }
+    .flow-step p { color: var(--muted); font-size: 14.5px; }
+    .flow-step code { white-space: nowrap; font-size: 12.5px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+
     /* ----------------------------------------------------------- responsive */
     @media (max-width: 980px) {
+      .spec-grid { grid-template-columns: repeat(3, 1fr); }
+      .spec-cell { border-bottom: 1px solid var(--line); }
+      .spec-cell:nth-child(3n) { border-right: 1px solid var(--line); }
+      .flow-steps { grid-template-columns: 1fr; }
+      .flow-step { border-left: 0; border-top: 1px solid var(--line); }
+      .flow-step:first-child { border-top: 0; }
       .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
       .hero { padding: 64px 0 80px; }
       .footer-grid { grid-template-columns: repeat(3, 1fr); }
@@ -596,10 +663,16 @@
       .section-head { grid-template-columns: 1fr; gap: 20px; }
     }
     @media (max-width: 760px) {
+      .flow-svg { display: none; }
+      .flow-steps { border-top: 0; }
       .nav, .strip-right { display: none; }
       .section { padding: 80px 0; }
     }
     @media (max-width: 520px) {
+      .spec-grid { grid-template-columns: repeat(2, 1fr); }
+      .spec-cell:nth-child(3n) { border-right: 0; }
+      .spec-cell:nth-child(2n) { border-right: 1px solid var(--line); }
+      .spec-cell { padding: 26px 16px 22px; }
       .footer-grid { grid-template-columns: repeat(2, 1fr); }
       .tabs-meta { display: none; }
       .ses-row { grid-template-columns: 18px 1.4fr 1fr 0.9fr; }
@@ -746,6 +819,103 @@
             <div class="log-line"><span class="t">12:04:07</span><span class="ev out">message.sent</span><span>3EB0F7A1C2D94E &middot; 312 ms</span></div>
             <div class="log-line"><span class="t">12:04:12</span><span class="ev">message.incoming</span><span>text &larr; 62812345xxxx &middot; signed</span></div>
             <div class="log-line"><span class="t">12:04:15</span><span class="ev err">session.disconnected</span><span>14155550xxxx &middot; reconnecting</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= SPEC BAND -->
+    <section class="spec" aria-label="waga in numbers">
+      <div class="wrap spec-grid">
+        <div class="spec-cell"><span class="idx">S1</span><div class="spec-num">1</div><span class="label">Go binary</span></div>
+        <div class="spec-cell"><span class="idx">S2</span><div class="spec-num">26</div><span class="label">MCP tools</span></div>
+        <div class="spec-cell"><span class="idx">S3</span><div class="spec-num">8</div><span class="label">Message types</span></div>
+        <div class="spec-cell"><span class="idx">S4</span><div class="spec-num">11</div><span class="label">Webhook events</span></div>
+        <div class="spec-cell"><span class="idx">S5</span><div class="spec-num">256<small>bit</small></div><span class="label">HMAC-SHA256 signing</span></div>
+        <div class="spec-cell"><span class="idx">S6</span><div class="spec-num">0</div><span class="label">Per-message fees</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ FLOW -->
+    <section class="section" id="flow" aria-labelledby="flow-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="label">[ 01 / FLOW ]</span>
+            <h2 id="flow-title">Your backend stays stateless. <em>waga holds the line.</em></h2>
+          </div>
+          <p class="lede">Sessions, device keys, reconnects and pacing live in the gateway. Your services make HTTP calls out and receive signed webhooks back, in any language.</p>
+        </div>
+
+        <div class="flow-frame">
+          <svg class="flow-svg" viewBox="0 56 1200 290" role="img" aria-labelledby="flow-svg-title">
+            <title id="flow-svg-title">Your backend sends REST requests to waga, which relays them to WhatsApp; incoming WhatsApp messages come back to your backend as signed webhooks.</title>
+            <defs>
+              <linearGradient id="coreFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#12261a"/>
+                <stop offset="1" stop-color="#0b120e"/>
+              </linearGradient>
+            </defs>
+
+            <!-- wires: outbound (top) and inbound (bottom) -->
+            <path class="wire" d="M300 150 H500"/><path class="packets out" d="M300 150 H500"/>
+            <path class="wire" d="M700 150 H900"/><path class="packets out" d="M700 150 H900"/>
+            <path class="wire" d="M300 210 H500"/><path class="packets in" d="M300 210 H500"/>
+            <path class="wire" d="M700 210 H900"/><path class="packets in" d="M700 210 H900"/>
+
+            <text x="400" y="136" text-anchor="middle" font-size="12" fill="#7cb7ff">POST /message/*</text>
+            <text x="800" y="136" text-anchor="middle" font-size="12" fill="#7cb7ff">whatsmeow &middot; multi-device</text>
+            <text x="400" y="234" text-anchor="middle" font-size="12" fill="#25D366">X-Webhook-Signature</text>
+            <text x="800" y="234" text-anchor="middle" font-size="12" fill="#25D366">message.incoming</text>
+
+            <!-- backend node -->
+            <rect x="40" y="96" width="260" height="168" rx="10" fill="#0a0d0e" stroke="#2c3337"/>
+            <text x="64" y="128" font-size="11" fill="#737d78" letter-spacing="1">YOUR BACKEND</text>
+            <text x="64" y="162" font-size="20" fill="#ffffff" class="sans" font-weight="600">api.your-app.com</text>
+            <text x="64" y="196" font-size="12" fill="#8b9590">Go &middot; Node &middot; Python &middot; PHP</text>
+            <text x="64" y="220" font-size="12" fill="#8b9590">no sessions, no device state</text>
+            <circle cx="276" cy="122" r="3.5" fill="#25D366"/>
+
+            <!-- waga core -->
+            <circle class="core-ring" cx="600" cy="180" r="108"/>
+            <rect x="500" y="80" width="200" height="200" rx="14" fill="url(#coreFill)" stroke="#25D366" stroke-opacity="0.6"/>
+            <text x="600" y="150" text-anchor="middle" font-size="40" fill="#ffffff" class="sans" font-weight="700" letter-spacing="-2">waga</text>
+            <text x="600" y="182" text-anchor="middle" font-size="11" fill="#25D366" letter-spacing="1">GATEWAY &middot; :3000</text>
+            <line x1="524" y1="204" x2="676" y2="204" stroke="#1f2427"/>
+            <text x="600" y="228" text-anchor="middle" font-size="11" fill="#8b9590">sessions &middot; pacer</text>
+            <text x="600" y="248" text-anchor="middle" font-size="11" fill="#8b9590">queue &middot; dead letters</text>
+
+            <!-- whatsapp node -->
+            <rect x="900" y="96" width="260" height="168" rx="10" fill="#0a0d0e" stroke="#2c3337"/>
+            <text x="924" y="128" font-size="11" fill="#737d78" letter-spacing="1">WHATSAPP</text>
+            <text x="924" y="162" font-size="20" fill="#ffffff" class="sans" font-weight="600">Multi-device</text>
+            <text x="924" y="196" font-size="12" fill="#8b9590">QR or pairing-code login</text>
+            <text x="924" y="220" font-size="12" fill="#8b9590">many accounts per instance</text>
+            <circle cx="1136" cy="122" r="3.5" fill="#25D366"/>
+
+            <!-- legend -->
+            <circle cx="452" cy="318" r="3.5" fill="#7cb7ff"/>
+            <text x="464" y="322" font-size="11" fill="#8b9590">OUTBOUND REST</text>
+            <circle cx="642" cy="318" r="3.5" fill="#25D366"/>
+            <text x="654" y="322" font-size="11" fill="#8b9590">INBOUND WEBHOOKS</text>
+          </svg>
+
+          <div class="flow-steps">
+            <div class="flow-step">
+              <span class="label"><b>01</b> &middot; Send</span>
+              <h3>One HTTP call per action</h3>
+              <p>JWT-authenticated REST for text, media, polls, reactions, edits and group ops. Add <code>Idempotency-Key</code> and a retried request replays instead of sending twice.</p>
+            </div>
+            <div class="flow-step">
+              <span class="label"><b>02</b> &middot; Hold</span>
+              <h3>Sessions that stay up</h3>
+              <p>waga owns device keys, reconnects and the outbound pacer, so bursts from your side get paced instead of hitting WhatsApp all at once.</p>
+            </div>
+            <div class="flow-step">
+              <span class="label"><b>03</b> &middot; Receive</span>
+              <h3>Signed events back</h3>
+              <p>Incoming messages and session changes fan out to every subscribed URL, signed with <code>X-Webhook-Signature</code>.</p>
+            </div>
           </div>
         </div>
       </div>
