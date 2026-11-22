@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>waga - Self-hosted WhatsApp Gateway</title>
+  <meta name="description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta name="keywords" content="WhatsApp, WhatsApp API, Go, Golang, gateway, open source, messaging, integration, waga, MCP, AI agents">
+  <meta name="author" content="Glenn Prays">
+  <meta name="theme-color" content="#07090a">
+  <link rel="canonical" href="https://waga.glennprays.com/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ .BasePath }}/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ .BasePath }}/assets/favicon-16x16.png">
+  <link rel="shortcut icon" href="{{ .BasePath }}/assets/favicon.ico">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://waga.glennprays.com/">
+  <meta property="og:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta property="og:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta property="og:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://waga.glennprays.com/">
+  <meta name="twitter:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta name="twitter:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta name="twitter:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ======================================================================
+       Signal design system. Dark only. Shared tokens with docs/ui/assets/styles.css.
+       ====================================================================== */
+    :root {
+      --bg: #07090a;
+      --surface: #0d1012;
+      --surface-2: #13171a;
+      --line: #1f2427;
+      --line-strong: #2c3337;
+      --text: #e8ecea;
+      --text-strong: #ffffff;
+      --muted: #8b9590;
+      --faint: #737d78;
+      --signal: #25D366;
+      --signal-soft: #6ff5a0;
+      --signal-dim: rgba(37, 211, 102, 0.14);
+      --vermillion: #ff4b2b;
+      --vermillion-hover: #ff6a4f;
+      --amber: #f5b83d;
+      --red: #ff5c5c;
+      --blue: #7cb7ff;
+      --violet: #c4a1ff;
+
+      --radius: 10px;
+      --radius-sm: 6px;
+      --wrap: 1240px;
+      --ease: cubic-bezier(.23, 1, .32, 1);
+      --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; background: var(--bg); color-scheme: dark; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: var(--signal); color: #04140a; }
+
+    :focus-visible {
+      outline: 2px solid var(--signal);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    /* Faint 64px grid under a radial mask: the "control room" floor. */
+    .grid-bg {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 1100px;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.045) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.045) 1px, transparent 1px);
+      background-size: 64px 64px;
+      background-position: center top;
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, #000 30%, transparent 80%);
+              mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, #000 30%, transparent 80%);
+    }
+    .grid-bg::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 120px;
+      width: 900px;
+      height: 520px;
+      transform: translateX(-50%);
+      background: radial-gradient(closest-side, rgba(37, 211, 102, 0.10), transparent);
+      filter: blur(20px);
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: var(--wrap);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Mono label: the system voice of the page. */
+    .label {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .label b { color: var(--signal); font-weight: 500; }
+
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--signal);
+      box-shadow: 0 0 0 3px var(--signal-dim), 0 0 12px rgba(37, 211, 102, 0.6);
+      flex-shrink: 0;
+    }
+    .dot.pulse { animation: pulse 2.4s var(--ease) infinite; }
+    .dot.off { background: var(--faint); box-shadow: none; }
+    .dot.warn { background: var(--amber); box-shadow: 0 0 0 3px rgba(245, 184, 61, 0.14); }
+    .dot.bad { background: var(--red); box-shadow: 0 0 0 3px rgba(255, 92, 92, 0.14); }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 3px var(--signal-dim), 0 0 12px rgba(37, 211, 102, 0.6); }
+      50% { box-shadow: 0 0 0 6px rgba(37, 211, 102, 0.04), 0 0 18px rgba(37, 211, 102, 0.9); }
+    }
+
+    /* ---------------------------------------------------------------- strip */
+    .strip {
+      position: relative;
+      z-index: 2;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .strip-inner {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      height: 34px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .strip-item { display: inline-flex; align-items: center; gap: 8px; }
+    .strip-item strong { color: var(--text); font-weight: 500; }
+    .strip-sep { color: var(--line-strong); }
+    .strip-right { margin-left: auto; display: inline-flex; gap: 20px; }
+    .strip a:hover { color: var(--text); }
+
+    /* --------------------------------------------------------------- header */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(7, 9, 10, 0.72);
+      backdrop-filter: saturate(140%) blur(14px);
+      -webkit-backdrop-filter: saturate(140%) blur(14px);
+      border-bottom: 1px solid var(--line);
+    }
+    .header-inner {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .wordmark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 21px;
+      letter-spacing: -0.05em;
+      color: var(--text-strong);
+    }
+    .wordmark .dot { width: 8px; height: 8px; }
+    .nav { display: flex; gap: 4px; }
+    .nav a {
+      font-size: 14px;
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      transition: color .15s var(--ease), background .15s var(--ease);
+    }
+    .nav a:hover { color: var(--text); background: var(--surface-2); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .version-badge {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--muted);
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 3px 10px;
+    }
+
+    /* -------------------------------------------------------------- buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      transition: background .15s var(--ease), border-color .15s var(--ease),
+        color .15s var(--ease), transform .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-sm { height: 34px; padding: 0 14px; font-size: 13px; }
+    .btn-primary {
+      background: var(--vermillion);
+      color: #fff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 6px 24px -8px rgba(255, 75, 43, 0.7);
+    }
+    .btn-primary:hover { background: var(--vermillion-hover); }
+    .btn-ghost {
+      border: 1px solid var(--line-strong);
+      color: var(--text);
+      background: rgba(255,255,255,0.02);
+    }
+    .btn-ghost:hover { border-color: var(--muted); background: var(--surface-2); }
+    .arrow { font-family: var(--font-mono); transition: transform .15s var(--ease); }
+    .btn:hover .arrow { transform: translateX(3px); }
+
+    /* ------------------------------------------------------------- sections */
+    .section { position: relative; padding: 112px 0; border-top: 1px solid var(--line); }
+    .section-head {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 56px;
+    }
+    .section-head .label { margin-bottom: 20px; display: block; }
+    h1, h2, h3 { color: var(--text-strong); font-weight: 600; }
+    h2 {
+      font-size: clamp(2.25rem, 4.4vw, 3.5rem);
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    h2 em { font-style: normal; color: var(--muted); }
+    .lede { color: var(--muted); font-size: 17px; max-width: 52ch; }
+
+    /* --------------------------------------------------------------- footer */
+    .footer { border-top: 1px solid var(--line); padding: 72px 0 40px; background: var(--bg); }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.4fr repeat(5, 1fr);
+      gap: 32px;
+    }
+    .footer-brand p { margin-top: 14px; color: var(--muted); font-size: 14px; max-width: 30ch; }
+    .footer-col h4 {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--faint);
+      margin-bottom: 14px;
+    }
+    .footer-col ul { list-style: none; display: grid; gap: 9px; }
+    .footer-col a { font-size: 14px; color: var(--muted); transition: color .15s var(--ease); }
+    .footer-col a:hover { color: var(--text); }
+    .footer-base {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--faint);
+    }
+    .footer-base a { color: var(--muted); }
+    .footer-base a:hover { color: var(--text); }
+    .footer-giant {
+      margin-top: 56px;
+      font-weight: 700;
+      font-size: clamp(6rem, 22vw, 19rem);
+      letter-spacing: -0.075em;
+      line-height: 0.78;
+      color: transparent;
+      -webkit-text-stroke: 1px var(--line-strong);
+      user-select: none;
+      text-align: center;
+    }
+
+    /* ----------------------------------------------------------- responsive */
+    @media (max-width: 980px) {
+      .footer-grid { grid-template-columns: repeat(3, 1fr); }
+      .footer-brand { grid-column: 1 / -1; }
+      .section-head { grid-template-columns: 1fr; gap: 20px; }
+    }
+    @media (max-width: 760px) {
+      .nav, .strip-right { display: none; }
+      .section { padding: 80px 0; }
+    }
+    @media (max-width: 520px) {
+      .footer-grid { grid-template-columns: repeat(2, 1fr); }
+      .header-right .btn-ghost { display: none; }
+      .version-badge { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <div class="strip">
+    <div class="wrap strip-inner">
+      <span class="strip-item"><span class="dot pulse"></span><strong>Gateway online</strong></span>
+      <span class="strip-sep">/</span>
+      {{ if .Version }}<span class="strip-item">Release <strong>{{ .Version }}</strong></span>
+      <span class="strip-sep">/</span>{{ end }}
+      <span class="strip-item"><strong>26</strong> MCP tools</span>
+      <span class="strip-sep">/</span>
+      <span class="strip-item">MIT licensed</span>
+      <span class="strip-right">
+        <a href="/llms.txt">llms.txt</a>
+        <a href="/openapi.yaml">openapi.yaml</a>
+      </span>
+    </div>
+  </div>
+
+  <header class="header">
+    <div class="wrap header-inner">
+      <a class="wordmark" href="/" aria-label="waga home"><span class="dot pulse" aria-hidden="true"></span>waga</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/#docs:mcp/introduction">MCP</a>
+        <a href="/openapi.yaml">OpenAPI</a>
+        <a href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <div class="header-right">
+        {{ if .Version }}<span class="version-badge">{{ .Version }}</span>{{ end }}
+        <a class="btn btn-ghost btn-sm" href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">Star</a>
+        <a class="btn btn-primary btn-sm" href="/docs/">Get started <span class="arrow">&rarr;</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="wordmark" href="/"><span class="dot" aria-hidden="true"></span>waga</a>
+          <p>The self-hosted WhatsApp gateway for backends and AI agents.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Start</h4>
+          <ul>
+            <li><a href="/docs/#docs:getting-started/introduction">Introduction</a></li>
+            <li><a href="/docs/#docs:getting-started/feature-matrix">Feature matrix</a></li>
+            <li><a href="/docs/#docs:getting-started/system-boundary">System boundary</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Architecture</h4>
+          <ul>
+            <li><a href="/docs/#docs:architechture/high-level-architecture">Overview</a></li>
+            <li><a href="/docs/#docs:architechture/message-flow">Message flow</a></li>
+            <li><a href="/docs/#docs:architechture/webhook-flow">Webhook flow</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Install</h4>
+          <ul>
+            <li><a href="/docs/#docs:installation/docker-deployment">Docker</a></li>
+            <li><a href="/docs/#docs:installation/production-deployment">Production</a></li>
+            <li><a href="/docs/#docs:configuration/environment-variables">Environment</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>MCP</h4>
+          <ul>
+            <li><a href="/docs/#docs:mcp/introduction">Introduction</a></li>
+            <li><a href="/docs/#docs:mcp/quick-start">Quick start</a></li>
+            <li><a href="/docs/#docs:mcp/tools-reference">Tools</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Security</h4>
+          <ul>
+            <li><a href="/docs/#docs:security/important-security-consideration">Considerations</a></li>
+            <li><a href="/docs/#docs:security/authentication-and-security">Authentication</a></li>
+            <li><a href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">Source</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-giant" aria-hidden="true">waga</div>
+      <div class="footer-base">
+        <p>waga is not affiliated with WhatsApp or Meta. Built on <a href="https://github.com/tulir/whatsmeow" target="_blank" rel="noopener">whatsmeow</a>. Usage is subject to WhatsApp's terms of service.</p>
+        <p>MIT License &middot; Glenn Prays</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
