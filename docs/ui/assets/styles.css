@@ -12,7 +12,7 @@
   --text: #e8ecea;
   --text-strong: #ffffff;
   --text-muted: #8b9590;
-  --text-faint: #737d78;
+  --text-faint: #7a847f;
   --accent: #25D366;
   --accent-hover: #6ff5a0;
   --accent-strong: #1faf5f;
@@ -34,6 +34,7 @@
   --content-max: 1200px;
   --header-h: 64px;
 
+  --font-display: 'Bricolage Grotesque', 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Monaco, monospace;
 }
@@ -100,8 +101,7 @@ body {
    Header
    ========================================================================== */
 .header {
-  background: var(--header-bg);
-  backdrop-filter: blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -155,30 +155,28 @@ body {
   white-space: nowrap;
 }
 
-/* Brand wordmark: solid, tight, with the pulsing signal dot (matches landing). */
+/* Brand wordmark: solid display face with the QR-eye mark (matches landing). */
 .logo-text {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: -0.05em;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
   color: var(--text-strong);
 }
 
+/* Brand mark: a QR finder eye (outer ring + inner square), same as landing. */
 .logo-text::before {
   content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #25D366;
-  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.14), 0 0 12px rgba(37, 211, 102, 0.6);
-  animation: signalPulse 2.4s cubic-bezier(.23, 1, .32, 1) infinite;
-}
-
-@keyframes signalPulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.14), 0 0 12px rgba(37, 211, 102, 0.6); }
-  50% { box-shadow: 0 0 0 6px rgba(37, 211, 102, 0.04), 0 0 18px rgba(37, 211, 102, 0.9); }
+  box-sizing: border-box;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border: 2px solid #25D366;
+  border-radius: 3px;
+  background: linear-gradient(#25D366, #25D366) center / 6px 6px no-repeat;
 }
 
 .nav-tabs {
@@ -207,7 +205,6 @@ body {
 .nav-tab.active {
   color: var(--text);
   border-bottom-color: var(--accent);
-  text-shadow: 0 0 12px var(--accent-glow);
 }
 
 .header-right {
@@ -399,9 +396,13 @@ body {
   color: var(--text);
 }
 
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 { font-family: var(--font-display); }
+
 .markdown-content h1 {
   font-size: 2.5rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-strong);
   margin-bottom: 1rem;
   letter-spacing: -0.025em;
@@ -762,7 +763,7 @@ rapi-doc {
   --bg3-color: #13171a;
   --fg-color: #e8ecea;
   --fg2-color: #8b9590;
-  --fg3-color: #737d78;
+  --fg3-color: #7a847f;
   --primary-color: #25D366;
   --primary-color-hover: #1faf5f;
   --border-color: #1f2427;
@@ -829,7 +830,7 @@ rapi-doc {
   height: 2px;
   background: var(--text);
   border-radius: 2px;
-  transition: all 0.2s ease;
+  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .sidebar-overlay {
