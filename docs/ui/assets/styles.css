@@ -1,24 +1,31 @@
 /* ==========================================================================
-   Design tokens. Dark is the default; [data-theme="light"] overrides them.
-   Everything below references these vars, so theming is a single source.
+   Design tokens ("Signal", shared with docs/ui/landing.html). Dark is the
+   default; [data-theme="light"] overrides them. Everything below references
+   these vars, so theming is a single source.
    ========================================================================== */
 :root {
-  --bg: #000000;
-  --bg-1: #0a0a0a;
-  --bg-2: #171717;
-  --border: #262626;
-  --border-strong: #404040;
-  --text: #ededed;
+  --bg: #07090a;
+  --bg-1: #0d1012;
+  --bg-2: #13171a;
+  --border: #1f2427;
+  --border-strong: #2c3337;
+  --text: #e8ecea;
   --text-strong: #ffffff;
-  --text-muted: #a1a1a1;
-  --text-faint: #737373;
-  --accent: #3b82f6;
-  --accent-hover: #60a5fa;
-  --accent-strong: #2563eb;
-  --code-inline: #e879f9;
-  --header-bg: rgba(0, 0, 0, 0.8);
+  --text-muted: #8b9590;
+  --text-faint: #737d78;
+  --accent: #25D366;
+  --accent-hover: #6ff5a0;
+  --accent-strong: #1faf5f;
+  --accent-soft: rgba(37, 211, 102, 0.08);
+  --accent-glow: rgba(37, 211, 102, 0.45);
+  --code-inline: #9ff0bd;
+  --header-bg: rgba(7, 9, 10, 0.72);
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  --card-border: #2c3337;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 3px 4px -2px rgba(0, 0, 0, 0.5);
+  --glow-accent: 0 0 32px rgba(37, 211, 102, 0.10);
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --ease-doc: cubic-bezier(.23, 1, .32, 1);
 
   --radius: 8px;
   --radius-sm: 6px;
@@ -27,8 +34,8 @@
   --content-max: 1200px;
   --header-h: 64px;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Monaco, monospace;
 }
 
 :root[data-theme="light"] {
@@ -41,12 +48,17 @@
   --text-strong: #0a0c10;
   --text-muted: #57606a;
   --text-faint: #8b949e;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-strong: #1e40af;
+  --accent: #0d7f3e;
+  --accent-hover: #0a6631;
+  --accent-strong: #08582a;
+  --accent-soft: rgba(13, 127, 62, 0.07);
+  --accent-glow: transparent;
   --code-inline: #bc179e;
   --header-bg: rgba(255, 255, 255, 0.85);
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+  --card-border: #e3e6ea;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --glow-accent: none;
 }
 
 * {
@@ -126,7 +138,7 @@ body {
 .logo-icon {
   width: 24px;
   height: 24px;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: var(--accent);
   border-radius: 4px;
 }
 
@@ -143,22 +155,30 @@ body {
   white-space: nowrap;
 }
 
-/* Brand wordmark keeps its WhatsApp-green animated gradient in both themes. */
+/* Brand wordmark: solid, tight, with the pulsing signal dot (matches landing). */
 .logo-text {
-  font-size: 1.125rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  background: linear-gradient(120deg, #6FF5A0, #25D366, #1FAF5F, #6FF5A0);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: gradientShift 8s ease infinite;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: var(--text-strong);
 }
 
-@keyframes gradientShift {
-  0% { background-position: 0% center; }
-  100% { background-position: 200% center; }
+.logo-text::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #25D366;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.14), 0 0 12px rgba(37, 211, 102, 0.6);
+  animation: signalPulse 2.4s cubic-bezier(.23, 1, .32, 1) infinite;
+}
+
+@keyframes signalPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.14), 0 0 12px rgba(37, 211, 102, 0.6); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 211, 102, 0.04), 0 0 18px rgba(37, 211, 102, 0.9); }
 }
 
 .nav-tabs {
@@ -187,6 +207,7 @@ body {
 .nav-tab.active {
   color: var(--text);
   border-bottom-color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
 }
 
 .header-right {
@@ -222,11 +243,11 @@ body {
   width: 34px;
   height: 34px;
   background: var(--bg-1);
-  border: 1px solid var(--border);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.15s var(--ease-doc), border-color 0.15s var(--ease-doc), transform 0.15s var(--ease-doc);
   font-size: 1rem;
   line-height: 1;
 }
@@ -235,6 +256,8 @@ body {
   color: var(--text);
   border-color: var(--border-strong);
 }
+
+.theme-toggle:active { transform: scale(0.92); }
 
 /* ==========================================================================
    Layout
@@ -262,11 +285,12 @@ body {
 .sidebar-section { margin-bottom: 2rem; }
 
 .sidebar-title {
-  color: var(--text);
-  font-size: 0.75rem;
-  font-weight: 600;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   padding: 0 1.5rem;
   margin-bottom: 0.75rem;
 }
@@ -330,8 +354,9 @@ body {
 .docs-toc:empty { display: none; }
 
 .docs-toc-title {
+  font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-faint);
@@ -468,12 +493,13 @@ body {
 .markdown-content pre {
   position: relative;
   background: var(--bg-1);
-  border: 1px solid var(--border);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius);
   padding: 1.5rem;
   overflow-x: auto;
   margin: 1.5rem 0;
   line-height: 1.6;
+  box-shadow: var(--shadow-card);
 }
 
 .markdown-content pre code {
@@ -652,7 +678,9 @@ body {
 
 .markdown-content blockquote {
   border-left: 3px solid var(--accent);
-  padding-left: 1.5rem;
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0.75rem 1.25rem 0.75rem 1.5rem;
   margin: 1.5rem 0;
   color: var(--text-muted);
 }
@@ -729,25 +757,25 @@ body {
    RapiDoc (API console only; stays dark)
    ========================================================================== */
 rapi-doc {
-  --bg-color: #000000;
-  --bg2-color: #0a0a0a;
-  --bg3-color: #171717;
-  --fg-color: #ededed;
-  --fg2-color: #a1a1a1;
-  --fg3-color: #737373;
-  --primary-color: #3b82f6;
-  --primary-color-hover: #2563eb;
-  --border-color: #262626;
-  --nav-bg-color: #000000;
-  --nav-hover-bg-color: #0a0a0a;
-  --nav-text-color: #ededed;
-  --nav-accent-color: #3b82f6;
-  --code-bg-color: #0a0a0a;
-  --code-fg-color: #ededed;
-  --input-bg-color: #0a0a0a;
-  --input-border-color: #262626;
-  --font-regular: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+  --bg-color: #07090a;
+  --bg2-color: #0d1012;
+  --bg3-color: #13171a;
+  --fg-color: #e8ecea;
+  --fg2-color: #8b9590;
+  --fg3-color: #737d78;
+  --primary-color: #25D366;
+  --primary-color-hover: #1faf5f;
+  --border-color: #1f2427;
+  --nav-bg-color: #07090a;
+  --nav-hover-bg-color: #0d1012;
+  --nav-text-color: #e8ecea;
+  --nav-accent-color: #25D366;
+  --code-bg-color: #0d1012;
+  --code-fg-color: #e8ecea;
+  --input-bg-color: #0d1012;
+  --input-border-color: #2c3337;
+  --font-regular: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Monaco, monospace;
   --border-radius: 6px;
   display: block;
   padding-top: 20px;

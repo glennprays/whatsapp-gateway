@@ -7,18 +7,17 @@
   <script>
     (function () {
       try {
-        var t = localStorage.getItem('waga-theme');
-        if (t) document.documentElement.setAttribute('data-theme', t);
-        else if (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches)
+        // Dark is the default; only an explicit saved choice switches to light.
+        if (localStorage.getItem('waga-theme') === 'light')
           document.documentElement.setAttribute('data-theme', 'light');
       } catch (e) {}
     })();
   </script>
-  <title>WhatsApp Gateway - Open Source Go REST API</title>
+  <title>waga - WhatsApp Gateway for backends &amp; AI agents</title>
 
   <!-- SEO Meta Tags -->
-  <meta name="description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
-  <meta name="keywords" content="WhatsApp, WhatsApp API, Go, Golang, gateway, open source, messaging, integration">
+  <meta name="description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta name="keywords" content="WhatsApp, WhatsApp API, Go, Golang, gateway, open source, messaging, integration, waga, MCP, AI agents">
   <meta name="author" content="Glenn Prays">
   <link rel="canonical" href="https://waga.glennprays.com/">
 
@@ -30,15 +29,15 @@
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://waga.glennprays.com/">
-  <meta property="og:title" content="WhatsApp Gateway - Open Source Go REST API">
-  <meta property="og:description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
+  <meta property="og:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta property="og:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
   <meta property="og:image" content="https://waga.glennprays.com/assets/og-image.png">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://waga.glennprays.com/">
-  <meta name="twitter:title" content="WhatsApp Gateway - Open Source Go REST API">
-  <meta name="twitter:description" content="WhatsApp Gateway is an open-source Go project for WhatsApp API integration. Build messaging integrations with our REST API gateway.">
+  <meta name="twitter:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta name="twitter:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
   <meta name="twitter:image" content="https://waga.glennprays.com/assets/og-image.png">
 
   <!-- Structured Data -->
@@ -46,7 +45,8 @@
   {
     "@context": "https://schema.org",
     "@type": "SoftwareSourceCode",
-    "name": "WhatsApp Gateway",
+    "name": "waga",
+    "alternateName": "WhatsApp Gateway",
     "description": "Open-source WhatsApp Gateway written in Go. REST API gateway that abstracts WhatsApp Web complexity.",
     "author": {
       "@type": "Person",
@@ -74,7 +74,7 @@
   <!-- Load fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- Next.js style header -->
@@ -88,7 +88,7 @@
         </button>
         <a href="#" class="logo" id="logo-link">
           <!-- <div class="logo-icon"></div> -->
-            <span class="logo-text">WhatsApp Gateway</span>
+            <span class="logo-text">waga</span>
         </a>
         {{ if .Version }}<span class="version-badge" title="Running server version">{{ .Version }}</span>{{ end }}
         <div class="nav-tabs">
@@ -143,13 +143,13 @@
         show-header="false"
         show-info="true"
         theme="dark"
-        bg-color="#000000"
-        text-color="#ededed"
-        primary-color="#3b82f6"
-        nav-bg-color="#000000"
-        nav-text-color="#ededed"
-        nav-hover-bg-color="#0a0a0a"
-        nav-accent-color="#3b82f6"
+        bg-color="#07090a"
+        text-color="#e8ecea"
+        primary-color="#25D366"
+        nav-bg-color="#07090a"
+        nav-text-color="#e8ecea"
+        nav-hover-bg-color="#0d1012"
+        nav-accent-color="#25D366"
         font-size="default"
         response-area-height="400px"
         style="width: 100%; height: calc(100vh - 64px);"
