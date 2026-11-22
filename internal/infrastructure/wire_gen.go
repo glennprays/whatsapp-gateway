@@ -69,7 +69,7 @@ func InitializeApp() (*App, func(), error) {
 	whatsappWebhookHandler := whatsapp_handler.ProvideWhatsappWebhookHandler(whatsappWebhookUsecase, logger)
 	jobRepository := queue2.ProvideJobRepository(db)
 	whatsAppRepository := whatsapp.ProvideWhatsAppRepository(db)
-	webhookSender := whatsapp.ProvideWebhookSender(cipher, logger, configConfig)
+	webhookSender := whatsapp.ProvideWebhookSender(cipher, logger, configConfig, db)
 	client, err := database.ProvideRedis(configConfig, logger)
 	if err != nil {
 		return nil, nil, err
@@ -83,7 +83,7 @@ func InitializeApp() (*App, func(), error) {
 	whatsappMessageHandler := whatsapp_handler.ProvideWhatsappMessageHandler(whatsappMessageUsecase, logger)
 	storageHandler := storage2.ProvideStorageHandler(storageStorage)
 	handlerHandler := handler.ProvideMainHandler(authHandler, whatsappAuthHandler, whatsappWebhookHandler, whatsappMessageHandler, storageHandler)
-	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue, storageStorage, db, manager)
+	app := router.ProvideRouter(configConfig, v, authMiddleware, handlerHandler, logger, messageQueue, storageStorage, db, manager, webhookSender)
 	workerManager, err := ProvideQueueWorkers(configConfig, messageQueue, whatsAppRepository, webhookSender, manager, logger, jobRepository, pacer, mediaDownloader)
 	if err != nil {
 		return nil, nil, err

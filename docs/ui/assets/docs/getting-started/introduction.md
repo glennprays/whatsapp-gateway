@@ -54,6 +54,12 @@ The system follows these core principles:
 - **Queue-Driven Scalability (Optional)**: RabbitMQ integration allows controlled message throughput.
 - **Production Readiness**: Clear boundaries, predictable behavior, and explicit failure handling.
 
+## What's new
+
+- **Webhook dead-letter store**: failed direct-mode deliveries are retained encrypted for 7 days with operator replay via `GET /admin/webhook-dlq` and `POST /admin/webhook-dlq/:id/replay`.
+- **Unified incoming payloads**: direct and queue modes now emit byte-identical incoming-message webhooks (contact cards included).
+- **Configurable incoming media timeout**: `INCOMING_MEDIA_DOWNLOAD_TIMEOUT_SECONDS`.
+
 ## High-Level Capability Summary
 
 - Send text messages

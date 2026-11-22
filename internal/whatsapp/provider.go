@@ -29,8 +29,8 @@ func ProvideWhatsAppRepository(db *sql.DB) WhatsAppRepository {
 }
 
 // ProvideWebhookSender creates webhook sender
-func ProvideWebhookSender(cipher *cipherx.Cipher, logger *log.Logger, cfg *config.Config) *WebhookSender {
-	return NewWebhookSender(cipher, logger, cfg)
+func ProvideWebhookSender(cipher *cipherx.Cipher, logger *log.Logger, cfg *config.Config, db *sql.DB) *WebhookSender {
+	return NewWebhookSender(cipher, logger, cfg, db)
 }
 
 // ProvideMediaDownloader creates media downloader

@@ -48,6 +48,7 @@ func (c *counter) snapshot() map[string]int64 {
 var (
 	messages counter
 	webhooks counter
+	dlqMiss  counter
 
 	sessionsMu sync.RWMutex
 	sessionsFn func() map[string]int
@@ -68,6 +69,13 @@ func RecordSend(msgType, mode string, err error) {
 // RecordWebhook counts one webhook delivery attempt (mode: direct|queue).
 func RecordWebhook(mode, event string, err error) {
 	webhooks.inc(fmt.Sprintf(`{result=%q,mode=%q,event=%q}`, result(err), mode, event))
+}
+
+// RecordWebhookDeadLetterMiss counts a failed direct-mode dead-letter
+// persistence (no store wired, or serialize/encrypt/insert failure). The
+// delivery data was NOT retained.
+func RecordWebhookDeadLetterMiss() {
+	dlqMiss.inc(`{reason="persist_failed"}`)
 }
 
 // SetSessionsSource registers the scrape-time source for the sessions gauge. The
@@ -93,6 +101,7 @@ func render() string {
 	var b strings.Builder
 	writeCounter(&b, "messages_total", "Total outbound message send attempts.", messages.snapshot())
 	writeCounter(&b, "webhook_deliveries_total", "Total webhook delivery attempts.", webhooks.snapshot())
+	writeCounter(&b, "webhook_dead_letter_misses_total", "Failed direct-mode dead-letter persistences (delivery NOT retained).", dlqMiss.snapshot())
 	writeSessions(&b)
 	return b.String()
 }

@@ -17,7 +17,7 @@ Docker remains the recommended deployment method for production.
 
 Minimum required version:
 
-Go 1.25
+Go 1.26
 
 Verify installation:
 

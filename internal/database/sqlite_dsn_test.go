@@ -5,7 +5,7 @@ import (
 )
 
 func TestNormalizeSQLiteDSN(t *testing.T) {
-	const defaults = "_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+	const defaults = "_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
 
 	cases := []struct {
 		name string
@@ -23,9 +23,9 @@ func TestNormalizeSQLiteDSN(t *testing.T) {
 			want: "file:/var/data/whatsapp.db?" + defaults,
 		},
 		{
-			name: "current production default keeps foreign_keys",
+			name: "user-set foreign_keys is kept, not duplicated",
 			in:   "file:dbs/whatsapp.db?_pragma=foreign_keys(1)",
-			want: "file:dbs/whatsapp.db?_pragma=foreign_keys(1)&" + defaults,
+			want: "file:dbs/whatsapp.db?" + defaults,
 		},
 		{
 			name: "file scheme without query",
@@ -35,17 +35,17 @@ func TestNormalizeSQLiteDSN(t *testing.T) {
 		{
 			name: "user journal_mode is never overridden",
 			in:   "file:x.db?_pragma=journal_mode(MEMORY)",
-			want: "file:x.db?_pragma=journal_mode(MEMORY)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)",
+			want: "file:x.db?_pragma=journal_mode(MEMORY)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)",
 		},
 		{
 			name: "user busy_timeout is kept, not duplicated",
 			in:   "file:x.db?_pragma=busy_timeout(10000)",
-			want: "file:x.db?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)",
+			want: "file:x.db?_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)",
 		},
 		{
 			name: "case-insensitive pragma detection",
 			in:   "file:x.db?_pragma=JOURNAL_MODE(wal)",
-			want: "file:x.db?_pragma=JOURNAL_MODE(wal)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)",
+			want: "file:x.db?_pragma=JOURNAL_MODE(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)",
 		},
 		{
 			name: "memory database keeps its form",

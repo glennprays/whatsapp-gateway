@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>waga - Self-hosted WhatsApp Gateway</title>
+  <meta name="description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta name="keywords" content="WhatsApp, WhatsApp API, Go, Golang, gateway, open source, messaging, integration, waga, MCP, AI agents">
+  <meta name="author" content="Glenn Prays">
+  <meta name="theme-color" content="#07090a">
+  <link rel="canonical" href="https://waga.glennprays.com/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ .BasePath }}/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ .BasePath }}/assets/favicon-16x16.png">
+  <link rel="shortcut icon" href="{{ .BasePath }}/assets/favicon.ico">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://waga.glennprays.com/">
+  <meta property="og:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta property="og:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta property="og:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://waga.glennprays.com/">
+  <meta name="twitter:title" content="waga - Self-hosted WhatsApp Gateway">
+  <meta name="twitter:description" content="Self-hosted, open-source WhatsApp gateway. Clean REST API and signed webhooks for your backend, plus an MCP server for AI agents.">
+  <meta name="twitter:image" content="https://waga.glennprays.com/assets/og-image.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ======================================================================
+       Signal design system. Dark only. Shared tokens with docs/ui/assets/styles.css.
+       ====================================================================== */
+    :root {
+      --bg: #07090a;
+      --surface: #0d1012;
+      --surface-2: #13171a;
+      --line: #1f2427;
+      --line-strong: #2c3337;
+      --text: #e8ecea;
+      --text-strong: #ffffff;
+      --muted: #8b9590;
+      --faint: #7a847f;
+      --signal: #25D366;
+      --signal-soft: #6ff5a0;
+      --signal-dim: rgba(37, 211, 102, 0.14);
+      --vermillion: #d93519;
+      --vermillion-hover: #c42e14;
+      --amber: #f5b83d;
+      --red: #ff5c5c;
+      --blue: #7cb7ff;
+      --violet: #c4a1ff;
+
+      --radius: 10px;
+      --radius-sm: 6px;
+      --wrap: 1240px;
+      --ease: cubic-bezier(.23, 1, .32, 1);
+      --font-display: 'Bricolage Grotesque', 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; background: var(--bg); color-scheme: dark; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: var(--signal); color: #04140a; }
+
+    :focus-visible {
+      outline: 2px solid var(--signal);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    /* Signature backdrop: a faint field of QR modules (pairing is how every
+       waga session starts). Static, decorative, single tone. */
+    .qr-field {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-30%);
+      width: 1000px;
+      max-width: 120vw;
+      pointer-events: none;
+      z-index: 0;
+      color: var(--signal);
+      opacity: 0.075;
+      -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent 100%);
+              mask-image: radial-gradient(closest-side, #000 35%, transparent 100%);
+    }
+    .qr-field svg { display: block; width: 100%; height: auto; fill: currentColor; }
+
+    /* Brand mark: a QR finder eye. */
+    .mark { width: 17px; height: 17px; color: var(--signal); fill: currentColor; flex-shrink: 0; }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: var(--wrap);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Mono label: the system voice of the page. */
+    .label {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .label b { color: var(--signal); font-weight: 500; }
+
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--signal);
+      box-shadow: 0 0 0 3px var(--signal-dim);
+      flex-shrink: 0;
+    }
+    .dot.off { background: var(--faint); box-shadow: none; }
+    .dot.warn { background: var(--amber); box-shadow: 0 0 0 3px rgba(245, 184, 61, 0.14); }
+    .dot.bad { background: var(--red); box-shadow: 0 0 0 3px rgba(255, 92, 92, 0.14); }
+
+
+    /* ---------------------------------------------------------------- strip */
+    .strip {
+      position: relative;
+      z-index: 2;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .strip-inner {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      height: 34px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .strip-item { display: inline-flex; align-items: center; gap: 8px; }
+    .strip-item strong { color: var(--text); font-weight: 500; }
+    .strip-sep { color: var(--line-strong); }
+    .strip-right { margin-left: auto; display: inline-flex; gap: 20px; }
+    .strip a:hover { color: var(--text); }
+
+    /* --------------------------------------------------------------- header */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+    }
+    .header-inner {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .wordmark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 22px;
+      letter-spacing: -0.03em;
+      color: var(--text-strong);
+    }
+    .nav { display: flex; gap: 4px; }
+    .nav a {
+      font-size: 14px;
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      transition: color .15s var(--ease), background .15s var(--ease);
+    }
+    .nav a:hover { color: var(--text); background: var(--surface-2); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .version-badge {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--muted);
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 3px 10px;
+    }
+
+    /* -------------------------------------------------------------- buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 18px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background .15s var(--ease), border-color .15s var(--ease),
+        color .15s var(--ease), transform .15s var(--ease);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-sm { height: 34px; padding: 0 14px; font-size: 13px; }
+    .btn-primary {
+      background: var(--vermillion);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--vermillion-hover); }
+    .btn-ghost {
+      border: 1px solid var(--line-strong);
+      color: var(--text);
+      background: rgba(255,255,255,0.02);
+    }
+    .btn-ghost:hover { border-color: var(--muted); background: var(--surface-2); }
+    .arrow { font-family: var(--font-mono); transition: transform .15s var(--ease); }
+    .btn:hover .arrow { transform: translateX(3px); }
+
+    /* ------------------------------------------------------------- sections */
+    .section { position: relative; padding: 96px 0; border-top: 1px solid var(--line); }
+    .section-head {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 56px;
+    }
+    .section-head .label { margin-bottom: 20px; display: block; }
+    .section-head.stack { grid-template-columns: minmax(0, 760px); gap: 20px; }
+    .wrap-narrow { max-width: 1080px; }
+    .sample-note { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+    .hero .cta-row { align-items: center; gap: 24px; }
+    .hero .text-link, .final .text-link { margin: 0; }
+    h1, h2, h3 { color: var(--text-strong); font-family: var(--font-display); font-weight: 600; }
+    h2 {
+      font-size: clamp(2.25rem, 4.4vw, 3.5rem);
+      letter-spacing: -0.015em;
+      line-height: 1.02;
+    }
+    h2 em { font-style: normal; color: var(--muted); }
+    .lede { color: var(--muted); font-size: 17px; max-width: 52ch; }
+
+    /* --------------------------------------------------------------- footer */
+    .footer { border-top: 1px solid var(--line); padding: 72px 0 40px; background: var(--bg); }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.4fr repeat(5, 1fr);
+      gap: 32px;
+    }
+    .footer-brand p { margin-top: 14px; color: var(--muted); font-size: 14px; max-width: 30ch; }
+    .footer-col h4 {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--faint);
+      margin-bottom: 14px;
+    }
+    .footer-col ul { list-style: none; display: grid; gap: 9px; }
+    .footer-col a { font-size: 14px; color: var(--muted); transition: color .15s var(--ease); }
+    .footer-col a:hover { color: var(--text); }
+    .footer-base {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--faint);
+    }
+    .footer-base a { color: var(--muted); }
+    .footer-base a:hover { color: var(--text); }
+    .footer-giant {
+      margin-top: 56px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: clamp(6rem, 22vw, 19rem);
+      letter-spacing: -0.05em;
+      line-height: 0.78;
+      color: transparent;
+      -webkit-text-stroke: 1px var(--line-strong);
+      user-select: none;
+      text-align: center;
+    }
+
+    /* ----------------------------------------------------------------- hero */
+    .hero { position: relative; padding: 88px 0 80px; }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+      gap: 56px;
+      align-items: center;
+    }
+    .hero h1 {
+      font-size: clamp(3rem, 7vw, 5.75rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 0.96;
+    }
+    .hero h1 .accent { color: var(--signal); }
+    .hero h1 .soft { color: var(--muted); }
+    .hero-sub {
+      margin-top: 26px;
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--muted);
+      max-width: 46ch;
+    }
+    .hero-sub strong { color: var(--text); font-weight: 500; }
+    .cta-row { margin-top: 34px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .cta-row .btn { height: 46px; padding: 0 22px; font-size: 15px; }
+
+    .snippet {
+      margin-top: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 520px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      padding: 0 6px 0 14px;
+      height: 46px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+    }
+    .snippet .prompt { color: var(--signal); user-select: none; }
+    .snippet code {
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    .snippet code::-webkit-scrollbar { display: none; }
+    .hero-meta {
+      margin-top: 22px;
+      display: flex;
+      gap: 10px 22px;
+      flex-wrap: wrap;
+    }
+    .hero-meta span { display: inline-flex; align-items: center; gap: 8px; }
+    .tick { color: var(--signal); font-family: var(--font-mono); }
+
+    /* Shared terminal / panel chrome */
+    .panel {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.9);
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.015);
+    }
+    .lights { display: inline-flex; gap: 6px; }
+    .lights i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+    .panel-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+    .panel-head .label { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; }
+    pre, code { font-family: var(--font-mono); }
+    .code {
+      padding: 18px 20px;
+      font-size: 12.75px;
+      line-height: 1.7;
+      color: var(--text);
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .c-cmd { color: var(--signal-soft); }
+    .c-flag { color: var(--blue); }
+    .c-str { color: #b5e8c4; }
+    .c-key { color: var(--violet); }
+    .c-num { color: var(--amber); }
+    .c-dim { color: var(--faint); }
+    .c-ok { color: var(--signal); }
+    .c-bad { color: var(--red); }
+
+    /* Hero console: CSS-only tabs (radio inputs) so it works with JS off. */
+    .console { position: relative; }
+    .tab-input {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--line);
+      padding: 0 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .tab {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 12px;
+      color: var(--faint);
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s var(--ease);
+    }
+    .tab:hover { color: var(--text); }
+    .tab .count {
+      font-size: 10.5px;
+      padding: 0 6px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+    .tabs-meta { margin-left: auto; align-self: center; font-size: 11px; color: var(--faint); padding-right: 6px; }
+    .pane { display: none; min-height: 318px; }
+    #tab-req:checked ~ .panes .pane-req,
+    #tab-hook:checked ~ .panes .pane-hook,
+    #tab-ses:checked ~ .panes .pane-ses { display: block; }
+    #tab-req:checked ~ .tabs [for="tab-req"],
+    #tab-hook:checked ~ .tabs [for="tab-hook"],
+    #tab-ses:checked ~ .tabs [for="tab-ses"] { color: var(--text-strong); }
+    #tab-req:checked ~ .tabs [for="tab-req"]::after,
+    #tab-hook:checked ~ .tabs [for="tab-hook"]::after,
+    #tab-ses:checked ~ .tabs [for="tab-ses"]::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: -1px;
+      height: 2px;
+      background: var(--signal);
+    }
+    #tab-req:focus-visible ~ .tabs [for="tab-req"],
+    #tab-hook:focus-visible ~ .tabs [for="tab-hook"],
+    #tab-ses:focus-visible ~ .tabs [for="tab-ses"] { outline: 2px solid var(--signal); outline-offset: -4px; border-radius: 4px; }
+
+    /* WhatsApp-side rendering paired with the wire format. */
+    .phone-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 14px;
+      padding: 12px 20px 16px;
+      border-top: 1px dashed var(--line-strong);
+    }
+    .phone-row.in { justify-content: flex-start; border-top: 0; border-bottom: 1px dashed var(--line-strong); padding: 16px 20px 12px; }
+    .phone-label { font-family: var(--font-mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+    .bubble {
+      position: relative;
+      max-width: 72%;
+      padding: 7px 10px 8px 11px;
+      font-size: 14.5px;
+      line-height: 1.35;
+      color: #e9edef;
+      border-radius: 8px;
+    }
+    .bubble.out { background: #005c4b; border-top-right-radius: 0; }
+    .bubble.in { background: #202c33; border-top-left-radius: 0; }
+    .bubble .meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 10px;
+      font-size: 11px;
+      color: rgba(233, 237, 239, 0.7);
+      vertical-align: -2px;
+    }
+    .ticks { width: 17px; height: 11px; color: #53bdeb; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .qr-sample { display: inline-block; width: 100px; height: 100px; padding: 6px; background: #e9edef; border-radius: 4px; vertical-align: top; }
+    .qr-sample path { fill: #07090a; }
+
+    .resp-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px;
+      border-top: 1px dashed var(--line-strong);
+      border-bottom: 1px dashed var(--line-strong);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--faint);
+      background: rgba(37, 211, 102, 0.03);
+    }
+    .status-ok { color: #04140a; background: var(--signal); padding: 1px 7px; border-radius: 4px; font-weight: 500; }
+    .resp-bar .ms { margin-left: auto; }
+
+    .sessions { padding: 10px 12px 14px; }
+    .ses-row {
+      display: grid;
+      grid-template-columns: 18px 1.3fr 1fr 0.9fr 0.7fr;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 10px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      border-bottom: 1px solid var(--line);
+    }
+    .ses-row:last-child { border-bottom: 0; }
+    .ses-row.head { color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; padding-top: 6px; }
+    .ses-row .phone { color: var(--text); }
+    .ses-row .muted { color: var(--muted); }
+    .state { font-size: 11px; padding: 2px 8px; border-radius: 999px; width: fit-content; }
+    .state.on { color: var(--signal); background: var(--signal-dim); }
+    .state.idle { color: var(--muted); background: var(--surface-2); }
+    .state.warn { color: var(--amber); background: rgba(245, 184, 61, 0.12); }
+    .state.bad { color: var(--red); background: rgba(255, 92, 92, 0.12); }
+
+    .log {
+      border-top: 1px solid var(--line);
+      background: #060808;
+      padding: 10px 0 12px;
+      font-family: var(--font-mono);
+      font-size: 11.75px;
+      line-height: 1.9;
+      height: 132px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    .log::after {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 26px;
+      background: linear-gradient(#060808, transparent);
+      pointer-events: none;
+    }
+    .log-line {
+      display: grid;
+      grid-template-columns: 74px 150px 1fr;
+      gap: 12px;
+      padding: 0 20px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .log-line .t { color: var(--faint); }
+    .log-line .ev { color: var(--signal); }
+    .log-line .ev.out { color: var(--blue); }
+    .log-line .ev.err { color: var(--amber); }
+    .log-line span:last-child { overflow: hidden; text-overflow: ellipsis; }
+    .log-line.enter { animation: logIn .2s var(--ease); }
+    @keyframes logIn { from { opacity: 0; transform: translateY(8px); background: rgba(37,211,102,0.08); } }
+
+    /* ----------------------------------------------------------- spec band */
+    .spec {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(13, 16, 18, 0.6);
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+    }
+    .spec-cell {
+      padding: 34px 24px 30px;
+      border-left: 1px solid var(--line);
+      position: relative;
+    }
+    .spec-cell:last-child { border-right: 1px solid var(--line); }
+    .spec-cell .idx { position: absolute; top: 12px; right: 14px; font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
+    .spec-num {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 4vw, 3.5rem);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: var(--text-strong);
+      font-variant-numeric: tabular-nums;
+    }
+    .spec-num small { font-size: 0.42em; letter-spacing: -0.02em; color: var(--signal); margin-left: 2px; vertical-align: top; }
+    .spec-cell .label { display: block; margin-top: 12px; font-size: 11px; }
+
+    /* ----------------------------------------------------------------- flow */
+    .flow-frame {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow-x: auto;
+    }
+    .flow-svg { display: block; width: 100%; min-width: 760px; height: auto; }
+    .flow-svg text { font-family: var(--font-mono); }
+    .flow-svg text.sans { font-family: var(--font-display); }
+    .wire { fill: none; stroke: var(--line-strong); stroke-width: 1.25; }
+    .packets { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 2 34; }
+    .packets.out { stroke: var(--blue); }
+    .packets.in { stroke: var(--signal); }
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line);
+    }
+    .flow-step { padding: 22px 24px 24px; border-left: 1px solid var(--line); }
+    .flow-step:first-child { border-left: 0; }
+    .flow-step h3 { font-size: 18px; letter-spacing: -0.01em; margin: 10px 0 6px; }
+    .flow-step p { color: var(--muted); font-size: 14.5px; }
+    .flow-step code { white-space: nowrap; font-size: 12.5px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+
+    /* ---------------------------------------------------------------- bento */
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card {
+      position: relative;
+      background: var(--bg);
+      padding: 28px 28px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 280px;
+      transition: background .15s var(--ease);
+    }
+    .card:hover { background: #0a0d0e; }
+    .card .label { font-size: 11px; }
+    .card h3 { font-size: 23px; letter-spacing: -0.02em; line-height: 1.15; }
+    .card p { color: var(--muted); font-size: 15px; max-width: 46ch; }
+    .card .viz { margin-top: auto; padding-top: 18px; }
+    .span-7 { grid-column: span 7; }
+    .span-5 { grid-column: span 5; }
+    .span-4 { grid-column: span 4; }
+    .span-12 { grid-column: span 12; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      padding: 4px 9px;
+      border-radius: 4px;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      background: var(--surface);
+      white-space: nowrap;
+    }
+    .chip.msg { color: #a9d0ff; border-color: rgba(124, 183, 255, 0.25); background: rgba(124, 183, 255, 0.06); }
+    .chip.ses { color: #9ff0bd; border-color: rgba(37, 211, 102, 0.25); background: rgba(37, 211, 102, 0.06); }
+    .chip.hot { color: var(--text-strong); border-color: var(--signal); }
+
+    .mini-rows { display: grid; gap: 6px; }
+    .mini-row {
+      display: grid;
+      grid-template-columns: 14px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .mini-row .muted { color: var(--faint); font-size: 11px; }
+
+    .bucket { display: grid; gap: 10px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+    .tokens { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+    .tokens i { height: 26px; border-radius: 4px; background: var(--signal-dim); border: 1px solid rgba(37, 211, 102, 0.35); }
+    .tokens i.on { background: var(--signal); border-color: var(--signal); }
+    .bucket-meta { display: flex; justify-content: space-between; }
+    .bucket-meta strong { color: var(--text); font-weight: 500; }
+
+    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-family: var(--font-mono); font-size: 11.5px; }
+    .mode { border: 1px solid var(--line-strong); border-radius: 6px; padding: 10px 12px; background: var(--surface); color: var(--muted); }
+    .mode strong { display: block; color: var(--text); font-weight: 500; font-size: 12.5px; margin-bottom: 2px; }
+    .mode.active { border-color: rgba(37, 211, 102, 0.5); }
+    .mode.active strong::after { content: " \25CF"; color: var(--signal); font-size: 9px; vertical-align: middle; }
+
+    .card-wide { flex-direction: row; align-items: center; gap: 48px; min-height: 0; }
+    .card-wide > div:first-child { flex: 0 0 40%; display: grid; gap: 10px; }
+    .card-wide .viz { margin: 0; padding: 0; flex: 1; min-width: 0; }
+    .term-line {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.9;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px 18px;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--muted);
+    }
+
+    /* ------------------------------------------------------------ endpoints */
+    .ep-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .ep-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ep-head .base { color: var(--text); }
+    .ep-head a { margin-left: auto; color: var(--signal); }
+    .ep-head a:hover { color: var(--signal-soft); }
+    .ep-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .ep-col { list-style: none; }
+    .ep-col + .ep-col { border-left: 1px solid var(--line); }
+    .ep {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      font-family: var(--font-mono);
+      font-size: 12.75px;
+      transition: background .15s var(--ease);
+    }
+    .ep:hover { background: var(--surface); }
+    .ep-col .ep:last-child { border-bottom: 0; }
+    .ep .path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ep .path span { color: var(--faint); }
+    .ep .desc { color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+    .m {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-align: center;
+      padding: 3px 0;
+      border-radius: 4px;
+    }
+    .m.get { color: var(--blue); background: rgba(124, 183, 255, 0.1); }
+    .m.post { color: var(--signal); background: var(--signal-dim); }
+    .m.put, .m.patch { color: var(--amber); background: rgba(245, 184, 61, 0.1); }
+    .m.del { color: var(--red); background: rgba(255, 92, 92, 0.1); }
+
+    /* --------------------------------------------------------------- agents */
+    .band {
+      position: relative;
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .band::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+      background-size: 22px 22px;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%);
+              mask-image: linear-gradient(90deg, transparent, #000 60%);
+      pointer-events: none;
+    }
+    .agents-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 56px;
+      align-items: start;
+    }
+    .agents-copy .label { display: block; margin-bottom: 20px; }
+    .agents-copy .lede { margin-top: 22px; }
+    .clients { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .guard {
+      margin-top: 28px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 6px;
+      padding: 16px 18px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .guard strong { color: var(--text); font-weight: 500; }
+    .text-link { display: inline-flex; gap: 8px; margin-top: 26px; margin-right: 20px; color: var(--signal); font-weight: 500; font-size: 15px; }
+    .text-link:hover { color: var(--signal-soft); }
+    .text-link:hover .arrow { transform: translateX(3px); }
+    .agents-stack { display: grid; gap: 16px; }
+    .tools {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+    }
+    .tool-group { background: #0a0d0e; padding: 14px 18px 16px; }
+    .tool-group h4 {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 8px;
+    }
+    .tool-group ul { list-style: none; display: grid; gap: 3px; font-family: var(--font-mono); font-size: 12px; color: var(--text); }
+    .tool-group li::before { content: "\203A  "; color: var(--signal); }
+
+    /* -------------------------------------------------------------- operate */
+    .ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .ops-grid .panel { min-width: 0; }
+    .ops-foot {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .ops-foot div { background: var(--bg); padding: 18px 20px; }
+    .ops-foot code { font-size: 12.5px; color: var(--text); }
+    .ops-foot p { margin-top: 6px; font-size: 14px; color: var(--muted); }
+
+    /* ----------------------------------------------------------------- ship */
+    .ship-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; align-items: center; }
+    .steps { list-style: none; display: grid; gap: 0; margin-top: 32px; counter-reset: step; }
+    .steps li {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 14px;
+      padding: 16px 0;
+      border-top: 1px solid var(--line);
+    }
+    .steps li:last-child { border-bottom: 1px solid var(--line); }
+    .steps .n { font-family: var(--font-mono); font-size: 12px; color: var(--signal); padding-top: 3px; }
+    .steps strong { display: block; color: var(--text-strong); font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+    .steps span.d { color: var(--muted); font-size: 14.5px; }
+    .term-step { color: var(--faint); }
+
+    .final {
+      position: relative;
+      margin-top: 96px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 64px 56px;
+      overflow: hidden;
+      background: var(--surface);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 40px;
+      align-items: end;
+    }
+    .final h2 { font-size: clamp(2.5rem, 5.5vw, 4.5rem); letter-spacing: -0.02em; line-height: 0.98; }
+    .final .cta-row { margin-top: 0; }
+    .final .chips { margin-top: 24px; }
+    .final .chip:hover { color: var(--text); border-color: var(--muted); }
+
+    .copy-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      padding: 4px 9px;
+      cursor: pointer;
+      transition: color .15s var(--ease), border-color .15s var(--ease);
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--muted); }
+    .copy-btn.done { color: var(--signal); border-color: rgba(37, 211, 102, 0.5); }
+    .panel-head .copy-btn { margin-left: 12px; }
+    .panel-head .panel-title + .copy-btn { margin-left: auto; }
+
+    /* ----------------------------------------------------------- responsive */
+    @media (max-width: 980px) {
+      .agents-grid, .ship-grid, .ops-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+      .ops-grid { gap: 16px; }
+      .final { grid-template-columns: 1fr; padding: 44px 28px; }
+      .span-7, .span-5 { grid-column: span 12; }
+      .span-4 { grid-column: span 6; }
+      .span-4.tail { grid-column: span 12; }
+      .card-wide { flex-direction: column; align-items: stretch; gap: 20px; }
+      .ep-grid { grid-template-columns: 1fr; }
+      .ep-col + .ep-col { border-left: 0; border-top: 1px solid var(--line); }
+      .spec-grid { grid-template-columns: repeat(3, 1fr); }
+      .spec-cell { border-bottom: 1px solid var(--line); }
+      .spec-cell:nth-child(3n) { border-right: 1px solid var(--line); }
+      .flow-steps { grid-template-columns: 1fr; }
+      .flow-step { border-left: 0; border-top: 1px solid var(--line); }
+      .flow-step:first-child { border-top: 0; }
+      .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+      .hero { padding: 64px 0 80px; }
+      .footer-grid { grid-template-columns: repeat(3, 1fr); }
+      .footer-brand { grid-column: 1 / -1; }
+      .section-head { grid-template-columns: 1fr; gap: 20px; }
+    }
+    @media (max-width: 760px) {
+      .ops-foot { grid-template-columns: 1fr; }
+      .tools { grid-template-columns: 1fr; }
+      .span-4 { grid-column: span 12; }
+      .ep .desc { display: none; }
+      .ep { grid-template-columns: 58px minmax(0, 1fr); }
+      .flow-svg { display: none; }
+      .flow-steps { border-top: 0; }
+      .nav, .strip-right { display: none; }
+      .section { padding: 80px 0; }
+    }
+    @media (max-width: 520px) {
+      .spec-grid { grid-template-columns: repeat(2, 1fr); }
+      .spec-cell:nth-child(3n) { border-right: 0; }
+      .spec-cell:nth-child(2n) { border-right: 1px solid var(--line); }
+      .spec-cell { padding: 26px 16px 22px; }
+      .footer-grid { grid-template-columns: repeat(2, 1fr); }
+      .tabs-meta { display: none; }
+      .ses-row { grid-template-columns: 18px 1.4fr 1fr 0.9fr; }
+      .ses-row > :nth-child(5) { display: none; }
+      .log-line { grid-template-columns: 64px 1fr; }
+      .log-line span:last-child { display: none; }
+      .header-right .btn-ghost { display: none; }
+      .version-badge { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="qr-field" aria-hidden="true"><svg viewBox="0 0 888 888"><path d="M0 0h168v20h-168zM240 0h24v20h-24zM312 0h24v20h-24zM384 0h96v20h-96zM528 0h48v20h-48zM600 0h24v20h-24zM672 0h24v20h-24zM720 0h168v20h-168zM0 24h24v20h-24zM144 24h24v20h-24zM192 24h24v20h-24zM240 24h72v20h-72zM384 24h24v20h-24zM432 24h48v20h-48zM552 24h96v20h-96zM720 24h24v20h-24zM864 24h24v20h-24zM0 48h24v20h-24zM48 48h72v20h-72zM144 48h24v20h-24zM240 48h24v20h-24zM288 48h48v20h-48zM456 48h96v20h-96zM576 48h24v20h-24zM672 48h24v20h-24zM720 48h24v20h-24zM768 48h72v20h-72zM864 48h24v20h-24zM0 72h24v20h-24zM48 72h72v20h-72zM144 72h24v20h-24zM192 72h48v20h-48zM288 72h48v20h-48zM384 72h24v20h-24zM432 72h48v20h-48zM528 72h48v20h-48zM600 72h96v20h-96zM720 72h24v20h-24zM768 72h72v20h-72zM864 72h24v20h-24zM0 96h24v20h-24zM48 96h72v20h-72zM144 96h24v20h-24zM360 96h48v20h-48zM432 96h72v20h-72zM720 96h24v20h-24zM768 96h72v20h-72zM864 96h24v20h-24zM0 120h24v20h-24zM144 120h24v20h-24zM240 120h24v20h-24zM288 120h72v20h-72zM384 120h24v20h-24zM576 120h72v20h-72zM672 120h24v20h-24zM720 120h24v20h-24zM864 120h24v20h-24zM0 144h168v20h-168zM192 144h24v20h-24zM240 144h24v20h-24zM288 144h24v20h-24zM336 144h24v20h-24zM384 144h24v20h-24zM432 144h24v20h-24zM480 144h24v20h-24zM528 144h24v20h-24zM576 144h24v20h-24zM624 144h24v20h-24zM672 144h24v20h-24zM720 144h168v20h-168zM192 168h72v20h-72zM408 168h24v20h-24zM528 168h48v20h-48zM0 192h24v20h-24zM72 192h48v20h-48zM144 192h24v20h-24zM216 192h72v20h-72zM336 192h24v20h-24zM384 192h24v20h-24zM432 192h24v20h-24zM672 192h24v20h-24zM744 192h120v20h-120zM96 216h48v20h-48zM168 216h24v20h-24zM240 216h24v20h-24zM288 216h24v20h-24zM336 216h96v20h-96zM456 216h24v20h-24zM528 216h24v20h-24zM576 216h24v20h-24zM624 216h24v20h-24zM672 216h24v20h-24zM840 216h24v20h-24zM120 240h48v20h-48zM216 240h24v20h-24zM264 240h24v20h-24zM312 240h24v20h-24zM456 240h24v20h-24zM504 240h72v20h-72zM600 240h24v20h-24zM648 240h24v20h-24zM720 240h24v20h-24zM768 240h72v20h-72zM0 264h48v20h-48zM120 264h24v20h-24zM192 264h24v20h-24zM240 264h72v20h-72zM432 264h48v20h-48zM504 264h24v20h-24zM552 264h72v20h-72zM672 264h72v20h-72zM768 264h24v20h-24zM816 264h72v20h-72zM0 288h24v20h-24zM96 288h24v20h-24zM144 288h48v20h-48zM240 288h48v20h-48zM408 288h48v20h-48zM504 288h24v20h-24zM552 288h120v20h-120zM696 288h48v20h-48zM792 288h24v20h-24zM840 288h48v20h-48zM0 312h48v20h-48zM96 312h48v20h-48zM216 312h48v20h-48zM288 312h72v20h-72zM408 312h24v20h-24zM456 312h24v20h-24zM576 312h24v20h-24zM624 312h24v20h-24zM672 312h24v20h-24zM720 312h24v20h-24zM792 312h48v20h-48zM864 312h24v20h-24zM0 336h24v20h-24zM72 336h24v20h-24zM144 336h24v20h-24zM192 336h72v20h-72zM288 336h24v20h-24zM360 336h48v20h-48zM456 336h24v20h-24zM552 336h24v20h-24zM792 336h24v20h-24zM840 336h48v20h-48zM0 360h72v20h-72zM96 360h24v20h-24zM264 360h48v20h-48zM408 360h24v20h-24zM480 360h48v20h-48zM600 360h24v20h-24zM672 360h96v20h-96zM840 360h24v20h-24zM72 384h24v20h-24zM144 384h48v20h-48zM240 384h24v20h-24zM288 384h48v20h-48zM360 384h24v20h-24zM432 384h24v20h-24zM480 384h24v20h-24zM528 384h24v20h-24zM600 384h24v20h-24zM672 384h24v20h-24zM720 384h48v20h-48zM792 384h24v20h-24zM840 384h48v20h-48zM24 408h24v20h-24zM120 408h24v20h-24zM168 408h72v20h-72zM264 408h48v20h-48zM336 408h72v20h-72zM432 408h24v20h-24zM480 408h72v20h-72zM576 408h24v20h-24zM648 408h144v20h-144zM840 408h48v20h-48zM24 432h24v20h-24zM72 432h24v20h-24zM120 432h72v20h-72zM240 432h24v20h-24zM336 432h48v20h-48zM504 432h72v20h-72zM600 432h72v20h-72zM720 432h72v20h-72zM840 432h48v20h-48zM0 456h24v20h-24zM48 456h48v20h-48zM120 456h24v20h-24zM216 456h48v20h-48zM312 456h120v20h-120zM456 456h24v20h-24zM600 456h48v20h-48zM672 456h24v20h-24zM720 456h24v20h-24zM768 456h24v20h-24zM840 456h48v20h-48zM0 480h24v20h-24zM96 480h24v20h-24zM144 480h48v20h-48zM216 480h96v20h-96zM336 480h24v20h-24zM384 480h48v20h-48zM456 480h48v20h-48zM576 480h48v20h-48zM696 480h48v20h-48zM840 480h24v20h-24zM24 504h24v20h-24zM72 504h72v20h-72zM168 504h48v20h-48zM240 504h48v20h-48zM336 504h48v20h-48zM456 504h24v20h-24zM504 504h96v20h-96zM624 504h72v20h-72zM768 504h24v20h-24zM840 504h24v20h-24zM48 528h24v20h-24zM144 528h24v20h-24zM192 528h72v20h-72zM312 528h24v20h-24zM384 528h72v20h-72zM504 528h24v20h-24zM552 528h24v20h-24zM600 528h24v20h-24zM648 528h24v20h-24zM696 528h24v20h-24zM744 528h24v20h-24zM840 528h24v20h-24zM24 552h24v20h-24zM72 552h24v20h-24zM120 552h24v20h-24zM168 552h24v20h-24zM288 552h24v20h-24zM360 552h48v20h-48zM432 552h48v20h-48zM504 552h24v20h-24zM648 552h24v20h-24zM720 552h24v20h-24zM792 552h48v20h-48zM72 576h24v20h-24zM144 576h24v20h-24zM192 576h48v20h-48zM264 576h24v20h-24zM312 576h96v20h-96zM432 576h24v20h-24zM576 576h24v20h-24zM696 576h24v20h-24zM792 576h24v20h-24zM864 576h24v20h-24zM96 600h48v20h-48zM168 600h24v20h-24zM216 600h24v20h-24zM336 600h24v20h-24zM528 600h24v20h-24zM600 600h24v20h-24zM648 600h24v20h-24zM696 600h72v20h-72zM792 600h24v20h-24zM840 600h24v20h-24zM24 624h96v20h-96zM144 624h24v20h-24zM264 624h24v20h-24zM336 624h48v20h-48zM408 624h48v20h-48zM528 624h72v20h-72zM672 624h24v20h-24zM720 624h24v20h-24zM840 624h24v20h-24zM0 648h24v20h-24zM72 648h72v20h-72zM216 648h24v20h-24zM360 648h24v20h-24zM432 648h24v20h-24zM480 648h48v20h-48zM552 648h24v20h-24zM600 648h96v20h-96zM720 648h72v20h-72zM816 648h24v20h-24zM120 672h72v20h-72zM240 672h72v20h-72zM408 672h120v20h-120zM576 672h48v20h-48zM672 672h96v20h-96zM792 672h24v20h-24zM840 672h48v20h-48zM216 696h72v20h-72zM336 696h72v20h-72zM432 696h120v20h-120zM600 696h48v20h-48zM744 696h24v20h-24zM816 696h24v20h-24zM0 720h168v20h-168zM192 720h72v20h-72zM288 720h24v20h-24zM336 720h24v20h-24zM384 720h48v20h-48zM456 720h48v20h-48zM552 720h48v20h-48zM720 720h48v20h-48zM840 720h24v20h-24zM0 744h24v20h-24zM144 744h24v20h-24zM192 744h24v20h-24zM264 744h24v20h-24zM360 744h48v20h-48zM432 744h72v20h-72zM528 744h48v20h-48zM600 744h24v20h-24zM648 744h48v20h-48zM768 744h48v20h-48zM0 768h24v20h-24zM48 768h72v20h-72zM144 768h24v20h-24zM192 768h48v20h-48zM264 768h48v20h-48zM432 768h24v20h-24zM480 768h24v20h-24zM552 768h48v20h-48zM648 768h48v20h-48zM720 768h24v20h-24zM792 768h48v20h-48zM0 792h24v20h-24zM48 792h72v20h-72zM144 792h24v20h-24zM192 792h24v20h-24zM240 792h24v20h-24zM288 792h72v20h-72zM384 792h48v20h-48zM480 792h24v20h-24zM552 792h48v20h-48zM624 792h24v20h-24zM720 792h24v20h-24zM840 792h48v20h-48zM0 816h24v20h-24zM48 816h72v20h-72zM144 816h24v20h-24zM192 816h48v20h-48zM264 816h48v20h-48zM336 816h24v20h-24zM384 816h48v20h-48zM456 816h48v20h-48zM552 816h24v20h-24zM600 816h72v20h-72zM696 816h96v20h-96zM816 816h24v20h-24zM0 840h24v20h-24zM144 840h24v20h-24zM192 840h24v20h-24zM240 840h48v20h-48zM360 840h48v20h-48zM504 840h24v20h-24zM552 840h24v20h-24zM648 840h72v20h-72zM768 840h48v20h-48zM0 864h168v20h-168zM192 864h24v20h-24zM288 864h24v20h-24zM384 864h96v20h-96zM504 864h24v20h-24zM552 864h24v20h-24zM672 864h72v20h-72zM792 864h24v20h-24zM864 864h24v20h-24z"/></svg></div>
+
+  <div class="strip">
+    <div class="wrap strip-inner">
+      <span class="strip-item"><strong>Open-source WhatsApp gateway</strong></span>
+      <span class="strip-sep">/</span>
+      {{ if .Version }}<span class="strip-item">Release <strong>{{ .Version }}</strong></span>
+      <span class="strip-sep">/</span>{{ end }}
+      <span class="strip-item"><strong>26</strong> MCP tools</span>
+      <span class="strip-sep">/</span>
+      <span class="strip-item">MIT licensed</span>
+      <span class="strip-right">
+        <a href="/llms.txt">llms.txt</a>
+        <a href="/openapi.yaml">openapi.yaml</a>
+      </span>
+    </div>
+  </div>
+
+  <header class="header">
+    <div class="wrap header-inner">
+      <a class="wordmark" href="/" aria-label="waga home"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M1 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2 0v10h10V3z"/><rect x="5" y="5" width="6" height="6" rx="1"/></svg>waga</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/docs/">Docs</a>
+        <a href="/docs/#docs:mcp/introduction">MCP</a>
+        <a href="/openapi.yaml">OpenAPI</a>
+        <a href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <div class="header-right">
+        {{ if .Version }}<span class="version-badge">{{ .Version }}</span>{{ end }}
+        <a class="btn btn-primary btn-sm" href="/docs/#docs:installation/docker-deployment">Install waga <span class="arrow">&rarr;</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============================================================ HERO -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="label" style="margin-bottom: 18px;">[ SELF-HOSTED &middot; GO &middot; MIT ]</p>
+          <h1 id="hero-title">WhatsApp,<br><span class="accent">as an API</span><br><span class="soft">you run.</span></h1>
+          <p class="hero-sub">waga keeps WhatsApp sessions alive so your backend doesn't have to. <strong>Send over REST, receive over signed webhooks</strong>, and hand the same gateway to your AI agents over MCP.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="/docs/#docs:installation/docker-deployment">Deploy with Docker <span class="arrow">&rarr;</span></a>
+            <a class="text-link" href="/docs/">Read the docs <span class="arrow">&rarr;</span></a>
+          </div>
+          <div class="snippet" data-copy>
+            <span class="prompt" aria-hidden="true">$</span>
+            <code>docker run -d -p 3000:3000 --env-file .env glennprays/whatsapp-gateway</code>
+          </div>
+          <div class="hero-meta label">
+            <span><span class="tick">&#10003;</span> One Go binary</span>
+            <span><span class="tick">&#10003;</span> Multi-device</span>
+            <span><span class="tick">&#10003;</span> No per-message fees</span>
+          </div>
+        </div>
+
+        <div class="panel console" aria-label="Example gateway console">
+          <div class="panel-head">
+            <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="panel-title">waga &mdash; console</span>
+            <span class="label">sample data</span>
+          </div>
+
+          <input class="tab-input" type="radio" name="console-tab" id="tab-req" checked>
+          <input class="tab-input" type="radio" name="console-tab" id="tab-hook">
+          <input class="tab-input" type="radio" name="console-tab" id="tab-ses">
+          <div class="tabs">
+            <label class="tab" for="tab-req">Request</label>
+            <label class="tab" for="tab-hook">Webhook</label>
+            <label class="tab" for="tab-ses">Sessions <span class="count">4</span></label>
+            <span class="tabs-meta">localhost:3000/api/v1</span>
+          </div>
+
+          <div class="panes">
+            <div class="pane pane-req" id="pane-req">
+<pre class="code" id="req-code"><span class="c-cmd">curl</span> <span class="c-flag">-X</span> POST localhost:3000/api/v1/message/text \
+  <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer $WAGA_JWT"</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"Idempotency-Key: order-1042"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{ "chat": "6289876543210", "message": "Your order has shipped" }'</span></pre>
+              <div class="resp-bar"><span class="status-ok">200</span> OK <span class="c-dim">application/json</span><span class="ms">312 ms</span></div>
+<pre class="code"><span class="c-dim">{</span>
+  <span class="c-key">"success"</span>: <span class="c-num">true</span>,
+  <span class="c-key">"status"</span>: <span class="c-str">"sent"</span>,
+  <span class="c-key">"message_id"</span>: <span class="c-str">"3EB0F7A1C2D94E"</span>,
+  <span class="c-key">"chat"</span>: <span class="c-str">"6289876543210@s.whatsapp.net"</span>
+<span class="c-dim">}</span></pre>
+              <div class="phone-row">
+                <span class="phone-label">on their phone</span>
+                <div class="bubble out">Your order has shipped<span class="meta">12:04 <svg class="ticks" viewBox="0 0 18 11" aria-hidden="true"><path d="M1 6l3 3 6-7M7.2 8.7l.8.3L15 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">read</span></span></div>
+              </div>
+            </div>
+            <div class="pane pane-hook" id="pane-hook">
+              <div class="phone-row in">
+                <div class="bubble in">Is my order on the way?<span class="meta">12:04</span></div>
+                <span class="phone-label">sent from their phone</span>
+              </div>
+<pre class="code"><span class="c-flag">POST</span> https://api.your-app.com/hooks/whatsapp
+<span class="c-key">Content-Type</span>: application/json
+<span class="c-key">X-Webhook-Signature</span>: <span class="c-ok">sha256=9f2c41d07be3&hellip;a81e</span>
+
+<span class="c-dim">{</span>
+  <span class="c-key">"event"</span>: <span class="c-str">"message.incoming"</span>,
+  <span class="c-key">"type"</span>: <span class="c-str">"text"</span>,
+  <span class="c-key">"message_id"</span>: <span class="c-str">"3A61B0E9F4C27D"</span>,
+  <span class="c-key">"from"</span>: <span class="c-str">"6281234567890@s.whatsapp.net"</span>,
+  <span class="c-key">"chat"</span>: <span class="c-str">"6281234567890@s.whatsapp.net"</span>,
+  <span class="c-key">"text"</span>: <span class="c-str">"Is my order on the way?"</span>,
+  <span class="c-key">"timestamp"</span>: <span class="c-num">1763798400</span>
+<span class="c-dim">}</span></pre>
+            </div>
+            <div class="pane pane-ses" id="pane-ses">
+              <div class="sessions" role="table" aria-label="Sessions">
+                <div class="ses-row head" role="row"><span></span><span>Account</span><span>State</span><span>Instance</span><span>Webhooks</span></div>
+                <div class="ses-row" role="row"><span class="dot"></span><span class="phone">62812345xxxx</span><span class="state on">connected</span><span class="muted">waga-0</span><span class="muted">3 subs</span></div>
+                <div class="ses-row" role="row"><span class="dot"></span><span class="phone">62877812xxxx</span><span class="state on">connected</span><span class="muted">waga-0</span><span class="muted">1 sub</span></div>
+                <div class="ses-row" role="row"><span class="dot off"></span><span class="phone">14155550xxxx</span><span class="state idle">disconnected</span><span class="muted">waga-0</span><span class="muted">2 subs</span></div>
+                <div class="ses-row" role="row"><span class="dot bad"></span><span class="phone">44207946xxxx</span><span class="state bad">banned</span><span class="muted">waga-0</span><span class="muted">1 sub</span></div>
+              </div>
+              <div class="resp-bar"><span class="c-dim">GET /admin/sessions</span><span class="ms">bearer &middot; masked</span></div>
+            </div>
+          </div>
+
+          <div class="log" id="event-log" aria-label="Event log">
+            <div class="log-line"><span class="t">12:04:01</span><span class="ev">session.connected</span><span>62812345xxxx &middot; waga-0</span></div>
+            <div class="log-line"><span class="t">12:04:07</span><span class="ev out">message.queued</span><span>text &rarr; 62898765xxxx</span></div>
+            <div class="log-line"><span class="t">12:04:07</span><span class="ev out">message.sent</span><span>3EB0F7A1C2D94E &middot; 312 ms</span></div>
+            <div class="log-line"><span class="t">12:04:12</span><span class="ev">message.incoming</span><span>text &larr; 62812345xxxx &middot; signed</span></div>
+            <div class="log-line"><span class="t">12:04:15</span><span class="ev err">session.disconnected</span><span>14155550xxxx &middot; reconnecting</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= SPEC BAND -->
+    <section class="spec" aria-label="waga in numbers">
+      <div class="wrap spec-grid">
+        <div class="spec-cell"><span class="idx">S1</span><div class="spec-num">1</div><span class="label">Go binary</span></div>
+        <div class="spec-cell"><span class="idx">S2</span><div class="spec-num">26</div><span class="label">MCP tools</span></div>
+        <div class="spec-cell"><span class="idx">S3</span><div class="spec-num">8</div><span class="label">Message types</span></div>
+        <div class="spec-cell"><span class="idx">S4</span><div class="spec-num">11</div><span class="label">Webhook events</span></div>
+        <div class="spec-cell"><span class="idx">S5</span><div class="spec-num">256<small>bit</small></div><span class="label">HMAC-SHA256 signing</span></div>
+        <div class="spec-cell"><span class="idx">S6</span><div class="spec-num">0</div><span class="label">Per-message fees</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ FLOW -->
+    <section class="section" id="flow" aria-labelledby="flow-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="label">[ 01 / FLOW ]</span>
+            <h2 id="flow-title">Your backend stays stateless. <em>waga holds the line.</em></h2>
+          </div>
+          <p class="lede">Sessions, device keys, reconnects and pacing live in the gateway. Your services make HTTP calls out and receive signed webhooks back, in any language.</p>
+        </div>
+
+        <div class="flow-frame">
+          <svg class="flow-svg" viewBox="0 56 1200 290" role="img" aria-labelledby="flow-svg-title">
+            <title id="flow-svg-title">Your backend sends REST requests to waga, which relays them to WhatsApp; incoming WhatsApp messages come back to your backend as signed webhooks.</title>
+            <defs>
+              <linearGradient id="coreFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#12261a"/>
+                <stop offset="1" stop-color="#0b120e"/>
+              </linearGradient>
+            </defs>
+
+            <!-- wires: outbound (top) and inbound (bottom) -->
+            <path class="wire" d="M300 150 H500"/><path class="packets out" d="M300 150 H500"/>
+            <path class="wire" d="M700 150 H900"/><path class="packets out" d="M700 150 H900"/>
+            <path class="wire" d="M300 210 H500"/><path class="packets in" d="M300 210 H500"/>
+            <path class="wire" d="M700 210 H900"/><path class="packets in" d="M700 210 H900"/>
+
+            <text x="400" y="136" text-anchor="middle" font-size="12" fill="#7cb7ff">POST /message/*</text>
+            <text x="800" y="136" text-anchor="middle" font-size="12" fill="#7cb7ff">whatsmeow &middot; multi-device</text>
+            <text x="400" y="234" text-anchor="middle" font-size="12" fill="#25D366">X-Webhook-Signature</text>
+            <text x="800" y="234" text-anchor="middle" font-size="12" fill="#25D366">message.incoming</text>
+
+            <!-- backend node -->
+            <rect x="40" y="96" width="260" height="168" rx="10" fill="#0a0d0e" stroke="#2c3337"/>
+            <text x="64" y="128" font-size="11" fill="#7a847f" letter-spacing="1">YOUR BACKEND</text>
+            <text x="64" y="162" font-size="20" fill="#ffffff" class="sans" font-weight="600">api.your-app.com</text>
+            <text x="64" y="196" font-size="12" fill="#8b9590">Go &middot; Node &middot; Python &middot; PHP</text>
+            <text x="64" y="220" font-size="12" fill="#8b9590">no sessions, no device state</text>
+            <circle cx="276" cy="122" r="3.5" fill="#25D366"/>
+
+            <!-- waga core -->
+            <rect x="500" y="80" width="200" height="200" rx="14" fill="url(#coreFill)" stroke="#25D366" stroke-opacity="0.6"/>
+            <text x="600" y="150" text-anchor="middle" font-size="40" fill="#ffffff" class="sans" font-weight="700" letter-spacing="-2">waga</text>
+            <text x="600" y="182" text-anchor="middle" font-size="11" fill="#25D366" letter-spacing="1">GATEWAY &middot; :3000</text>
+            <line x1="524" y1="204" x2="676" y2="204" stroke="#1f2427"/>
+            <text x="600" y="228" text-anchor="middle" font-size="11" fill="#8b9590">sessions &middot; pacer</text>
+            <text x="600" y="248" text-anchor="middle" font-size="11" fill="#8b9590">queue &middot; dead letters</text>
+
+            <!-- whatsapp node -->
+            <rect x="900" y="96" width="260" height="168" rx="10" fill="#0a0d0e" stroke="#2c3337"/>
+            <text x="924" y="128" font-size="11" fill="#7a847f" letter-spacing="1">WHATSAPP</text>
+            <text x="924" y="162" font-size="20" fill="#ffffff" class="sans" font-weight="600">Multi-device</text>
+            <text x="924" y="196" font-size="12" fill="#8b9590">QR or pairing-code login</text>
+            <text x="924" y="220" font-size="12" fill="#8b9590">many accounts per instance</text>
+            <circle cx="1136" cy="122" r="3.5" fill="#25D366"/>
+
+            <!-- legend -->
+            <circle cx="452" cy="318" r="3.5" fill="#7cb7ff"/>
+            <text x="464" y="322" font-size="11" fill="#8b9590">OUTBOUND REST</text>
+            <circle cx="642" cy="318" r="3.5" fill="#25D366"/>
+            <text x="654" y="322" font-size="11" fill="#8b9590">INBOUND WEBHOOKS</text>
+          </svg>
+
+          <div class="flow-steps">
+            <div class="flow-step">
+              <span class="label"><b>01</b> &middot; Send</span>
+              <h3>One HTTP call per action</h3>
+              <p>JWT-authenticated REST for text, media, polls, reactions, edits and group ops. Add <code>Idempotency-Key</code> and a retried request replays instead of sending twice.</p>
+            </div>
+            <div class="flow-step">
+              <span class="label"><b>02</b> &middot; Hold</span>
+              <h3>Sessions that stay up</h3>
+              <p>waga owns device keys, reconnects and the outbound pacer, so bursts from your side get paced instead of hitting WhatsApp all at once.</p>
+            </div>
+            <div class="flow-step">
+              <span class="label"><b>03</b> &middot; Receive</span>
+              <h3>Signed events back</h3>
+              <p>Incoming messages and session changes fan out to every subscribed URL, signed with <code>X-Webhook-Signature</code>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================== CAPABILITIES -->
+    <section class="section" id="capabilities" aria-labelledby="cap-title">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <span class="label">[ 02 / CAPABILITIES ]</span>
+            <h2 id="cap-title">Everything between your backend <em>and WhatsApp.</em></h2>
+          </div>
+          <p class="lede">The parts you would otherwise build yourself: event fan-out, session tracking, pacing, media handling and delivery retries.</p>
+        </div>
+
+        <div class="bento">
+          <article class="card span-7">
+            <span class="label"><b>&#9679;</b> Webhooks</span>
+            <h3>11 events, filtered per subscription</h3>
+            <p>Register several URLs per account, each with its own event filter and HMAC secret. Secrets are never returned by the API.</p>
+            <div class="viz chips" aria-label="Webhook events">
+              <span class="chip msg hot">message.incoming</span>
+              <span class="chip msg">message.queued</span>
+              <span class="chip msg">message.sent</span>
+              <span class="chip msg">message.failed</span>
+              <span class="chip ses">session.connected</span>
+              <span class="chip ses">session.disconnected</span>
+              <span class="chip ses">session.logged_out</span>
+              <span class="chip ses">session.banned</span>
+              <span class="chip ses">session.connect_failure</span>
+              <span class="chip ses">session.replaced</span>
+              <span class="chip ses">session.reachout_timelocked</span>
+            </div>
+          </article>
+
+          <article class="card span-5">
+            <span class="label"><b>&#9679;</b> Multi-device</span>
+            <h3>Many accounts, one instance</h3>
+            <p>QR or pairing-code login per number, with automatic reconnects and honest session states.</p>
+            <div class="viz mini-rows">
+              <div class="mini-row"><span class="dot"></span><span>62812345xxxx</span><span class="muted">connected</span></div>
+              <div class="mini-row"><span class="dot"></span><span>62877812xxxx</span><span class="muted">connected</span></div>
+              <div class="mini-row"><span class="dot warn"></span><span>14155550xxxx</span><span class="muted">never_paired</span></div>
+              <span class="sample-note" data-sample="true">Sample data</span>
+            </div>
+          </article>
+
+          <article class="card span-4">
+            <span class="label"><b>&#9679;</b> Outbound pacer</span>
+            <h3>Bursts get smoothed</h3>
+            <p>Every send and mutation passes a ban gate, a per-recipient cap and a per-account token bucket.</p>
+            <div class="viz bucket" aria-label="Token bucket: 1 per second, burst 5">
+              <div class="tokens"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+              <div class="bucket-meta"><span>rate <strong>1/s</strong></span><span>burst <strong>5</strong></span><span>recipient <strong>10/60s</strong></span></div>
+            </div>
+          </article>
+
+          <article class="card span-4">
+            <span class="label"><b>&#9679;</b> Media</span>
+            <h3>8 message types</h3>
+            <p>Send them all, plus replies, mentions, reactions, edits and deletes. Incoming media is stored and linked in the webhook.</p>
+            <div class="viz chips" aria-label="Message types">
+              <span class="chip">text</span><span class="chip">image</span><span class="chip">audio</span><span class="chip">video</span>
+              <span class="chip">document</span><span class="chip">location</span><span class="chip">poll</span><span class="chip">sticker</span>
+            </div>
+          </article>
+
+          <article class="card span-4 tail">
+            <span class="label"><b>&#9679;</b> Delivery</span>
+            <h3>Queue it, or don't</h3>
+            <p>Run RabbitMQ for retries and a dead-letter queue, or go direct and keep failed deliveries encrypted for 7 days.</p>
+            <div class="viz modes">
+              <div class="mode"><strong>rabbitmq</strong>retries &middot; DLQ</div>
+              <div class="mode active"><strong>direct</strong>encrypted &middot; 7d</div>
+            </div>
+          </article>
+
+          <article class="card span-12 card-wide">
+            <div>
+              <span class="label"><b>&#9679;</b> Self-hosted</span>
+              <h3>One binary. Your servers, your data.</h3>
+              <p>Docker or bare metal, SQLite to start and PostgreSQL in production. MIT licensed, no per-message pricing.</p>
+            </div>
+<div class="viz term-line"><span class="c-ok">$</span> <span class="c-cmd">go build</span> -o waga ./cmd/api
+<span class="c-ok">$</span> <span class="c-cmd">./waga</span>
+<span class="c-dim"># restores every paired session from SQLite or PostgreSQL</span>
+<span class="c-dim"># then serves REST on</span> <span class="c-ok">:3000</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= ENDPOINTS -->
+    <section class="section" id="endpoints" aria-labelledby="ep-title">
+      <div class="wrap wrap-narrow">
+        <div class="section-head stack">
+          <div>
+            <span class="label">[ 03 / ENDPOINTS ]</span>
+            <h2 id="ep-title">A REST surface <em>you can read in a minute.</em></h2>
+          </div>
+          <p class="lede">Every recipient field accepts a bare number, a user JID, a group <code class="c-dim">@g.us</code> or a <code class="c-dim">@lid</code>. Send responses echo the resolved chat.</p>
+        </div>
+
+        <div class="ep-wrap">
+          <div class="ep-head"><span>BASE</span><span class="base">/api/v1</span><span>&middot; JWT bearer</span><a href="/docs/">Full reference &rarr;</a></div>
+          <div class="ep-grid">
+            <ul class="ep-col">
+              <li class="ep"><span class="m post">POST</span><span class="path">/register</span><span class="desc">issue JWT</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/login/qr_code<span>/:format</span></span><span class="desc">pair via QR</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/login/pair_code</span><span class="desc">pair via code</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/login/status</span><span class="desc">session state</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/session/reconnect</span><span class="desc">reconnect</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/text</span><span class="desc">send text</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/image</span><span class="desc">send image</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/document</span><span class="desc">send file</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/poll</span><span class="desc">send poll</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/react</span><span class="desc">react</span></li>
+              <li class="ep"><span class="m put">PUT</span><span class="path">/message</span><span class="desc">edit</span></li>
+            </ul>
+            <ul class="ep-col">
+              <li class="ep"><span class="m del">DEL</span><span class="path">/message</span><span class="desc">delete</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/message/read</span><span class="desc">blue ticks</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/message/incoming</span><span class="desc">recent inbound</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/chat/presence</span><span class="desc">typing&hellip;</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/contact/check<span>?chat=</span></span><span class="desc">on WhatsApp?</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/contact/</span><span class="desc">synced contacts</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/group/info<span>?chat=</span></span><span class="desc">group roster</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/group/participants</span><span class="desc">add &middot; remove &middot; promote</span></li>
+              <li class="ep"><span class="m get">GET</span><span class="path">/webhook/</span><span class="desc">list subs</span></li>
+              <li class="ep"><span class="m post">POST</span><span class="path">/webhook/</span><span class="desc">upsert sub</span></li>
+              <li class="ep"><span class="m del">DEL</span><span class="path">/webhook/</span><span class="desc">remove sub</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== AGENTS -->
+    <section class="section band" id="agents" aria-labelledby="agents-title">
+      <div class="wrap agents-grid">
+        <div class="agents-copy">
+          <span class="label">[ 04 / AGENTS ]</span>
+          <h2 id="agents-title">Give your agents WhatsApp. <em>Not the keys to it.</em></h2>
+          <p class="lede">waga ships an MCP server. Claude, Cursor, Claude Code and OpenCode can send messages, read contacts and groups, and manage webhooks through the same gateway your backend uses.</p>
+          <div class="clients chips">
+            <span class="chip">Claude Desktop</span><span class="chip">Claude Code</span><span class="chip">Cursor</span><span class="chip">OpenCode</span>
+          </div>
+          <div class="guard"><strong>Scoped by design.</strong> Group mutations, community ops, the admin plane and metrics are not exposed, so an agent can't make account-wide changes.</div>
+          <a class="text-link" href="/docs/#docs:mcp/introduction">MCP docs <span class="arrow">&rarr;</span></a>
+          <a class="text-link" href="/docs/#docs:mcp/tools-reference">Tools reference <span class="arrow">&rarr;</span></a>
+        </div>
+
+        <div class="agents-stack">
+          <div class="panel">
+            <div class="panel-head">
+              <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="panel-title">claude_desktop_config.json</span>
+            </div>
+<pre class="code" data-copy><span class="c-dim">{</span>
+  <span class="c-key">"mcpServers"</span>: <span class="c-dim">{</span>
+    <span class="c-key">"whatsapp-gateway"</span>: <span class="c-dim">{</span>
+      <span class="c-key">"command"</span>: <span class="c-str">"docker"</span>,
+      <span class="c-key">"args"</span>: [<span class="c-str">"run"</span>, <span class="c-str">"-i"</span>, <span class="c-str">"--rm"</span>,
+        <span class="c-str">"-e"</span>, <span class="c-str">"WAGA_BASE_URL=http://host.docker.internal:3000/api/v1"</span>,
+        <span class="c-str">"-e"</span>, <span class="c-str">"WAGA_JWT_TOKEN=your_jwt_token"</span>,
+        <span class="c-str">"glennprays/mcp-whatsapp-gateway:latest"</span>]
+    <span class="c-dim">}</span>
+  <span class="c-dim">}</span>
+<span class="c-dim">}</span></pre>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">tools &middot; highlights</span>
+              <span class="label">26 exposed</span>
+            </div>
+            <div class="tools">
+              <div class="tool-group">
+                <h4><span>Messaging</span><span>send &middot; edit</span></h4>
+                <ul>
+                  <li>send_text_message</li><li>send_image_message</li><li>send_audio_message</li>
+                  <li>send_video_message</li><li>send_document_message</li><li>edit_message</li>
+                  <li>delete_message</li><li>react_to_message</li><li>check_contact</li>
+                </ul>
+              </div>
+              <div class="tool-group">
+                <h4><span>Contacts &amp; groups</span><span>read</span></h4>
+                <ul>
+                  <li>list_contacts</li><li>get_contact_info</li><li>get_avatar</li>
+                  <li>list_groups</li><li>get_group_info</li>
+                </ul>
+                <h4 style="margin-top: 14px;"><span>Conversation</span><span>state</span></h4>
+                <ul><li>mark_read</li><li>send_typing</li></ul>
+              </div>
+              <div class="tool-group">
+                <h4><span>Connection</span><span>health</span></h4>
+                <ul><li>check_connection_status</li><li>check_health</li></ul>
+              </div>
+              <div class="tool-group">
+                <h4><span>Webhooks</span><span>manage</span></h4>
+                <ul><li>get_webhook</li><li>register_webhook</li><li>delete_webhook</li></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================= OPERATE -->
+    <section class="section" id="operate" aria-labelledby="ops-title">
+      <div class="wrap">
+        <div class="section-head stack">
+          <div>
+            <span class="label">[ 05 / OPERATE ]</span>
+            <h2 id="ops-title">See every session. <em>Scrape every send.</em></h2>
+          </div>
+          <p class="lede">An operator plane at the root path, dark by default. Set <code class="c-dim">ADMIN_API_SECRET</code> and it answers to a bearer token; leave it empty and the routes don't exist.</p>
+        </div>
+
+        <div class="ops-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><span class="c-ok">GET</span> /admin/sessions</span>
+              <span class="label">bearer &middot; sample</span>
+            </div>
+<pre class="code"><span class="c-dim">{</span>
+  <span class="c-key">"instance"</span>: <span class="c-str">"waga-0"</span>,
+  <span class="c-key">"count"</span>: <span class="c-num">3</span>,
+  <span class="c-key">"sessions"</span>: [
+    <span class="c-dim">{</span> <span class="c-key">"phone_masked"</span>: <span class="c-str">"62812345xxxx"</span>, <span class="c-key">"state"</span>: <span class="c-ok">"connected"</span>,
+      <span class="c-key">"source"</span>: <span class="c-str">"in-memory"</span>, <span class="c-key">"last_seen"</span>: <span class="c-str">"2026-11-22T12:04:01Z"</span> <span class="c-dim">}</span>,
+    <span class="c-dim">{</span> <span class="c-key">"phone_masked"</span>: <span class="c-str">"14155550xxxx"</span>, <span class="c-key">"state"</span>: <span class="c-str">"never_paired"</span>,
+      <span class="c-key">"source"</span>: <span class="c-str">"store"</span>, <span class="c-key">"last_seen"</span>: <span class="c-str">"2026-11-21T08:30:12Z"</span> <span class="c-dim">}</span>,
+    <span class="c-dim">{</span> <span class="c-key">"phone_masked"</span>: <span class="c-str">"44207946xxxx"</span>, <span class="c-key">"state"</span>: <span class="c-bad">"banned"</span>,
+      <span class="c-key">"source"</span>: <span class="c-str">"store"</span>, <span class="c-key">"ban_expires_at"</span>: <span class="c-str">"2026-11-22T14:00:00Z"</span> <span class="c-dim">}</span>
+  ]
+<span class="c-dim">}</span></pre>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title"><span class="c-ok">GET</span> /metrics</span>
+              <span class="label">prometheus &middot; sample</span>
+            </div>
+<pre class="code"><span class="c-dim"># TYPE whatsapp_gateway_messages_total counter</span>
+whatsapp_gateway_messages_total{<span class="c-key">type</span>=<span class="c-str">"text"</span>,<span class="c-key">mode</span>=<span class="c-str">"direct"</span>,
+  <span class="c-key">result</span>=<span class="c-str">"success"</span>} <span class="c-num">1842</span>
+whatsapp_gateway_messages_total{<span class="c-key">type</span>=<span class="c-str">"image"</span>,<span class="c-key">mode</span>=<span class="c-str">"queue"</span>,
+  <span class="c-key">result</span>=<span class="c-str">"failure"</span>} <span class="c-num">3</span>
+<span class="c-dim"># TYPE whatsapp_gateway_webhook_deliveries_total counter</span>
+whatsapp_gateway_webhook_deliveries_total{<span class="c-key">result</span>=<span class="c-str">"success"</span>,<span class="c-key">mode</span>=<span class="c-str">"direct"</span>,
+  <span class="c-key">event</span>=<span class="c-str">"message.incoming"</span>} <span class="c-num">967</span>
+<span class="c-dim"># TYPE whatsapp_gateway_sessions gauge</span>
+whatsapp_gateway_sessions{<span class="c-key">state</span>=<span class="c-str">"connected"</span>} <span class="c-num">2</span>
+whatsapp_gateway_sessions{<span class="c-key">state</span>=<span class="c-str">"banned"</span>} <span class="c-num">1</span></pre>
+          </div>
+        </div>
+
+        <div class="ops-foot">
+          <div><code>/admin/webhook-dlq</code><p>List failed deliveries and replay one by id.</p></div>
+          <div><code>/health/live</code> &middot; <code>/health/ready</code><p>Probes for Kubernetes and load balancers.</p></div>
+          <div><code>/debug/pprof</code><p>Goroutine dumps behind the same bearer, for wedged sessions.</p></div>
+        </div>
+        <a class="text-link" href="/docs/#docs:configuration/environment-variables">Configuration reference <span class="arrow">&rarr;</span></a>
+      </div>
+    </section>
+
+    <!-- ============================================================ SHIP -->
+    <section class="section" id="ship" aria-labelledby="ship-title">
+      <div class="wrap">
+        <div class="ship-grid">
+          <div>
+            <span class="label">[ 06 / SHIP ]</span>
+            <h2 id="ship-title" style="margin-top: 20px;">Three steps <em>to your first message.</em></h2>
+            <ol class="steps">
+              <li><span class="n">01</span><div><strong>Run the gateway</strong><span class="d">One container with your <code class="c-dim">.env</code>.</span></div></li>
+              <li><span class="n">02</span><div><strong>Register &amp; pair</strong><span class="d">Get a JWT, then scan the QR with WhatsApp.</span></div></li>
+              <li><span class="n">03</span><div><strong>Send</strong><span class="d">Any HTTP client, any language.</span></div></li>
+            </ol>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="panel-title">~/waga &mdash; zsh</span>
+            </div>
+<pre class="code" data-copy><span class="term-step"># 01 · run</span>
+<span class="c-ok">$</span> <span class="c-cmd">docker run</span> <span class="c-flag">-d -p</span> 3000:3000 <span class="c-flag">--env-file</span> .env glennprays/whatsapp-gateway
+
+<span class="term-step"># 02 · register, then pair</span>
+<span class="c-ok">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> POST localhost:3000/api/v1/register \
+    <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+    <span class="c-flag">-d</span> <span class="c-str">'{"phone_number":"6281234567890","secret_key":"your_secret_key"}'</span>
+<span class="c-dim">{ "token": "eyJhbGciOiJIUzI1NiIs&hellip;" }</span>
+<span class="c-ok">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> POST localhost:3000/api/v1/login/qr_code/terminal \
+    <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer $WAGA_JWT"</span>
+<svg class="qr-sample" viewBox="0 0 100 100" role="img" aria-label="Sample pairing QR code"><path d="M0 0h28v4.0h-28zM64 0h4v4.0h-4zM72 0h28v4.0h-28zM0 4h4v4.0h-4zM24 4h4v4.0h-4zM32 4h4v4.0h-4zM44 4h4v4.0h-4zM52 4h4v4.0h-4zM72 4h4v4.0h-4zM96 4h4v4.0h-4zM0 8h4v4.0h-4zM8 8h12v4.0h-12zM24 8h4v4.0h-4zM32 8h4v4.0h-4zM44 8h16v4.0h-16zM72 8h4v4.0h-4zM80 8h12v4.0h-12zM96 8h4v4.0h-4zM0 12h4v4.0h-4zM8 12h12v4.0h-12zM24 12h4v4.0h-4zM32 12h4v4.0h-4zM44 12h8v4.0h-8zM56 12h4v4.0h-4zM72 12h4v4.0h-4zM80 12h12v4.0h-12zM96 12h4v4.0h-4zM0 16h4v4.0h-4zM8 16h12v4.0h-12zM24 16h4v4.0h-4zM44 16h4v4.0h-4zM52 16h12v4.0h-12zM72 16h4v4.0h-4zM80 16h12v4.0h-12zM96 16h4v4.0h-4zM0 20h4v4.0h-4zM24 20h4v4.0h-4zM40 20h4v4.0h-4zM48 20h4v4.0h-4zM56 20h4v4.0h-4zM64 20h4v4.0h-4zM72 20h4v4.0h-4zM96 20h4v4.0h-4zM0 24h28v4.0h-28zM32 24h4v4.0h-4zM40 24h4v4.0h-4zM48 24h4v4.0h-4zM56 24h4v4.0h-4zM64 24h4v4.0h-4zM72 24h28v4.0h-28zM40 28h8v4.0h-8zM52 28h12v4.0h-12zM12 32h8v4.0h-8zM24 32h8v4.0h-8zM48 32h4v4.0h-4zM56 32h20v4.0h-20zM84 32h12v4.0h-12zM0 36h4v4.0h-4zM8 36h16v4.0h-16zM28 36h4v4.0h-4zM44 36h16v4.0h-16zM64 36h8v4.0h-8zM76 36h12v4.0h-12zM92 36h8v4.0h-8zM4 40h8v4.0h-8zM16 40h20v4.0h-20zM40 40h24v4.0h-24zM80 40h4v4.0h-4zM88 40h4v4.0h-4zM96 40h4v4.0h-4zM0 44h8v4.0h-8zM12 44h12v4.0h-12zM32 44h4v4.0h-4zM48 44h12v4.0h-12zM72 44h4v4.0h-4zM80 44h12v4.0h-12zM4 48h4v4.0h-4zM16 48h12v4.0h-12zM32 48h12v4.0h-12zM52 48h4v4.0h-4zM68 48h8v4.0h-8zM80 48h4v4.0h-4zM88 48h4v4.0h-4zM96 48h4v4.0h-4zM0 52h16v4.0h-16zM32 52h4v4.0h-4zM44 52h4v4.0h-4zM56 52h8v4.0h-8zM72 52h4v4.0h-4zM80 52h4v4.0h-4zM88 52h12v4.0h-12zM0 56h4v4.0h-4zM24 56h8v4.0h-8zM44 56h4v4.0h-4zM68 56h4v4.0h-4zM80 56h8v4.0h-8zM92 56h4v4.0h-4zM0 60h8v4.0h-8zM20 60h4v4.0h-4zM32 60h8v4.0h-8zM56 60h4v4.0h-4zM68 60h8v4.0h-8zM80 60h4v4.0h-4zM4 64h4v4.0h-4zM12 64h4v4.0h-4zM20 64h8v4.0h-8zM32 64h16v4.0h-16zM64 64h4v4.0h-4zM72 64h4v4.0h-4zM84 64h4v4.0h-4zM32 68h8v4.0h-8zM44 68h4v4.0h-4zM52 68h8v4.0h-8zM64 68h12v4.0h-12zM96 68h4v4.0h-4zM0 72h28v4.0h-28zM36 72h8v4.0h-8zM48 72h12v4.0h-12zM64 72h12v4.0h-12zM84 72h8v4.0h-8zM0 76h4v4.0h-4zM24 76h4v4.0h-4zM36 76h4v4.0h-4zM56 76h8v4.0h-8zM68 76h8v4.0h-8zM0 80h4v4.0h-4zM8 80h12v4.0h-12zM24 80h4v4.0h-4zM40 80h4v4.0h-4zM48 80h8v4.0h-8zM60 80h4v4.0h-4zM68 80h4v4.0h-4zM76 80h4v4.0h-4zM88 80h4v4.0h-4zM0 84h4v4.0h-4zM8 84h12v4.0h-12zM24 84h4v4.0h-4zM40 84h12v4.0h-12zM56 84h4v4.0h-4zM64 84h8v4.0h-8zM92 84h8v4.0h-8zM0 88h4v4.0h-4zM8 88h12v4.0h-12zM24 88h4v4.0h-4zM32 88h4v4.0h-4zM60 88h24v4.0h-24zM88 88h4v4.0h-4zM0 92h4v4.0h-4zM24 92h4v4.0h-4zM32 92h16v4.0h-16zM56 92h16v4.0h-16zM88 92h12v4.0h-12zM0 96h28v4.0h-28zM40 96h4v4.0h-4zM48 96h4v4.0h-4zM60 96h4v4.0h-4zM72 96h4v4.0h-4zM80 96h4v4.0h-4zM92 96h8v4.0h-8z"/></svg>  <span class="c-dim">scan in WhatsApp &rsaquo; Linked devices (sample)</span>
+
+<span class="term-step"># 03 · send</span>
+<span class="c-ok">$</span> <span class="c-cmd">curl</span> <span class="c-flag">-X</span> POST localhost:3000/api/v1/message/text \
+    <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer $WAGA_JWT"</span> \
+    <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+    <span class="c-flag">-d</span> <span class="c-str">'{"chat":"6289876543210","message":"hello from waga"}'</span>
+<span class="c-ok">{ "success": true, "status": "sent" }</span></pre>
+          </div>
+        </div>
+
+        <div class="final">
+          <div>
+            <span class="label">[ NEXT ]</span>
+            <h2 style="margin-top: 18px;">Run WhatsApp<br>like infrastructure.</h2>
+            <div class="chips">
+              <a class="chip" href="/docs/#docs:mcp/introduction">MCP</a>
+              <a class="chip" href="/llms.txt">llms.txt</a>
+              <a class="chip" href="/openapi.yaml">openapi.yaml</a>
+              <a class="chip" href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">GitHub</a>
+            </div>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="/docs/#docs:getting-started/introduction">Start with the introduction <span class="arrow">&rarr;</span></a>
+            <a class="text-link" href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">Source on GitHub <span class="arrow">&rarr;</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M1 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2 0v10h10V3z"/><rect x="5" y="5" width="6" height="6" rx="1"/></svg>waga</a>
+          <p>The self-hosted WhatsApp gateway for backends and AI agents.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Start</h4>
+          <ul>
+            <li><a href="/docs/#docs:getting-started/introduction">Introduction</a></li>
+            <li><a href="/docs/#docs:getting-started/feature-matrix">Feature matrix</a></li>
+            <li><a href="/docs/#docs:getting-started/system-boundary">System boundary</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Architecture</h4>
+          <ul>
+            <li><a href="/docs/#docs:architechture/high-level-architecture">Overview</a></li>
+            <li><a href="/docs/#docs:architechture/message-flow">Message flow</a></li>
+            <li><a href="/docs/#docs:architechture/webhook-flow">Webhook flow</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Install</h4>
+          <ul>
+            <li><a href="/docs/#docs:installation/docker-deployment">Docker</a></li>
+            <li><a href="/docs/#docs:installation/production-deployment">Production</a></li>
+            <li><a href="/docs/#docs:configuration/environment-variables">Environment</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>MCP</h4>
+          <ul>
+            <li><a href="/docs/#docs:mcp/introduction">Introduction</a></li>
+            <li><a href="/docs/#docs:mcp/quick-start">Quick start</a></li>
+            <li><a href="/docs/#docs:mcp/tools-reference">Tools</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Security</h4>
+          <ul>
+            <li><a href="/docs/#docs:security/important-security-consideration">Considerations</a></li>
+            <li><a href="/docs/#docs:security/authentication-and-security">Authentication</a></li>
+            <li><a href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">Source</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-giant" aria-hidden="true">waga</div>
+      <div class="footer-base">
+        <p>waga is not affiliated with WhatsApp or Meta. Built on <a href="https://github.com/tulir/whatsmeow" target="_blank" rel="noopener">whatsmeow</a>. Usage is subject to WhatsApp's terms of service.</p>
+        <p>MIT License &middot; Glenn Prays</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+  /* Progressive enhancement only: every piece of content above is complete and
+     readable without this script. */
+  (function () {
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ---- Accessible tabs: upgrade the CSS radio tabs to ARIA tabs. ---- */
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.console .tab'));
+    var tablist = document.querySelector('.console .tabs');
+    if (tabs.length && tablist) {
+      tablist.setAttribute('role', 'tablist');
+      tablist.setAttribute('aria-label', 'Console views');
+      var sync = function () {
+        tabs.forEach(function (tab) {
+          var input = document.getElementById(tab.htmlFor);
+          var on = input.checked;
+          tab.setAttribute('aria-selected', on ? 'true' : 'false');
+          tab.tabIndex = on ? 0 : -1;
+        });
+      };
+      tabs.forEach(function (tab) {
+        var input = document.getElementById(tab.htmlFor);
+        var pane = document.getElementById('pane-' + tab.htmlFor.replace('tab-', ''));
+        tab.id = tab.htmlFor + '-label';
+        tab.setAttribute('role', 'tab');
+        if (pane) {
+          tab.setAttribute('aria-controls', pane.id);
+          pane.setAttribute('role', 'tabpanel');
+          pane.setAttribute('aria-labelledby', tab.id);
+        }
+        // Focus moves to the labels; the radios stay as the state holders.
+        input.tabIndex = -1;
+        input.setAttribute('aria-hidden', 'true');
+        input.addEventListener('change', sync);
+        tab.addEventListener('keydown', function (e) {
+          var i = tabs.indexOf(tab), next = null;
+          if (e.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
+          else if (e.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
+          else if (e.key === 'Home') next = tabs[0];
+          else if (e.key === 'End') next = tabs[tabs.length - 1];
+          else if (e.key === 'Enter' || e.key === ' ') next = tab;
+          if (!next) return;
+          e.preventDefault();
+          document.getElementById(next.htmlFor).checked = true;
+          sync();
+          next.focus();
+        });
+      });
+      sync();
+    }
+
+    /* ---- Copy buttons on [data-copy] snippets. ---- */
+    // For shell transcripts, copy only the commands ("$ " lines and their
+    // backslash continuations), not the sample output.
+    var commandsOf = function (text) {
+      var lines = text.split('\n'), out = [], inCmd = false;
+      lines.forEach(function (line) {
+        if (/^\s*\$ /.test(line)) { out.push(line.replace(/^\s*\$ /, '')); inCmd = /\\\s*$/.test(line); }
+        else if (inCmd) { out.push(line); inCmd = /\\\s*$/.test(line); }
+      });
+      return out.length ? out.join('\n') : text;
+    };
+    document.querySelectorAll('[data-copy]').forEach(function (el) {
+      var source = el.querySelector('code') || el;
+      var text = commandsOf(source.textContent.trim());
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.setAttribute('aria-label', 'Copy to clipboard');
+      btn.addEventListener('click', function () {
+        var done = function () {
+          btn.textContent = 'Copied';
+          btn.classList.add('done');
+          setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+        }
+      });
+      var head = el.tagName === 'PRE' && el.closest('.panel') && el.closest('.panel').querySelector('.panel-head');
+      (head || el).appendChild(btn);
+    });
+
+    if (reduce) return; // static state is already rendered; no motion below.
+
+    /* ---- Live event log ticker. ---- */
+    var log = document.getElementById('event-log');
+    if (!log) return;
+    // Sample events (the console is labelled "sample data").
+    var pool = [
+      ['message.queued', 'out', 'image \u2192 62898765xxxx'],
+      ['message.sent', 'out', '3EB0C41D7A92F1 \u00b7 288 ms'],
+      ['message.incoming', '', 'text \u2190 62877812xxxx \u00b7 signed'],
+      ['message.incoming', '', 'image \u2190 62812345xxxx \u00b7 stored'],
+      ['session.connected', '', '14155550xxxx \u00b7 waga-0'],
+      ['message.queued', 'out', 'poll \u2192 120363xxxx@g.us'],
+      ['message.sent', 'out', '3EB09B2E55D0A4 \u00b7 341 ms'],
+      ['message.failed', 'err', 'document \u2192 62811111xxxx \u00b7 retry 1/3']
+    ];
+    var pi = 0, visible = true, paused = false;
+    // The ticker is the page's single ambient motion: it pauses while the
+    // pointer or keyboard focus is inside the console.
+    var host = log.closest('.console') || log;
+    host.addEventListener('pointerenter', function () { paused = true; });
+    host.addEventListener('pointerleave', function () { paused = false; });
+    host.addEventListener('focusin', function () { paused = true; });
+    host.addEventListener('focusout', function () { paused = false; });
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) { visible = entries[0].isIntersecting; }).observe(log);
+    }
+    var pad = function (v) { return (v < 10 ? '0' : '') + v; };
+    setInterval(function () {
+      if (!visible || paused || document.hidden) return;
+      var d = new Date(), p = pool[pi++ % pool.length];
+      var line = document.createElement('div');
+      line.className = 'log-line enter';
+      var cell = function (cls, text) {
+        var el = document.createElement('span');
+        if (cls) el.className = cls;
+        el.textContent = text;
+        line.appendChild(el);
+      };
+      cell('t', pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()));
+      cell('ev ' + p[1], p[0]);
+      cell('', p[2]);
+      log.appendChild(line);
+      while (log.children.length > 5) log.removeChild(log.firstElementChild);
+    }, 2500);
+  })();
+  </script>
+</body>
+</html>

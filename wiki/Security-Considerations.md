@@ -428,7 +428,7 @@ If you suspect a security breach:
 
 1. **Immediately rotate all secrets**:
    - JWT_SECRET
-   - BASIC_AUTH_SECRET_KEY
+   - SECRET_KEY
    - WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY
    - Database passwords
 

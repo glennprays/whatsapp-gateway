@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
 
 # Set the current working directory inside the container
 WORKDIR /app
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -ldflags "-X main.version=${VERSION}" -o /app/main ./cmd/api/main.go
 
 # Stage 2: Prepare CA certificates, timezone data, and directories
-FROM debian:bullseye-slim AS certs-and-tzdata
+FROM debian:bookworm-slim AS certs-and-tzdata
 
 # Install ca-certificates and tzdata
 RUN apt-get update && apt-get install -y ca-certificates tzdata

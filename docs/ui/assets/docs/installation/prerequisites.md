@@ -22,7 +22,7 @@ Production deployment on Linux-based container infrastructure is strongly recomm
 
 Minimum required version:
 
-Go 1.25
+Go 1.26
 
 Required only if:
 

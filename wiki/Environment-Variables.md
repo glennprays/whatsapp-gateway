@@ -21,11 +21,11 @@ cp .env.example .env
 - **Example**: `PORT=3000`
 - **Note**: If running in Docker, ensure this matches the exposed port in your Docker configuration
 
-#### `BASIC_AUTH_SECRET_KEY`
+#### `SECRET_KEY`
 - **Description**: Secret key for basic authentication (if used)
 - **Type**: String
 - **Default**: `secret`
-- **Example**: `BASIC_AUTH_SECRET_KEY=my_secure_secret_key_123`
+- **Example**: `SECRET_KEY=my_secure_secret_key_123`
 - **Security**: Change this in production environments
 
 ---
@@ -195,7 +195,7 @@ cp .env.example .env
 
 ### Rate Limiting Configuration
 
-The `/register` endpoint is throttled per client IP to prevent brute-forcing of `BASIC_AUTH_SECRET_KEY` and mass token minting. The limiter is in-process (memory) so it works without Redis.
+The `/register` endpoint is throttled per client IP to prevent brute-forcing of `SECRET_KEY` and mass token minting. The limiter is in-process (memory) so it works without Redis.
 
 #### `REGISTER_RATE_LIMIT_ENABLED`
 - **Description**: Toggle per-IP throttling on `POST /register`
@@ -362,7 +362,7 @@ Send endpoints (`/api/message/*`) accept an optional `Idempotency-Key` header. A
 
 ### Admin / Metrics Plane Configuration
 
-An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, and `GET /metrics`. It is **dark by default** — with no `ADMIN_API_SECRET` the routes are never registered and return `404` (never a `401` that would confirm the plane exists). The plane is cross-tenant by design (operator visibility) and the inventory is **per-instance**: a device with no live client on this node may be live on another.
+An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`): `GET /admin/sessions`, `GET /admin/sessions/{phone}`, `GET /admin/webhook-dlq`, `POST /admin/webhook-dlq/{id}/replay`, and `GET /metrics`. It is **dark by default** — with no `ADMIN_API_SECRET` the routes are never registered and return `404` (never a `401` that would confirm the plane exists). The plane is cross-tenant by design (operator visibility) and the inventory is **per-instance**: a device with no live client on this node may be live on another.
 
 #### `ADMIN_API_SECRET`
 - **Description**: Bearer secret for `/admin/*` and `/metrics`. Empty disables (unregisters) the whole plane. When set, requests must send `Authorization: Bearer <secret>`, compared in constant time (`crypto/subtle`).
@@ -370,7 +370,7 @@ An **operator-only** admin plane lives at the **ROOT path** (outside `/api/v1`):
 - **Default**: `""` (disabled)
 
 #### `METRICS_ENABLED`
-- **Description**: Exposes `GET /metrics` (hand-rolled Prometheus text exposition). Still requires `ADMIN_API_SECRET` to be reachable (same bearer-gated plane). Series: `whatsapp_gateway_messages_total{type,mode,result}`, `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, `whatsapp_gateway_sessions{state}` (gauge). A phone number is **never** a metric label (cardinality).
+- **Description**: Exposes `GET /metrics` (hand-rolled Prometheus text exposition). Still requires `ADMIN_API_SECRET` to be reachable (same bearer-gated plane). Series: `whatsapp_gateway_messages_total{type,mode,result}`, `whatsapp_gateway_webhook_deliveries_total{result,mode,event}`, `whatsapp_gateway_webhook_dead_letter_misses_total{reason}` (dead-letter persistence failed — delivery NOT retained), `whatsapp_gateway_sessions{state}` (gauge). A phone number is **never** a metric label (cardinality).
 - **Type**: Boolean
 - **Default**: `false`
 
@@ -404,9 +404,11 @@ returned. `DELETE /webhook` with no body clears all subscriptions; with
 
 ---
 
-### Direct-mode Webhook Retry Configuration
+### Direct-mode Webhook Retry & Dead-Letter Configuration
 
-Direct-mode status webhooks (`message.queued` / `message.sent` / `message.failed`) are delivered asynchronously with bounded exponential backoff on a detached context, so a retry outlives the HTTP request. Best-effort (drop-on-full, no DLQ); durable delivery requires RabbitMQ. Queue mode keeps its own RabbitMQ-level retry and is not double-retried.
+Direct-mode webhook deliveries (incoming messages plus the `message.queued`/`message.sent`/`message.failed` status family) are delivered asynchronously with bounded exponential backoff on a detached context, so a retry outlives the HTTP request. **A delivery that exhausts its retries — or arrives while the sender's concurrency slots are full — is persisted as an encrypted dead letter** (`webhook_dead_letters` table) for seven days instead of being dropped. The envelope (`{url, hmac_secret, payload}`) is AES-GCM encrypted with the same master key as webhook HMAC secrets; only fixed classifications (`delivery_failed`, `semaphore_full`, `invalid_payload`) are stored as `last_error`. Replay is at-least-once (a crash after the remote 2xx but before the row delete can duplicate a delivery). This is a dead-letter store, not an exactly-once durable outbox: a crash before the failed delivery is written, or database unavailability, can still lose it. Queue mode keeps its own RabbitMQ-level retry and DLQ and is not affected.
+
+Operators replay dead letters through the admin plane: `GET /admin/webhook-dlq?limit=&offset=` (1–100, default 50; metadata only — never URL, secret, or payload) and `POST /admin/webhook-dlq/{id}/replay` (404 missing/expired, 409 while another replay holds the 300s lease, 502 on delivery failure with the row retained, 200 `{status:"delivered"}` and row deleted on 2xx).
 
 #### `WEBHOOK_MAX_RETRIES`
 - **Description**: Maximum retry attempts (beyond the first) for a direct-mode webhook delivery. Capped internally at 10.
@@ -418,6 +420,14 @@ Direct-mode status webhooks (`message.queued` / `message.sent` / `message.failed
 - **Type**: Integer (seconds)
 - **Default**: `2`
 
+---
+
+### Incoming Media Download Configuration
+
+#### `INCOMING_MEDIA_DOWNLOAD_TIMEOUT_SECONDS`
+- **Description**: Per-download deadline for **incoming** media webhooks. One download happens per media event (before subscription fan-out), in both direct and queue mode, each on its own context. Values `<= 0` fall back to the historical 5 seconds. This is separate from the outbound webhook HTTP timeout and from `WEBHOOK_MEDIA_DOWNLOAD_TIMEOUT_SECONDS` (which bounds the media downloader's own outbound fetch pipeline).
+- **Type**: Integer (seconds)
+- **Default**: `5`
 ---
 
 ## Security Best Practices
@@ -434,7 +444,7 @@ Direct-mode status webhooks (`message.queued` / `message.sent` / `message.failed
 
 Use these commands to generate secure random strings:
 
-**For JWT_SECRET and BASIC_AUTH_SECRET_KEY:**
+**For JWT_SECRET and SECRET_KEY:**
 ```bash
 openssl rand -base64 32
 ```
@@ -449,7 +459,7 @@ openssl rand -hex 16
 ### Development (.env.development)
 ```env
 PORT=3000
-BASIC_AUTH_SECRET_KEY=dev_secret
+SECRET_KEY=dev_secret
 BASE_PATH=/api
 ENABLE_SWAGGER=true
 SWAGGER_USER=admin
@@ -467,7 +477,7 @@ WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY=0123456789abcdef0123456789abcdef
 ### Production (.env.production)
 ```env
 PORT=3000
-BASIC_AUTH_SECRET_KEY=<strong-random-secret>
+SECRET_KEY=<strong-random-secret>
 BASE_PATH=/api
 ENABLE_SWAGGER=false
 SWAGGER_USER=<secure-username>

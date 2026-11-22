@@ -6,6 +6,9 @@ import (
 
 // sqliteDefaultPragmas are applied to every SQLite DSN unless the user
 // already set the pragma (any value) themselves:
+//   - foreign_keys(1): required by whatsmeow's sqlstore upgrades (they refuse
+//     to run with foreign keys disabled); ON is also the only safe default
+//     for the store's cross-table invariants.
 //   - journal_mode(WAL): writers no longer block readers; without it every
 //     write locks the whole database file.
 //   - busy_timeout(5000): wait up to 5s for a lock instead of failing
@@ -19,6 +22,7 @@ var sqliteDefaultPragmas = []struct {
 	name  string
 	value string
 }{
+	{"foreign_keys", "1"},
 	{"journal_mode", "WAL"},
 	{"busy_timeout", "5000"},
 	{"synchronous", "NORMAL"},

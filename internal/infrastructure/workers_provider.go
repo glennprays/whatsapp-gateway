@@ -48,6 +48,7 @@ func ProvideQueueWorkers(
 		Publisher:       rabbitMQ,
 		Logger:          logger,
 		MediaDownloader: mediaDownloader,
+		MediaTimeout:    whatsapp.IncomingMediaDownloadTimeout(cfg),
 		ClientStore:     manager.GetClientStore(),
 		Dedup:           dedup,
 	}
