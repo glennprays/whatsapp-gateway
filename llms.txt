@@ -540,7 +540,7 @@ All documentation files are available at https://waga.glennprays.com/assets/docs
 
 ## Tech Stack
 
-- Go 1.25
+- Go 1.26
 - whatsmeow (WhatsApp Web protocol library)
 - Fiber (HTTP framework)
 - SQLite / PostgreSQL

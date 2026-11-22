@@ -20,7 +20,7 @@ func runMigrations(db *sql.DB, cipher *cipherx.Cipher) error {
 	if err := runIdempotencyKeysMigrations(db); err != nil {
 		return err
 	}
-	if err := runSessionStatusMigrations(db); err != nil {
+	if err := runWebhookDeadLettersMigrations(db); err != nil {
 		return err
 	}
 	return nil
@@ -197,6 +197,32 @@ func runIdempotencyKeysMigrations(db *sql.DB) error {
 
     CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
         ON idempotency_keys(created_at);`
+	_, err := db.ExecContext(context.Background(), query)
+	return err
+}
+
+// runWebhookDeadLettersMigrations creates the encrypted dead-letter store for
+// direct-mode webhook deliveries that exhausted their retries (or were parked
+// on a saturated sender). Rows are opaque ciphertext plus non-sensitive
+// metadata; times are Unix seconds. DDL is dialect-neutral (SQLite + Postgres).
+func runWebhookDeadLettersMigrations(db *sql.DB) error {
+	query := `
+    CREATE TABLE IF NOT EXISTS webhook_dead_letters (
+        id TEXT PRIMARY KEY,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        event TEXT NOT NULL,
+        encrypted_delivery TEXT NOT NULL,
+        last_error TEXT NOT NULL,
+        lease_token TEXT NOT NULL DEFAULT '',
+        lease_until BIGINT NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_webhook_dead_letters_expires_at
+        ON webhook_dead_letters(expires_at);
+
+    CREATE INDEX IF NOT EXISTS idx_webhook_dead_letters_created_at_id
+        ON webhook_dead_letters(created_at, id);`
 	_, err := db.ExecContext(context.Background(), query)
 	return err
 }

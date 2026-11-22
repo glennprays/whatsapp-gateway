@@ -24,6 +24,7 @@ func ProvideRouter(
 	storage domainStorage.Storage,
 	db *sql.DB,
 	manager whatsapp.Manager,
+	webhookSender *whatsapp.WebhookSender,
 ) *fiber.App {
-	return SetupRouter(cfg, traceIDMw, authMiddleware, mainHandler, logger, queue, storage, db, manager)
+	return SetupRouter(cfg, traceIDMw, authMiddleware, mainHandler, logger, queue, storage, db, manager, webhookSender)
 }

@@ -84,7 +84,7 @@ func TestHandleEventSessionStatus(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &mockSessionRepo{}
-			h := NewHandler(repo, nil, nil, newTestLogger(t), nil, 1)
+			h := NewHandler(repo, nil, nil, newTestLogger(t), nil, 1, 5*time.Second)
 
 			// Seed a live in-memory client so eviction is observable.
 			clients.Set(phone, &whatsmeow.Client{})

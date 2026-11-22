@@ -22,10 +22,10 @@ type Config struct {
 	// loaded from env; ProvideConfig sets it from AppVersion.
 	AppVersion string `mapstructure:"-"`
 
-	Env                                    Environment `mapstructure:"ENV" default:"production"`
-	Port                                   string      `mapstructure:"PORT" default:"3000"`
-	BasePath                               string      `mapstructure:"BASE_PATH" default:"/"`
-	HttpOrigin                             string      `mapstructure:"HTTP_ORIGIN" default:"*"`
+	Env        Environment `mapstructure:"ENV" default:"production"`
+	Port       string      `mapstructure:"PORT" default:"3000"`
+	BasePath   string      `mapstructure:"BASE_PATH" default:"/"`
+	HttpOrigin string      `mapstructure:"HTTP_ORIGIN" default:"*"`
 	// TrustedProxies is a comma-separated allowlist of proxy IPs/CIDRs. When set,
 	// the gateway reads the client IP from ProxyHeader only for requests arriving
 	// from these hops; XFF from any other source is ignored (unspoofable). Empty
@@ -33,25 +33,29 @@ type Config struct {
 	TrustedProxies []string `mapstructure:"TRUSTED_PROXIES"`
 	// ProxyHeader is the header consulted for the real client IP when the request
 	// comes from a trusted proxy (see TrustedProxies).
-	ProxyHeader string `mapstructure:"PROXY_HEADER" default:"X-Forwarded-For"`
-	EnableDocumentation                    bool        `mapstructure:"ENABLE_DOCUMENTATION" default:"false"`
-	DocumentationUser                      string      `mapstructure:"DOCUMENTATION_USER" default:"user"`
-	DocumentationPassword                  string      `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`
-	DocumentationBasePath                  string      `mapstructure:"DOCUMENTATION_BASE_PATH" default:"/docs"`
-	JwtSecret                              string      `mapstructure:"JWT_SECRET" default:"secret"`
-	JwtDurationMinutes                     int         `mapstructure:"JWT_TOKEN_DURATION_MINUTES" default:"1440"`
-	JwtIssuer                              string      `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
-	BasicAuthSecretKey                     string      `mapstructure:"SECRET_KEY" default:"secret"`
-	WhatsappDatastoreType                  string      `mapstructure:"WHATSAPP_DATASTORE_TYPE" default:"sqlite"`
-	WhatsappDatastoreUri                   string      `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"`
-	WhatsmeowLogLevel                      string      `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
-	WhatsappDeviceLabel                    string      `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
-	WhatsappWebhookHmacEncryptionMasterKey string      `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
-	IncomingMessageBufferSize              int         `mapstructure:"INCOMING_MESSAGE_BUFFER_SIZE" default:"100"`
-	LogLevel                               string      `mapstructure:"LOG_LEVEL" default:"info"`
-	LogOutput                              string      `mapstructure:"LOG_OUTPUT" default:"stdout"`
-	LogFilePath                            string      `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
-	EnableCaller                           bool        `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
+	ProxyHeader                            string `mapstructure:"PROXY_HEADER" default:"X-Forwarded-For"`
+	EnableDocumentation                    bool   `mapstructure:"ENABLE_DOCUMENTATION" default:"false"`
+	DocumentationUser                      string `mapstructure:"DOCUMENTATION_USER" default:"user"`
+	DocumentationPassword                  string `mapstructure:"DOCUMENTATION_PASSWORD" default:"password"`
+	DocumentationBasePath                  string `mapstructure:"DOCUMENTATION_BASE_PATH" default:"/docs"`
+	JwtSecret                              string `mapstructure:"JWT_SECRET" default:"secret"`
+	JwtDurationMinutes                     int    `mapstructure:"JWT_TOKEN_DURATION_MINUTES" default:"1440"`
+	JwtIssuer                              string `mapstructure:"JWT_ISSUER" default:"whatsapp-gateway"`
+	BasicAuthSecretKey                     string `mapstructure:"SECRET_KEY" default:"secret"`
+	WhatsappDatastoreType                  string `mapstructure:"WHATSAPP_DATASTORE_TYPE" default:"sqlite"`
+	WhatsappDatastoreUri                   string `mapstructure:"WHATSAPP_DATASTORE_URI" default:"file:dbs/whatsapp.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"`
+	WhatsmeowLogLevel                      string `mapstructure:"WHATSMEOW_LOG_LEVEL" default:"warn"`
+	WhatsappDeviceLabel                    string `mapstructure:"WHATSAPP_DEVICE_LABEL" default:"WhatsApp Gateway"`
+	WhatsappWebhookHmacEncryptionMasterKey string `mapstructure:"WHATSAPP_WEBHOOK_HMAC_ENCRYPTION_MASTER_KEY" default:"0123456789abcdef0123456789abcdef"`
+	IncomingMessageBufferSize              int    `mapstructure:"INCOMING_MESSAGE_BUFFER_SIZE" default:"100"`
+	// Incoming media download timeout: bounds each incoming-media download
+	// (one per media event, before subscription fan-out) in BOTH direct and
+	// queue mode. <= 0 falls back to the historical 5 seconds.
+	IncomingMediaDownloadTimeoutSeconds int64  `mapstructure:"INCOMING_MEDIA_DOWNLOAD_TIMEOUT_SECONDS" default:"5"`
+	LogLevel                            string `mapstructure:"LOG_LEVEL" default:"info"`
+	LogOutput                           string `mapstructure:"LOG_OUTPUT" default:"stdout"`
+	LogFilePath                         string `mapstructure:"LOG_FILE_PATH" default:"/var/log/whatsapp-gateway.log"`
+	EnableCaller                        bool   `mapstructure:"LOG_ENABLE_CALLER" default:"false"`
 
 	// Database Connection Pool
 	DBMaxOpenConns    int `mapstructure:"DB_MAX_OPEN_CONNS" default:"25"`

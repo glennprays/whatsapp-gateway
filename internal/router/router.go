@@ -42,6 +42,7 @@ func SetupRouter(
 	storage domainStorage.Storage,
 	db *sql.DB,
 	manager whatsapp.Manager,
+	webhookSender *whatsapp.WebhookSender,
 ) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
@@ -189,6 +190,13 @@ func SetupRouter(
 		adminGrp := app.Group("/admin", adminAuth)
 		adminGrp.Get("/sessions", adminHandler.Sessions)
 		adminGrp.Get("/sessions/:phone", adminHandler.Session)
+
+		// Webhook dead-letter plane: list + replay failed direct-mode
+		// deliveries. Same bearer; responses carry only non-sensitive
+		// metadata (never URL, secret, payload, or error text).
+		dlqHandler := admin_handler.NewWebhookDLQHandler(webhookSender, lgr)
+		adminGrp.Get("/webhook-dlq", dlqHandler.List)
+		adminGrp.Post("/webhook-dlq/:id/replay", dlqHandler.Replay)
 
 		// /metrics is gated independently by METRICS_ENABLED but still lives
 		// behind the same admin bearer (and is unreachable without the secret).
