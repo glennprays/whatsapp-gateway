@@ -4,6 +4,8 @@
 
 The **MCP WhatsApp Gateway** is a Model Context Protocol (MCP) server that acts as a bridge between AI agents and the WhatsApp Gateway. It allows AI assistants like Claude, Cursor, and Claude Code to send WhatsApp messages, manage webhooks, and check connection status through a pre-authenticated JWT session.
 
+> New here? The [landing page](https://waga.glennprays.com/) explains waga in one minute; this section covers the MCP server that gives AI agents access to the same gateway.
+
 ## What is MCP?
 
 The **Model Context Protocol (MCP)** is an open protocol that enables AI agents to interact with external systems through standardized tools. Think of MCP as a universal translator that allows AI assistants to:

@@ -1,4 +1,4 @@
-# WhatsApp Gateway
+# waga - WhatsApp Gateway
 
 > A Go-based REST API gateway that abstracts WhatsApp Web complexity for stateless backend integration.
 
@@ -8,6 +8,7 @@ This gateway handles all WhatsApp connection state, session management, and mess
 
 Key capabilities:
 - Send and receive WhatsApp messages via REST API
+- Expose the gateway to AI agents through the bundled MCP server (send, react, edit, webhooks, status)
 - Multi-device support (one gateway instance handles multiple WhatsApp accounts)
 - QR code and pairing code login methods
 - Webhook-based incoming message notifications
