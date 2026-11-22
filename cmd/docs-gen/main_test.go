@@ -159,3 +159,18 @@ func isDark(hex string) bool {
 	}
 	return (299*rgb[0]+587*rgb[1]+114*rgb[2])/1000 < 40
 }
+
+
+func TestLandingHeroConsole(t *testing.T) {
+	out := renderLanding(t, "")
+	for _, want := range []string{
+		"docker run -d -p 3000:3000 --env-file .env glennprays/whatsapp-gateway",
+		`for="tab-req">Request<`,
+		`for="tab-hook">Webhook<`,
+		`for="tab-ses">Sessions`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("hero console missing %q", want)
+		}
+	}
+}

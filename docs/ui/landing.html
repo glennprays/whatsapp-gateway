@@ -321,8 +321,276 @@
       text-align: center;
     }
 
+    /* ----------------------------------------------------------------- hero */
+    .hero { position: relative; padding: 88px 0 96px; }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+      gap: 56px;
+      align-items: center;
+    }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 12px 5px 6px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: rgba(13, 16, 18, 0.7);
+      margin-bottom: 28px;
+    }
+    .hero-tag .pill {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #04140a;
+      background: var(--signal);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-weight: 600;
+    }
+    .hero h1 {
+      font-size: clamp(3rem, 7vw, 5.75rem);
+      font-weight: 600;
+      letter-spacing: -0.045em;
+      line-height: 0.95;
+    }
+    .hero h1 .accent {
+      color: var(--signal);
+      text-shadow: 0 0 40px rgba(37, 211, 102, 0.35);
+    }
+    .hero h1 .soft { color: var(--muted); }
+    .hero-sub {
+      margin-top: 26px;
+      font-size: 18px;
+      line-height: 1.55;
+      color: var(--muted);
+      max-width: 46ch;
+    }
+    .hero-sub strong { color: var(--text); font-weight: 500; }
+    .cta-row { margin-top: 34px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .cta-row .btn { height: 46px; padding: 0 22px; font-size: 15px; }
+
+    .snippet {
+      margin-top: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 520px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 0 6px 0 14px;
+      height: 46px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+    }
+    .snippet .prompt { color: var(--signal); user-select: none; }
+    .snippet code {
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    .snippet code::-webkit-scrollbar { display: none; }
+    .hero-meta {
+      margin-top: 22px;
+      display: flex;
+      gap: 10px 22px;
+      flex-wrap: wrap;
+    }
+    .hero-meta span { display: inline-flex; align-items: center; gap: 8px; }
+    .tick { color: var(--signal); font-family: var(--font-mono); }
+
+    /* Shared terminal / panel chrome */
+    .panel {
+      position: relative;
+      background: linear-gradient(180deg, var(--surface) 0%, #0a0d0e 100%);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 40px 80px -30px rgba(0,0,0,0.9);
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.015);
+    }
+    .lights { display: inline-flex; gap: 6px; }
+    .lights i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+    .panel-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+    .panel-head .label { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; }
+    pre, code { font-family: var(--font-mono); }
+    .code {
+      padding: 18px 20px;
+      font-size: 12.75px;
+      line-height: 1.7;
+      color: var(--text);
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .c-cmd { color: var(--signal-soft); }
+    .c-flag { color: var(--blue); }
+    .c-str { color: #b5e8c4; }
+    .c-key { color: var(--violet); }
+    .c-num { color: var(--amber); }
+    .c-dim { color: var(--faint); }
+    .c-ok { color: var(--signal); }
+    .c-bad { color: var(--red); }
+
+    /* Hero console: CSS-only tabs (radio inputs) so it works with JS off. */
+    .console { position: relative; }
+    .console::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: var(--radius);
+      padding: 1px;
+      background: linear-gradient(140deg, rgba(37, 211, 102, 0.55), transparent 35%, transparent 70%, rgba(255, 75, 43, 0.35));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .tab-input {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--line);
+      padding: 0 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .tab {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 12px;
+      color: var(--faint);
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s var(--ease);
+    }
+    .tab:hover { color: var(--text); }
+    .tab .count {
+      font-size: 10.5px;
+      padding: 0 6px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+    .tabs-meta { margin-left: auto; align-self: center; font-size: 11px; color: var(--faint); padding-right: 6px; }
+    .pane { display: none; min-height: 318px; }
+    #tab-req:checked ~ .panes .pane-req,
+    #tab-hook:checked ~ .panes .pane-hook,
+    #tab-ses:checked ~ .panes .pane-ses { display: block; }
+    #tab-req:checked ~ .tabs [for="tab-req"],
+    #tab-hook:checked ~ .tabs [for="tab-hook"],
+    #tab-ses:checked ~ .tabs [for="tab-ses"] { color: var(--text-strong); }
+    #tab-req:checked ~ .tabs [for="tab-req"]::after,
+    #tab-hook:checked ~ .tabs [for="tab-hook"]::after,
+    #tab-ses:checked ~ .tabs [for="tab-ses"]::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: -1px;
+      height: 2px;
+      background: var(--signal);
+      box-shadow: 0 0 12px var(--signal);
+    }
+    #tab-req:focus-visible ~ .tabs [for="tab-req"],
+    #tab-hook:focus-visible ~ .tabs [for="tab-hook"],
+    #tab-ses:focus-visible ~ .tabs [for="tab-ses"] { outline: 2px solid var(--signal); outline-offset: -4px; border-radius: 4px; }
+
+    .resp-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px;
+      border-top: 1px dashed var(--line-strong);
+      border-bottom: 1px dashed var(--line-strong);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--faint);
+      background: rgba(37, 211, 102, 0.03);
+    }
+    .status-ok { color: #04140a; background: var(--signal); padding: 1px 7px; border-radius: 4px; font-weight: 600; }
+    .resp-bar .ms { margin-left: auto; }
+
+    .sessions { padding: 10px 12px 14px; }
+    .ses-row {
+      display: grid;
+      grid-template-columns: 18px 1.3fr 1fr 0.9fr 0.7fr;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 10px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      border-bottom: 1px solid var(--line);
+    }
+    .ses-row:last-child { border-bottom: 0; }
+    .ses-row.head { color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; padding-top: 6px; }
+    .ses-row .phone { color: var(--text); }
+    .ses-row .muted { color: var(--muted); }
+    .state { font-size: 11px; padding: 2px 8px; border-radius: 999px; width: fit-content; }
+    .state.on { color: var(--signal); background: var(--signal-dim); }
+    .state.idle { color: var(--muted); background: var(--surface-2); }
+    .state.warn { color: var(--amber); background: rgba(245, 184, 61, 0.12); }
+    .state.bad { color: var(--red); background: rgba(255, 92, 92, 0.12); }
+
+    .log {
+      border-top: 1px solid var(--line);
+      background: #060808;
+      padding: 10px 0 12px;
+      font-family: var(--font-mono);
+      font-size: 11.75px;
+      line-height: 1.9;
+      height: 132px;
+      overflow: hidden;
+      position: relative;
+    }
+    .log::after {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 26px;
+      background: linear-gradient(#060808, transparent);
+      pointer-events: none;
+    }
+    .log-line {
+      display: grid;
+      grid-template-columns: 74px 150px 1fr;
+      gap: 12px;
+      padding: 0 20px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .log-line .t { color: var(--faint); }
+    .log-line .ev { color: var(--signal); }
+    .log-line .ev.out { color: var(--blue); }
+    .log-line .ev.err { color: var(--amber); }
+    .log-line span:last-child { overflow: hidden; text-overflow: ellipsis; }
+    .log-line.enter { animation: logIn .5s var(--ease); }
+    @keyframes logIn { from { opacity: 0; transform: translateY(8px); background: rgba(37,211,102,0.08); } }
+
     /* ----------------------------------------------------------- responsive */
     @media (max-width: 980px) {
+      .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+      .hero { padding: 64px 0 80px; }
       .footer-grid { grid-template-columns: repeat(3, 1fr); }
       .footer-brand { grid-column: 1 / -1; }
       .section-head { grid-template-columns: 1fr; gap: 20px; }
@@ -333,6 +601,11 @@
     }
     @media (max-width: 520px) {
       .footer-grid { grid-template-columns: repeat(2, 1fr); }
+      .tabs-meta { display: none; }
+      .ses-row { grid-template-columns: 18px 1.4fr 1fr 0.9fr; }
+      .ses-row > :nth-child(5) { display: none; }
+      .log-line { grid-template-columns: 64px 1fr; }
+      .log-line span:last-child { display: none; }
       .header-right .btn-ghost { display: none; }
       .version-badge { display: none; }
     }
@@ -384,6 +657,99 @@
   </header>
 
   <main id="main">
+    <!-- ============================================================ HERO -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <a class="hero-tag label" href="/docs/#docs:mcp/introduction">
+            <span class="pill">New</span> MCP server for AI agents <span class="arrow">&rarr;</span>
+          </a>
+          <p class="label" style="margin-bottom: 18px;">[ SELF-HOSTED &middot; GO &middot; MIT ]</p>
+          <h1 id="hero-title">WhatsApp,<br><span class="accent">as an API</span><br><span class="soft">you run.</span></h1>
+          <p class="hero-sub">waga keeps WhatsApp sessions alive so your backend doesn't have to. <strong>Send over REST, receive over signed webhooks</strong>, and hand the same gateway to your AI agents over MCP.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="/docs/">Get started <span class="arrow">&rarr;</span></a>
+            <a class="btn btn-ghost" href="https://github.com/glennprays/whatsapp-gateway" target="_blank" rel="noopener">Star on GitHub</a>
+          </div>
+          <div class="snippet" data-copy>
+            <span class="prompt" aria-hidden="true">$</span>
+            <code>docker run -d -p 3000:3000 --env-file .env glennprays/whatsapp-gateway</code>
+          </div>
+          <div class="hero-meta label">
+            <span><span class="tick">&#10003;</span> One Go binary</span>
+            <span><span class="tick">&#10003;</span> Multi-device</span>
+            <span><span class="tick">&#10003;</span> No per-message fees</span>
+          </div>
+        </div>
+
+        <div class="panel console" aria-label="Example gateway console">
+          <div class="panel-head">
+            <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="panel-title">waga &mdash; console</span>
+            <span class="label"><span class="dot pulse"></span>live</span>
+          </div>
+
+          <input class="tab-input" type="radio" name="console-tab" id="tab-req" checked>
+          <input class="tab-input" type="radio" name="console-tab" id="tab-hook">
+          <input class="tab-input" type="radio" name="console-tab" id="tab-ses">
+          <div class="tabs">
+            <label class="tab" for="tab-req">Request</label>
+            <label class="tab" for="tab-hook">Webhook</label>
+            <label class="tab" for="tab-ses">Sessions <span class="count">4</span></label>
+            <span class="tabs-meta">localhost:3000/api/v1</span>
+          </div>
+
+          <div class="panes">
+            <div class="pane pane-req" id="pane-req">
+<pre class="code" id="req-code"><span class="c-cmd">curl</span> <span class="c-flag">-X</span> POST localhost:3000/api/v1/message/text \
+  <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer $WAGA_JWT"</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"Idempotency-Key: order-1042"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{ "chat": "6289876543210", "message": "Your order shipped 📦" }'</span></pre>
+              <div class="resp-bar"><span class="status-ok">200</span> OK <span class="c-dim">application/json</span><span class="ms">312 ms</span></div>
+<pre class="code"><span class="c-dim">{</span>
+  <span class="c-key">"success"</span>: <span class="c-num">true</span>,
+  <span class="c-key">"status"</span>: <span class="c-str">"sent"</span>,
+  <span class="c-key">"message_id"</span>: <span class="c-str">"3EB0F7A1C2D94E"</span>,
+  <span class="c-key">"chat"</span>: <span class="c-str">"6289876543210@s.whatsapp.net"</span>
+<span class="c-dim">}</span></pre>
+            </div>
+            <div class="pane pane-hook" id="pane-hook">
+<pre class="code"><span class="c-flag">POST</span> https://api.your-app.com/hooks/whatsapp
+<span class="c-key">Content-Type</span>: application/json
+<span class="c-key">X-Webhook-Signature</span>: <span class="c-ok">sha256=9f2c41d07be3&hellip;a81e</span>
+
+<span class="c-dim">{</span>
+  <span class="c-key">"event"</span>: <span class="c-str">"message.incoming"</span>,
+  <span class="c-key">"type"</span>: <span class="c-str">"text"</span>,
+  <span class="c-key">"message_id"</span>: <span class="c-str">"3A61B0E9F4C27D"</span>,
+  <span class="c-key">"from"</span>: <span class="c-str">"6281234567890@s.whatsapp.net"</span>,
+  <span class="c-key">"chat"</span>: <span class="c-str">"6281234567890@s.whatsapp.net"</span>,
+  <span class="c-key">"text"</span>: <span class="c-str">"Is my order on the way?"</span>,
+  <span class="c-key">"timestamp"</span>: <span class="c-num">1763798400</span>
+<span class="c-dim">}</span></pre>
+            </div>
+            <div class="pane pane-ses" id="pane-ses">
+              <div class="sessions" role="table" aria-label="Sessions">
+                <div class="ses-row head" role="row"><span></span><span>Account</span><span>State</span><span>Instance</span><span>Webhooks</span></div>
+                <div class="ses-row" role="row"><span class="dot"></span><span class="phone">62812345xxxx</span><span class="state on">connected</span><span class="muted">waga-0</span><span class="muted">3 subs</span></div>
+                <div class="ses-row" role="row"><span class="dot"></span><span class="phone">62877812xxxx</span><span class="state on">connected</span><span class="muted">waga-0</span><span class="muted">1 sub</span></div>
+                <div class="ses-row" role="row"><span class="dot off"></span><span class="phone">14155550xxxx</span><span class="state idle">disconnected</span><span class="muted">waga-0</span><span class="muted">2 subs</span></div>
+                <div class="ses-row" role="row"><span class="dot bad"></span><span class="phone">44207946xxxx</span><span class="state bad">banned</span><span class="muted">waga-0</span><span class="muted">1 sub</span></div>
+              </div>
+              <div class="resp-bar"><span class="c-dim">GET /admin/sessions</span><span class="ms">bearer &middot; masked</span></div>
+            </div>
+          </div>
+
+          <div class="log" id="event-log" aria-label="Event log">
+            <div class="log-line"><span class="t">12:04:01</span><span class="ev">session.connected</span><span>62812345xxxx &middot; waga-0</span></div>
+            <div class="log-line"><span class="t">12:04:07</span><span class="ev out">message.queued</span><span>text &rarr; 62898765xxxx</span></div>
+            <div class="log-line"><span class="t">12:04:07</span><span class="ev out">message.sent</span><span>3EB0F7A1C2D94E &middot; 312 ms</span></div>
+            <div class="log-line"><span class="t">12:04:12</span><span class="ev">message.incoming</span><span>text &larr; 62812345xxxx &middot; signed</span></div>
+            <div class="log-line"><span class="t">12:04:15</span><span class="ev err">session.disconnected</span><span>14155550xxxx &middot; reconnecting</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
