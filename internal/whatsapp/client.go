@@ -329,33 +329,62 @@ func isRecipientError(err error) bool {
 		strings.Contains(msg, "recipient")
 }
 
+// LoginQRCode serves the pairing QR for a phone number. WhatsApp QRs are
+// single-ref per connection: any Disconnect invalidates every code issued on
+// it, so a second request must NOT re-mint while one is still valid — the QR
+// on the user's screen would die silently. Hence the cache-first path: within
+// the validity window repeated calls return the same live QR. Once expired
+// (or on the first call) we mint a fresh code; that necessarily disconnects
+// the previous registration, superseding all older codes.
 func (c *client) LoginQRCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
 	cli := clients.Get(phoneNumber)
-	if cli != nil {
-		cli.Disconnect()
-		if cli.Store.ID == nil {
-			qrChanGenerate, _ := cli.GetQRChannel(ctx)
-			err := cli.Connect()
-			if err != nil {
-				return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
-			}
+	if cli == nil {
+		return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	}
 
-			qrImage, qrTimeout, err := WhatsappGenerateQRCode(ctx, qrChanGenerate)
-			if err != nil {
-				return "", 0, err
-			}
-			return fmt.Sprintf(`data:image/png;base64,%s`, qrImage), qrTimeout, nil
+	if qr := clients.GetCurrentQR(phoneNumber); qr != nil {
+		return qr.png, qr.timeout, nil
+	}
+
+	cli.Disconnect()
+	if cli.Store.ID == nil {
+		// The QR emitter goroutine outlives this request (~160s of whatsmeow
+		// rotation) and selects on the channel ctx's Done; a pooled fasthttp
+		// RequestCtx must not be captured there. Bind the emitter to
+		// context.Background() — graceful shutdown disconnects clients
+		// separately. Only the in-request first-code wait keeps the caller's
+		// ctx (via WhatsappGenerateQRCode).
+		qrChanGenerate, _ := cli.GetQRChannel(context.Background())
+		err := cli.Connect()
+		if err != nil {
+			return "", 0, c.mapWhatsmeowErr(traceID, phoneNumber, err)
 		}
 
-		err := c.Reconnect(traceID, phoneNumber)
+		qrImage, qrTimeout, err := WhatsappGenerateQRCode(ctx, qrChanGenerate)
 		if err != nil {
 			return "", 0, err
 		}
 
-		return "", 0, errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientAlreadyLoggedIn))
+		dataURL := fmt.Sprintf(`data:image/png;base64,%s`, qrImage)
+		// 2s margin: a code handed out at the tail of its window must still
+		// be scannable when it reaches the phone.
+		clients.SetCurrentQR(phoneNumber, currentQR{
+			png:       dataURL,
+			timeout:   qrTimeout,
+			expiresAt: time.Now().Add(time.Duration(qrTimeout)*time.Second - 2*time.Second),
+		})
+		return dataURL, qrTimeout, nil
 	}
 
-	return "", 0, errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
+	err := c.Reconnect(traceID, phoneNumber)
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Already paired: any cached QR is obsolete (pairing consumed it), and
+	// the caller should go through pair/login status instead.
+	clients.DeleteCurrentQR(phoneNumber)
+	return "", 0, errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientAlreadyLoggedIn))
 }
 
 func (c *client) LoginPairCode(ctx context.Context, traceID string, phoneNumber string) (string, int, error) {
@@ -413,8 +442,10 @@ func (c *client) Logout(ctx context.Context, traceID string, phoneNumber string)
 				)
 			}
 			clients.Delete(phoneNumber)
+			clients.DeleteCurrentQR(phoneNumber)
 			return errDomain.NewError(errDomain.ErrConflict, errors.New(constant.ErrClientSessionDeleted))
 		}
+		clients.DeleteCurrentQR(phoneNumber)
 		return nil
 	}
 	return errDomain.NewError(errDomain.ErrNotFound, errors.New(constant.ErrClientNotFound))
